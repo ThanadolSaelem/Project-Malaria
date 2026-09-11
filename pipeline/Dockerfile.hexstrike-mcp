@@ -2,7 +2,9 @@
 # ต้องการแค่ mcp SDK + requests เพราะ hexstrike_mcp.py เป็น HTTP client ล้วน
 FROM python:3.11-slim
 
-RUN pip install --no-cache-dir "mcp>=1.2.0" "requests>=2.31.0"
+# pin mcp<2 : hexstrike_mcp.py ใช้ `from mcp.server.fastmcp import FastMCP`
+# ซึ่ง mcp 2.x ลบทิ้งแล้ว (เปลี่ยนเป็น MCPServer). 1.8+ มี transport streamable-http
+RUN pip install --no-cache-dir "mcp>=1.8,<2" "requests>=2.31.0"
 
 WORKDIR /app
 # โค้ด vendor ของ hexstrike (hexstrike_mcp.py) และตัว wrapper ถูก mount เข้ามา
