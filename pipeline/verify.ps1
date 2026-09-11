@@ -23,13 +23,19 @@ if (-not $live) { $live = try { Invoke-WebRequest "$litellm/v1/models" -UseBasic
 if ($live) {
     Ok "LiteLLM ตอบที่ $litellm"
     Write-Host "  -> ยิง big-brain ผ่าน provider จริง (ใช้ key ใน .env)..."
-    $body = @{ model="big-brain"; messages=@(@{role="user";content="reply with the single word: ok"}); max_tokens=8 } | ConvertTo-Json -Depth 5
+    # max_tokens สูงหน่อย: deepseek-v4-flash เป็น reasoning model ถ้าน้อยเกินจะใช้ token
+    # ไปกับการคิดจนหมดก่อนพ่น content -> content ว่างทั้งที่ provider ตอบสำเร็จ
+    $body = @{ model="big-brain"; messages=@(@{role="user";content="reply with the single word: ok"}); max_tokens=256 } | ConvertTo-Json -Depth 5
     $r = try {
-        Invoke-RestMethod "$litellm/v1/chat/completions" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 60
+        Invoke-RestMethod "$litellm/v1/chat/completions" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 90
     } catch { $null }
-    if ($r -and $r.choices[0].message.content) {
-        Ok "big-brain ตอบกลับ (provider ทะลุ)"
-        Write-Host ("     " + ($r.choices[0].message.content -replace "`n"," ").Substring(0, [Math]::Min(120, $r.choices[0].message.content.Length)))
+    if ($r -and $r.choices) {
+        # ผ่านทันทีถ้าได้ completion object กลับมา (provider ทะลุ) content จะว่างก็ได้
+        Ok "big-brain ทะลุถึง provider (ได้ completion กลับมา)"
+        $msg = $r.choices[0].message
+        $txt = if ($msg.content) { $msg.content } elseif ($msg.reasoning_content) { "[reasoning] " + $msg.reasoning_content } else { "(content ว่าง — reasoning model, แต่ tunnel ใช้ได้)" }
+        $txt = ($txt -replace "`n"," ")
+        Write-Host ("     " + $txt.Substring(0, [Math]::Min(140, $txt.Length)))
     } else {
         No "big-brain ยังไม่ทะลุ — เช็คชื่อโมเดลใน litellm-config.yaml / key ใน .env"
     }

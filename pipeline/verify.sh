@@ -25,12 +25,15 @@ if curl -fsS --max-time 5 "$LITELLM_URL/health/liveliness" >/dev/null 2>&1 \
    || curl -fsS --max-time 5 "$LITELLM_URL/v1/models" >/dev/null 2>&1; then
   ok "LiteLLM ตอบที่ $LITELLM_URL"
   echo "  → ยิง big-brain ผ่าน provider จริง (ใช้ key ใน .env)…"
-  resp=$(curl -sS --max-time 60 "$LITELLM_URL/v1/chat/completions" \
+  # max_tokens สูงหน่อย: deepseek-v4-flash เป็น reasoning model ถ้าน้อยไปจะใช้ token
+  # ไปกับการคิดจนหมดก่อนพ่น content -> content ว่างทั้งที่ provider ตอบสำเร็จ
+  resp=$(curl -sS --max-time 90 "$LITELLM_URL/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d '{"model":"big-brain","messages":[{"role":"user","content":"reply with the single word: ok"}],"max_tokens":8}')
-  if echo "$resp" | grep -qiE '"content"[[:space:]]*:'; then
-    ok "big-brain ตอบกลับ (provider ทะลุ)"
-    echo "     $(echo "$resp" | tr -d '\n' | cut -c1-160)…"
+    -d '{"model":"big-brain","messages":[{"role":"user","content":"reply with the single word: ok"}],"max_tokens":256}')
+  # ผ่านถ้าได้ completion object (มี "choices") — content จะว่างก็ได้ (reasoning model)
+  if echo "$resp" | grep -qE '"choices"[[:space:]]*:'; then
+    ok "big-brain ทะลุถึง provider (ได้ completion กลับมา)"
+    echo "     $(echo "$resp" | tr -d '\n' | cut -c1-200)…"
   else
     no "big-brain ยังไม่ทะลุ — เช็คชื่อโมเดลใน litellm-config.yaml / key"
     echo "     $(echo "$resp" | tr -d '\n' | cut -c1-200)"
