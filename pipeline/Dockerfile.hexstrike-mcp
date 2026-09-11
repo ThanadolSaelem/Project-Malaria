@@ -1,0 +1,16 @@
+# ตัวห่อ HexStrike MCP ให้พูด HTTP (streamable-http) — เบามาก
+# ต้องการแค่ mcp SDK + requests เพราะ hexstrike_mcp.py เป็น HTTP client ล้วน
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir "mcp>=1.2.0" "requests>=2.31.0"
+
+WORKDIR /app
+# โค้ด vendor ของ hexstrike (hexstrike_mcp.py) และตัว wrapper ถูก mount เข้ามา
+# ตอน runtime ผ่าน docker-compose (ดู volumes) จึงไม่ต้อง COPY ที่นี่
+
+ENV MCP_HOST=0.0.0.0 \
+    MCP_PORT=8001 \
+    HEXSTRIKE_DIR=/app/hexstrike-ai-main
+
+EXPOSE 8001
+CMD ["python", "/app/pipeline/hexstrike_mcp_http.py"]

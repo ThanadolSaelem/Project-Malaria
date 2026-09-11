@@ -1,0 +1,63 @@
+# =============================================================================
+# Pipeline เดียว: HarnessRouter + HexStrike MCP + LiteLLM
+# -----------------------------------------------------------------------------
+#   app → HarnessRouter (เลือก/รัน harness) ─┬─ โมเดล → LiteLLM → NIM/Groq/Cerebras
+#                                            └─ เครื่องมือ → HexStrike MCP → tools
+#
+#   วิธีใช้:
+#     1) cp .env.example .env   แล้วใส่ key จริง
+#     2) รัน hexstrike_server.py บนเครื่อง Kali/Parrot (ดู README ข้อ 3)
+#     3) docker compose up -d
+#     4) เปิด http://localhost:3000 ลงทะเบียน HexStrike MCP (README ข้อ 5)
+# =============================================================================
+services:
+
+  # ── ชั้นสลับ provider (กัน timeout/delay) ────────────────────────────────
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
+    restart: unless-stopped
+
+  # ── ชั้นเครื่องมือ (MCP over HTTP) ───────────────────────────────────────
+  # ต่อไปยัง hexstrike_server.py (ตัวจริงที่รันเครื่องมือ) ที่ HEXSTRIKE_SERVER
+  hexstrike-mcp:
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.hexstrike-mcp
+    volumes:
+      - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
+      - ./hexstrike_mcp_http.py:/app/pipeline/hexstrike_mcp_http.py:ro
+    environment:
+      HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8001
+    ports:
+      - "127.0.0.1:8001:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # ให้ container เห็น service บน host (Linux)
+    restart: unless-stopped
+
+  # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
+  harnessrouter:
+    image: harnessrouter/harnessrouter:latest
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - harnessrouter-data:/data
+    depends_on:
+      - litellm
+      - hexstrike-mcp
+    restart: unless-stopped
+
+volumes:
+  harnessrouter-data:

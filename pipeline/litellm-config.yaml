@@ -1,0 +1,60 @@
+# =============================================================================
+# LiteLLM — provider-switch layer (ชั้นสลับ provider กัน timeout/delay)
+# -----------------------------------------------------------------------------
+# หน้าที่ในไปป์ไลน์: harness (ผ่าน HarnessRouter) ยิงมาที่ endpoint เดียวชื่อ
+# "big-brain" แล้ว LiteLLM ตัดสินใจเองว่าจะส่งไป NIM / Groq / Cerebras เจ้าไหน
+# ถ้าเจ้าแรก 429 / 5xx / timeout จะ fallback ไปเจ้าถัดไปให้อัตโนมัติ
+#
+# รันด้วย:  litellm --config litellm-config.yaml --port 4000
+# (หรือปล่อยให้ docker-compose รันให้ — ดู pipeline/docker-compose.yml)
+#
+# !! ชื่อโมเดลด้านล่างเป็นตัวอย่าง ต้องยืนยันกับ /v1/models ของแต่ละเจ้าก่อน !!
+#    ถ้าเจอ 404 ตอนเริ่ม แปลว่าชื่อไม่ตรง ไม่ใช่ config ผิด
+# =============================================================================
+
+model_list:
+  # ---- NVIDIA NIM : ตัวหลัก (context ยาว, ไม่มีเพดาน token) ----
+  - model_name: big-brain
+    litellm_params:
+      model: nvidia_nim/deepseek-ai/deepseek-v3        # <- ยืนยันชื่อจาก build.nvidia.com
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+      rpm: 40                                          # เพดานที่ชุมชนรายงาน ~40 RPM/โมเดล
+
+  # ---- Groq : fallback ตัวที่ 1 (เร็วมาก, ctx 128K) ----
+  - model_name: big-brain
+    litellm_params:
+      model: groq/openai/gpt-oss-120b                  # <- ยืนยันชื่อจาก Groq console
+      api_key: os.environ/GROQ_API_KEY
+      rpm: 30
+
+  # ---- Cerebras : fallback ตัวที่ 2 (เร็วสุด แต่ ctx สั้น ~8K) ----
+  - model_name: big-brain
+    litellm_params:
+      model: cerebras/gpt-oss-120b                     # <- ยืนยันชื่อจาก Cerebras console
+      api_key: os.environ/CEREBRAS_API_KEY
+      rpm: 30
+
+  # ---- โมเดลเร็วสำหรับงานง่ายซ้ำๆ (แยก endpoint ไว้เผื่อเรียกตรง) ----
+  - model_name: fast
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile              # <- ยืนยันชื่อ
+      api_key: os.environ/GROQ_API_KEY
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 3
+  timeout: 120
+  cooldown_time: 30                # พัก provider ที่เพิ่งพังไว้ 30 วิ ก่อนลองใหม่
+
+  # ลำดับ fallback เมื่อเจอ error/429/5xx : big-brain -> fast
+  fallbacks:
+    - big-brain: ["fast"]
+
+  # กันปัญหา ctx สั้นของ Cerebras: prompt ยาวเกิน จะเด้งขึ้นตัวที่รับไหวแทนที่จะ error
+  context_window_fallbacks:
+    - big-brain: ["fast"]
+
+litellm_settings:
+  drop_params: true                # ตัด param ที่ provider ปลายทางไม่รองรับทิ้ง แทนที่จะ error
+  # set_verbose: true              # เปิดตอน debug
