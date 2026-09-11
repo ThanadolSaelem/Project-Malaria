@@ -22,6 +22,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     HEXSTRIKE_PORT=8888
 
+# apt mirror ของ Kali (kali.download / http.kali.org) อยู่หลัง Cloudflare CDN —
+# ถ้า build จาก Docker Desktop บน Windows (WSL2) มักเจอ DNS/IPv6 resolve
+# ไม่เสถียรเป็นระยะ (Could not resolve 'kali.download' ทั้งที่ก่อนหน้าโหลดผ่าน
+# มาหลายร้อย MB แล้ว) บังคับ IPv4 + เพิ่มจำนวน retry กันปัญหานี้
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 \
+    && echo 'Acquire::Retries "15";' > /etc/apt/apt.conf.d/99retries \
+    && echo 'Acquire::http::Pipeline-Depth "0";' > /etc/apt/apt.conf.d/99no-pipeline
+
 # ── core security tools + build toolchain (สำหรับ pip package ที่ไม่มี wheel
 #    สำหรับ Python เวอร์ชันที่ kali-rolling ให้มา — ดูเหตุผลด้านบน) ──────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
