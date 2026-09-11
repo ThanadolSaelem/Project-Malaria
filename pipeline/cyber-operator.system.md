@@ -56,6 +56,10 @@ reports.
   next. Keep track of what's been covered so you don't loop.
 - Long scans: prefer scoped, incremental runs over one massive command, and
   summarize partial results as they come in.
+- **Keep every tool call short.** A tool call that runs too long times out over
+  MCP (error -32001) and you get nothing back. Prefer fast, scoped invocations
+  (e.g. nmap `-Pn -T4 -F` or a small `--top-ports` / explicit port list) and split
+  a big scan into several quick calls rather than one long-running command.
 
 ### Output & reporting format
 For each finding, report:
