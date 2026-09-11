@@ -1,0 +1,80 @@
+rules:
+- cluster_id: 17
+  length: 15
+  count: 5066
+  template: connection from <IP> to <IP> {allowed|denied} by rule <NUM> for user <STR>
+    on host <STR>
+  auto_split_positions:
+  - position: 5
+    reason: sensitive_word
+    split_values:
+    - allowed
+    - denied
+- cluster_id: 29
+  length: 6
+  count: 2344
+  template: PacketResponder {0|1|2|3} for block <BLK> terminating
+  auto_split_positions:
+  - position: 1
+    reason: numeric_enum
+    split_values:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+- cluster_id: 15
+  length: 7
+  count: 2112
+  template: user <STR> logged in from host <STR>
+  auto_split_positions: []
+- cluster_id: 25
+  length: 5
+  count: 1000
+  template: Received block <BLK> from <IP>
+  auto_split_positions: []
+- cluster_id: 28
+  length: 8
+  count: 854
+  template: EventID {4624|4625} for user <STR> on host <STR>
+  auto_split_positions:
+  - position: 1
+    reason: numeric_enum
+    split_values:
+    - '4624'
+    - '4625'
+- cluster_id: 7
+  length: 6
+  count: 800
+  template: 'BLOCK* NameSystem.addStoredBlock: block <BLK> size 67108864'
+  auto_split_positions: []
+- cluster_id: 2
+  length: 9
+  count: 670
+  template: user <STR> logged in from host <STR> with mfa
+  auto_split_positions: []
+- cluster_id: 16
+  length: 8
+  count: 564
+  template: EventID <NUM> for user <STR> on host <STR>
+  auto_split_positions: []
+- cluster_id: 6
+  length: 7
+  count: 500
+  template: user <STR> authenticated via ssh from <IP>
+  auto_split_positions: []
+- cluster_id: 3
+  length: 5
+  count: 2172
+  template: service {nginx|sshd|cron} restarted on <STR>
+  auto_split_positions: []
+- cluster_id: 13
+  length: 15
+  count: 41
+  template: connection from <IP> to <IP> {allowed|denied} by rule <NUM> for user <STR>
+    on host <STR>
+  auto_split_positions:
+  - position: 5
+    reason: sensitive_word
+    split_values:
+    - allowed
+    - denied

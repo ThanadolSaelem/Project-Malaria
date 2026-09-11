@@ -1,1 +1,1 @@
-# Project-Malaria
+# LogBERT

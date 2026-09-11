@@ -1,0 +1,57 @@
+{
+  "version": "test-v1",
+  "created_at": "2026-08-31T18:58:59.093905Z",
+  "frozen": true,
+  "mappings": {
+    "1ae7a0fae2d8": {
+      "template": "connection from <IP> to <IP> {allowed|denied} by rule <NUM> for user <STR> on host <STR>",
+      "category": "unknown",
+      "cluster_id": 17
+    },
+    "91fc8a8b01db": {
+      "template": "PacketResponder {0|1|2|3} for block <BLK> terminating",
+      "category": "unknown",
+      "cluster_id": 29
+    },
+    "bf9c4c9344d3": {
+      "template": "user <STR> logged in from host <STR>",
+      "category": "unknown",
+      "cluster_id": 15
+    },
+    "bacfc9d0ccdb": {
+      "template": "Received block <BLK> from <IP>",
+      "category": "unknown",
+      "cluster_id": 25
+    },
+    "2aaa3ce0b154": {
+      "template": "EventID {4624|4625} for user <STR> on host <STR>",
+      "category": "unknown",
+      "cluster_id": 28
+    },
+    "7b54c5a5f94e": {
+      "template": "BLOCK* NameSystem.addStoredBlock: block <BLK> size 67108864",
+      "category": "unknown",
+      "cluster_id": 7
+    },
+    "2429a304ff33": {
+      "template": "user <STR> logged in from host <STR> with mfa",
+      "category": "unknown",
+      "cluster_id": 2
+    },
+    "433671ed393b": {
+      "template": "EventID <NUM> for user <STR> on host <STR>",
+      "category": "unknown",
+      "cluster_id": 16
+    },
+    "0a98ec170b46": {
+      "template": "user <STR> authenticated via ssh from <IP>",
+      "category": "unknown",
+      "cluster_id": 6
+    },
+    "713025580e3b": {
+      "template": "service {nginx|sshd|cron} restarted on <STR>",
+      "category": "unknown",
+      "cluster_id": 3
+    }
+  }
+}
