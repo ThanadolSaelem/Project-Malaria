@@ -31,10 +31,12 @@
 
 ## ไฟล์ในโฟลเดอร์นี้
 
-- `docker-compose.yml` — รันสามชั้น (litellm, hexstrike-mcp, harnessrouter) บน network เดียว
+- `docker-compose.yml` — รันสามชั้น (litellm, hexstrike-mcp, harnessrouter) บน network เดียว + service `hexstrike-server` แบบ opt-in (profile `full`)
 - `litellm-config.yaml` — chain NIM → Groq → Cerebras + `context_window_fallbacks`
 - `hexstrike_mcp_http.py` — ห่อ HexStrike MCP ให้พูด HTTP (ต้นฉบับพูด stdio อย่างเดียว)
 - `Dockerfile.hexstrike-mcp` — image เล็กๆ สำหรับตัวห่อข้างบน
+- `Dockerfile.hexstrike-server` — image ฐาน Kali ที่รันเครื่องมือจริง (ใช้กับ profile `full`)
+- `verify.sh` — เช็คทั้งสามชั้นก่อนไปเปิด Console
 - `.env.example` — คีย์ provider + connection/policy ของ HarnessRouter
 
 ## ขั้นตอนติดตั้ง
@@ -49,22 +51,35 @@ cp .env.example .env
 ### 2. ยืนยันชื่อโมเดลใน `litellm-config.yaml`
 ชื่อในไฟล์เป็นตัวอย่าง ยิง `/v1/models` ของแต่ละเจ้าเช็คก่อน ถ้าเจอ 404 = ชื่อไม่ตรง ไม่ใช่ config พัง
 
-### 3. รัน HexStrike **server** แยก (สำคัญ)
-`hexstrike_server.py` คือตัวที่รันเครื่องมือจริง (nmap, sqlmap, metasploit…) จึงต้องอยู่บนเครื่องที่ **ติดตั้งเครื่องมือครบ** เช่น Kali/Parrot — ไม่ได้อยู่ใน compose นี้เพราะ image สะอาดไม่มีเครื่องมือพวกนั้น:
+### 3. เตรียม HexStrike **server** (ตัวที่รันเครื่องมือจริง) — เลือก 1 โหมด
+`hexstrike_server.py` ต้องอยู่บนเครื่องที่ **ติดตั้งเครื่องมือครบ** (nmap, sqlmap…):
+
+**โหมด A — รันแยกเองบน Kali/Parrot** (ควบคุมเครื่องมือได้เต็มที่)
 ```bash
-# บนเครื่อง Kali/Parrot
 cd hexstrike-ai-main
 python3 -m venv hexstrike-env && source hexstrike-env/bin/activate
 pip install -r requirements.txt
 python3 hexstrike_server.py            # ฟังที่ :8888
 ```
-แล้วตั้ง `HEXSTRIKE_SERVER` ใน `.env` ให้ชี้มาที่เครื่องนั้น (ค่าเริ่มคือ `host.docker.internal:8888` = host เดียวกับ docker)
+คง `HEXSTRIKE_SERVER=http://host.docker.internal:8888` ใน `.env`
+
+**โหมด B — ให้ compose build ให้** (turnkey กว่า แต่ image หนักหลาย GB)
+- แก้ `.env`: `HEXSTRIKE_SERVER=http://hexstrike-server:8888`
+- ใช้ `--profile full` ตอน up (ข้อ 4)
+- ชุดเครื่องมือใน image เป็น "core" ไม่ครบ 150 ตัว เครื่องมือที่ไม่มีจะถูกรายงานว่า unavailable — เพิ่มได้ใน `Dockerfile.hexstrike-server`
 
 ### 4. เปิดไปป์ไลน์
 ```bash
-docker compose up -d --build
-docker compose logs -f harnessrouter        # รอจนขึ้น: [harnessrouter] ready on :3000
+docker compose up -d --build                    # โหมด A
+docker compose --profile full up -d --build     # โหมด B (build server ด้วย)
+docker compose logs -f harnessrouter            # รอจนขึ้น: [harnessrouter] ready on :3000
 ```
+
+### 4b. เช็คทุกชั้นก่อนไปต่อ
+```bash
+bash pipeline/verify.sh
+```
+ตรวจว่า LiteLLM ตอบ + `big-brain` ทะลุ provider จริง, HexStrike server มีชีวิต, และ MCP endpoint ตอบ — ผ่านครบค่อยไปข้อ 5
 - LiteLLM ตอบที่ `http://localhost:4000/v1` (โมเดล `big-brain`) — เทสก่อนได้:
   ```bash
   curl http://localhost:4000/v1/chat/completions -H "Content-Type: application/json" \

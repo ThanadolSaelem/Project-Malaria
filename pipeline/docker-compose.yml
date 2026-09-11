@@ -26,6 +26,23 @@ services:
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
     restart: unless-stopped
 
+  # ── ชั้นเครื่องมือ: server ที่รันเครื่องมือจริง (opt-in ผ่าน profile "full") ──
+  # ไม่รันโดยดีฟอลต์เพราะ image หนัก ถ้าคุณรัน hexstrike_server.py แยกบน Kali อยู่
+  # แล้ว ข้ามตัวนี้ไปได้เลย แล้วตั้ง HEXSTRIKE_SERVER ให้ชี้ไปเครื่องนั้น
+  # เปิดด้วย:  docker compose --profile full up -d --build
+  hexstrike-server:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.hexstrike-server
+    volumes:
+      - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
+    environment:
+      HEXSTRIKE_PORT: 8888
+    ports:
+      - "127.0.0.1:8888:8888"
+    restart: unless-stopped
+
   # ── ชั้นเครื่องมือ (MCP over HTTP) ───────────────────────────────────────
   # ต่อไปยัง hexstrike_server.py (ตัวจริงที่รันเครื่องมือ) ที่ HEXSTRIKE_SERVER
   hexstrike-mcp:
