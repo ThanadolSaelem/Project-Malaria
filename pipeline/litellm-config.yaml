@@ -16,7 +16,7 @@ model_list:
   # ---- NVIDIA NIM : ตัวหลัก (context ยาว, ไม่มีเพดาน token) ----
   - model_name: big-brain
     litellm_params:
-      model: nvidia_nim/deepseek-ai/deepseek-v3        # <- ยืนยันชื่อจาก build.nvidia.com
+      model: nvidia_nim/deepseek-ai/deepseek-v4-flash-0731   # ยืนยันจาก /v1/models แล้วว่ามีจริง (ctx 1.3M)
       api_key: os.environ/NVIDIA_API_KEY
       api_base: https://integrate.api.nvidia.com/v1
       rpm: 40                                          # เพดานที่ชุมชนรายงาน ~40 RPM/โมเดล
