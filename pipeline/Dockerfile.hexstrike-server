@@ -8,6 +8,13 @@
 #
 # ลงชุด "core" ตามที่ README ของ hexstrike แนะนำเป็นหลัก เครื่องมือที่เหลือ
 # (rustscan, httpx, katana, ฯลฯ ที่เป็น Go/แยก installer) เพิ่มเองภายหลังได้
+#
+# ทำไมมี build toolchain (gcc/rust) ข้างล่าง: kali-rolling เป็น image ที่
+# ตาม Python เวอร์ชันล่าสุดของ Debian testing ตลอดเวลา (ตอนนี้คือ 3.14) ซึ่งใหม่
+# กว่าที่ package หลายตัวบน PyPI มี prebuilt wheel ให้ (โดยเฉพาะสายที่ mitmproxy
+# ดึงมา เช่น zstandard, cryptography) พอไม่มี wheel ตรง pip จะ compile จาก
+# source เอง ถ้าไม่มี compiler ใน image การ build จะพังแบบที่เจอ (cffi/zstandard
+# หา gcc ไม่เจอ) เพิ่ม build-essential + libffi/libssl headers + rust ไว้กัน
 # =============================================================================
 FROM kalilinux/kali-rolling
 
@@ -15,9 +22,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     HEXSTRIKE_PORT=8888
 
-# ── core security tools (ชุดที่มีใน Kali apt เป็นส่วนใหญ่) ──────────────────
+# ── core security tools + build toolchain (สำหรับ pip package ที่ไม่มี wheel
+#    สำหรับ Python เวอร์ชันที่ kali-rolling ให้มา — ดูเหตุผลด้านบน) ──────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-venv \
+      python3 python3-pip python3-venv python3-dev \
+      build-essential libffi-dev libssl-dev pkg-config rustc cargo \
       curl wget git ca-certificates \
       nmap masscan dnsenum dnsrecon \
       nikto whatweb gobuster ffuf feroxbuster dirb wfuzz \
@@ -30,7 +39,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── python deps ของ hexstrike_server.py ────────────────────────────────────
 WORKDIR /app
 COPY hexstrike-ai-main/requirements.txt /app/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+
+# ตัด angr และ pwntools ออก: เช็คซอร์ส hexstrike_server.py แล้วทั้งคู่ไม่ได้ถูก
+# import จริงตอนรัน — `from pwn import *` (บรรทัด ~12320) กับ `import angr`
+# (บรรทัด ~12523) อยู่ใน f-string ที่ server "เขียนออกเป็นไฟล์สคริปต์" ให้ผู้ใช้
+# เอาไปรันเองต่างหาก ไม่ใช่โค้ดที่ process นี้ต้อง import เอง (requirements.txt
+# เองก็กำกับว่า "CONDITIONALLY USED") ตัดทิ้งได้จริง ไม่กระทบ endpoint ไหนเลย
+# และเป็น dependency tree ที่หนัก/เปราะที่สุดในไฟล์ (native build เพียบ)
+# ถ้าอยากได้ไว้ใช้จริงในนี้ด้วย ลบสองบรรทัด grep -v นี้ออก แล้วเผื่อเวลา build
+# นานขึ้นมาก (และอาจต้องเพิ่ม cmake/z3 headers เอง)
+RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
+    && pip3 install --no-cache-dir -r /app/requirements.container.txt
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose) จึงไม่ COPY ทั้งชุด
 # ให้ selenium หา chromium ที่ apt ลงไว้เจอ
