@@ -48,6 +48,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY hexstrike-ai-main/requirements.txt /app/requirements.txt
 
+# ติดตั้งลง venv แยก ไม่ใช่ system python ของ Kali โดยตรง เพราะ Kali ลง Python
+# package หลายตัวผ่าน apt (dpkg) ไม่ใช่ pip — พวกนี้ไม่มี RECORD file พอ pip
+# ต้อง "อัปเกรด/แทนที่" ตัวใดตัวหนึ่ง (เช่น mitmproxy อยาก pyparsing<=3.1.2 แต่
+# Debian ลง 3.3.2 ไว้) pip จะ uninstall ของเดิมไม่ได้ -> error: uninstall-no
+# -record-file แล้ว build ล้ม. venv โดยดีฟอลต์ไม่ดึง system site-packages จึง
+# ติดตั้งทุกอย่างสดใหม่ ไม่ไปแตะ/ชนกับ package ที่ apt ลงไว้เลย
+# (deps ของ hexstrike_server.py อยู่ใน requirements.txt ครบ ไม่ต้องพึ่งของ apt)
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # ตัด angr และ pwntools ออก: เช็คซอร์ส hexstrike_server.py แล้วทั้งคู่ไม่ได้ถูก
 # import จริงตอนรัน — `from pwn import *` (บรรทัด ~12320) กับ `import angr`
 # (บรรทัด ~12523) อยู่ใน f-string ที่ server "เขียนออกเป็นไฟล์สคริปต์" ให้ผู้ใช้
@@ -57,7 +67,7 @@ COPY hexstrike-ai-main/requirements.txt /app/requirements.txt
 # ถ้าอยากได้ไว้ใช้จริงในนี้ด้วย ลบสองบรรทัด grep -v นี้ออก แล้วเผื่อเวลา build
 # นานขึ้นมาก (และอาจต้องเพิ่ม cmake/z3 headers เอง)
 RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
-    && pip3 install --no-cache-dir -r /app/requirements.container.txt
+    && pip install --no-cache-dir -r /app/requirements.container.txt
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose) จึงไม่ COPY ทั้งชุด
 # ให้ selenium หา chromium ที่ apt ลงไว้เจอ
