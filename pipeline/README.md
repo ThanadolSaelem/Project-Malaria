@@ -77,7 +77,11 @@ docker compose logs -f harnessrouter            # รอจนขึ้น: [har
 
 ### 4b. เช็คทุกชั้นก่อนไปต่อ
 ```bash
-bash pipeline/verify.sh
+bash pipeline/verify.sh                                   # Linux / macOS / Git Bash
+```
+บน Windows PowerShell (ไม่มี WSL/bash) ใช้เวอร์ชัน .ps1 แทน:
+```powershell
+powershell -ExecutionPolicy Bypass -File pipeline\verify.ps1
 ```
 ตรวจว่า LiteLLM ตอบ + `big-brain` ทะลุ provider จริง, HexStrike server มีชีวิต, และ MCP endpoint ตอบ — ผ่านครบค่อยไปข้อ 5
 - LiteLLM ตอบที่ `http://localhost:4000/v1` (โมเดล `big-brain`) — เทสก่อนได้:
