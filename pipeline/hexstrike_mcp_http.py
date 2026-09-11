@@ -60,6 +60,20 @@ def main() -> None:
         os.environ.setdefault("FASTMCP_HOST", host)
         os.environ.setdefault("FASTMCP_PORT", str(port))
 
+    # ปิด DNS-rebinding protection ของ streamable-http:
+    # ค่าเริ่มต้นของ mcp SDK คือ enable_dns_rebinding_protection=True + allowed_hosts=[]
+    # พอ client (HarnessRouter gateway) เข้ามาด้วย Host เป็นชื่อ service ในเครือข่าย docker
+    # เช่น "hexstrike-mcp:8001" ที่ไม่อยู่ใน allowlist มันจะตอบ HTTP 421 Misdirected Request
+    # ตัวนี้เป็น service ภายในเครือข่าย docker (พอร์ตบน host ก็ bind 127.0.0.1) จึงปิดได้ปลอดภัย
+    try:
+        from mcp.server.transport_security import TransportSecuritySettings
+        mcp.settings.transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=False
+        )
+    except Exception as e:
+        print(f"[hexstrike-mcp-http] WARN: ตั้ง transport_security ไม่ได้ ({e}) "
+              f"— ถ้าเจอ HTTP 421 ให้เช็คเวอร์ชัน mcp SDK", file=sys.stderr)
+
     print(f"[hexstrike-mcp-http] serving MCP at http://{host}:{port}/mcp",
           file=sys.stderr)
     mcp.run(transport="streamable-http")
