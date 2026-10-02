@@ -69,8 +69,13 @@ services:
       - "127.0.0.1:3000:3000"
     env_file:
       - .env
+    environment:
+      # เชื่อ CA ภายในของ LLM cluster (Caddy ใช้ tls internal) เพื่อเรียก
+      # https://172.19.0.1:8443/v1 ได้โดยไม่ต้องปิดการตรวจ certificate
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/caddy-root.crt
     volumes:
       - harnessrouter-data:/data
+      - ./caddy-root.crt:/etc/ssl/certs/caddy-root.crt:ro
     depends_on:
       - litellm
       - hexstrike-mcp

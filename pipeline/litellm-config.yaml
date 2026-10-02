@@ -40,6 +40,12 @@ model_list:
       model: groq/llama-3.3-70b-versatile              # <- ยืนยันชื่อ
       api_key: os.environ/GROQ_API_KEY
 
+  - model_name: local-cybertiel
+    litellm_params:
+      model: openai/cybertiel              # openai/ = คุยแบบ OpenAI-compatible
+      api_base: http://host.docker.internal:8080/v1
+      api_key: "none"
+
 router_settings:
   num_retries: 3
   timeout: 120
