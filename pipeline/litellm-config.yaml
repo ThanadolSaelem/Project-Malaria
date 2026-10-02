@@ -2,58 +2,62 @@
 # LiteLLM — provider-switch layer (ชั้นสลับ provider กัน timeout/delay)
 # -----------------------------------------------------------------------------
 # หน้าที่ในไปป์ไลน์: harness (ผ่าน HarnessRouter) ยิงมาที่ endpoint เดียวชื่อ
-# "big-brain" แล้ว LiteLLM ตัดสินใจเองว่าจะส่งไป NIM / Groq / Cerebras เจ้าไหน
-# ถ้าเจ้าแรก 429 / 5xx / timeout จะ fallback ไปเจ้าถัดไปให้อัตโนมัติ
+# "big-brain" → LiteLLM ส่งไป NIM เป็นหลัก ถ้า NIM 429/5xx/timeout ค่อย fallback
 #
-# รันด้วย:  litellm --config litellm-config.yaml --port 4000
-# (หรือปล่อยให้ docker-compose รันให้ — ดู pipeline/docker-compose.yml)
+# สำคัญ: big-brain = NIM "ตัวเดียว" (deterministic) ไม่ใช่สุ่ม 3 เจ้าแบบเดิม
+# ของเดิมใช้ simple-shuffle ทำให้บางรอบสุ่มไป Cerebras/Groq แทน NIM
+# (Cerebras เจอ "Payment required", Groq เจอเพดาน tools 128 ตัว)
 #
-# !! ชื่อโมเดลด้านล่างเป็นตัวอย่าง ต้องยืนยันกับ /v1/models ของแต่ละเจ้าก่อน !!
-#    ถ้าเจอ 404 ตอนเริ่ม แปลว่าชื่อไม่ตรง ไม่ใช่ config ผิด
+# !! ชื่อโมเดลของ Groq/Cerebras ยังต้องยืนยันกับ /v1/models ของแต่ละเจ้า !!
 # =============================================================================
 
 model_list:
-  # ---- NVIDIA NIM : ตัวหลัก (context ยาว, ไม่มีเพดาน token) ----
+  # ---- big-brain = NVIDIA NIM เท่านั้น (primary, context 1.3M, ไม่มีเพดาน token) ----
   - model_name: big-brain
     litellm_params:
-      model: nvidia_nim/deepseek-ai/deepseek-v4-flash-0731   # ยืนยันจาก /v1/models แล้วว่ามีจริง (ctx 1.3M)
+      model: nvidia_nim/deepseek-ai/deepseek-v4-flash-0731   # ยืนยันจาก /v1/models แล้วว่ามีจริง
       api_key: os.environ/NVIDIA_API_KEY
       api_base: https://integrate.api.nvidia.com/v1
-      rpm: 40                                          # เพดานที่ชุมชนรายงาน ~40 RPM/โมเดล
 
-  # ---- Groq : fallback ตัวที่ 1 (เร็วมาก, ctx 128K) ----
-  - model_name: big-brain
+  # ---- fallback แยก group (ใช้เมื่อ NIM ล่มเท่านั้น) ----
+  # หมายเหตุ: Groq จำกัด tools ≤128 ตัว — HexStrike มี 150+ ดังนั้น task ที่แนบ
+  # MCP tools ครบชุดจะ fallback ไป Groq ไม่ได้ (400) ใช้ได้เฉพาะ task ที่ tools น้อย
+  - model_name: big-brain-groq
     litellm_params:
-      model: groq/openai/gpt-oss-120b                  # <- ยืนยันชื่อจาก Groq console
+      model: groq/openai/gpt-oss-120b                  # <- ยืนยันชื่อจาก console.groq.com
       api_key: os.environ/GROQ_API_KEY
-      rpm: 30
 
-  # ---- Cerebras : fallback ตัวที่ 2 (เร็วสุด แต่ ctx สั้น ~8K) ----
-  - model_name: big-brain
-    litellm_params:
-      model: cerebras/gpt-oss-120b                     # <- ยืนยันชื่อจาก Cerebras console
-      api_key: os.environ/CEREBRAS_API_KEY
-      rpm: 30
+  # Cerebras: ต้องเปิด billing ก่อน (free tier เจอ "Payment required")
+  # ปิดไว้ก่อน ถ้าเปิด billing แล้วค่อยเอา comment ออก + ใส่ใน fallbacks ด้านล่าง
+  # - model_name: big-brain-cerebras
+  #   litellm_params:
+  #     model: cerebras/gpt-oss-120b
+  #     api_key: os.environ/CEREBRAS_API_KEY
 
-  # ---- โมเดลเร็วสำหรับงานง่ายซ้ำๆ (แยก endpoint ไว้เผื่อเรียกตรง) ----
+  # ---- โมเดลเร็วสำหรับงานง่ายซ้ำๆ / prompt ยาวเกิน context ----
   - model_name: fast
     litellm_params:
       model: groq/llama-3.3-70b-versatile              # <- ยืนยันชื่อ
       api_key: os.environ/GROQ_API_KEY
 
+  - model_name: local-cybertiel
+    litellm_params:
+      model: openai/cybertiel              # openai/ = คุยแบบ OpenAI-compatible
+      api_base: http://host.docker.internal:8080/v1
+      api_key: "none"
+
 router_settings:
-  routing_strategy: simple-shuffle
   num_retries: 3
   timeout: 120
   cooldown_time: 30                # พัก provider ที่เพิ่งพังไว้ 30 วิ ก่อนลองใหม่
 
-  # ลำดับ fallback เมื่อเจอ error/429/5xx : big-brain -> fast
+  # NIM ล่ม → ลอง Groq (เฉพาะ task ที่ tools ไม่เกิน 128)
   fallbacks:
-    - big-brain: ["fast"]
+    - big-brain: ["big-brain-groq"]
 
-  # กันปัญหา ctx สั้นของ Cerebras: prompt ยาวเกิน จะเด้งขึ้นตัวที่รับไหวแทนที่จะ error
+  # prompt ยาวเกิน context ของ NIM → เด้งไปตัวที่รับไหว
   context_window_fallbacks:
-    - big-brain: ["fast"]
+    - big-brain: ["big-brain-groq", "fast"]
 
 litellm_settings:
   drop_params: true                # ตัด param ที่ provider ปลายทางไม่รองรับทิ้ง แทนที่จะ error
