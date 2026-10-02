@@ -4,3 +4,7 @@ pipeline/.env
 # python cache
 __pycache__/
 *.pyc
+
+# mac native hexstrike venv
+pipeline/mac/hexstrike-env/
+pipeline/mac/.reqs.txt
