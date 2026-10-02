@@ -1,0 +1,35 @@
+# =============================================================================
+# Override สำหรับ Mac (Apple Silicon / arm64) — "ปุ่มเดียวใน Docker"
+# -----------------------------------------------------------------------------
+# ใช้คู่กับ docker-compose.yml:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+#
+# (หรือใช้ pipeline/mac/start.command คลิกเดียวจบ — รัน llama.cpp native + อันนี้)
+#
+# override นี้ทำ 2 อย่าง:
+#   1) ปลดล็อก hexstrike-server ให้ขึ้นอัตโนมัติ (ลบ profile "full") และ build
+#      จาก Dockerfile.hexstrike-server.arm64 → รัน NATIVE arm64 ไม่ใช่ emulation
+#   2) ชี้ hexstrike-mcp ให้ต่อ hexstrike-server "ภายใน compose network" แทน
+#      host.docker.internal → ไม่ต้องรัน server native แยกอีก
+#
+# สิ่งเดียวที่ยังต้องรัน native นอก Docker คือ "โมเดล" (llama.cpp) เพราะ
+# Docker Desktop Mac ไม่ส่ง GPU (Metal) เข้า container — รันในนั้นจะได้แต่ CPU
+# ช้ามาก ดังนั้น llama.cpp อยู่บน host :8090 แล้ว litellm วิ่งออกมาหาผ่าน
+# host.docker.internal (ตั้งค่าใน litellm-config.yaml อยู่แล้ว)
+# =============================================================================
+services:
+
+  hexstrike-server:
+    profiles: []                       # ปลดล็อก: ขึ้นทุกครั้งโดยไม่ต้อง --profile full
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.hexstrike-server.arm64
+    platform: linux/arm64              # บังคับ arm64 แท้ (กัน pull ตัว amd64 มา emulate)
+
+  hexstrike-mcp:
+    environment:
+      # ต่อ server ที่อยู่ใน compose network เดียวกัน (ชื่อ service = DNS)
+      HEXSTRIKE_SERVER: http://hexstrike-server:8888
+    depends_on:
+      - hexstrike-server

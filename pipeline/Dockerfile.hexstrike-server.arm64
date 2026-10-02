@@ -1,0 +1,58 @@
+# =============================================================================
+# HexStrike server — arm64-NATIVE build (สำหรับ Apple Silicon / Mac)
+# -----------------------------------------------------------------------------
+# ทำไมต้องมีไฟล์นี้แยกจาก Dockerfile.hexstrike-server (ตัว Kali):
+#   - image Kali (kalilinux/kali-rolling) เป็น amd64 เท่านั้น บน Apple Silicon
+#     จะรันผ่าน QEMU emulation → tool สแกนช้ามาก ใช้งานจริงไม่ไหว
+#   - ตัวนี้ใช้ debian:bookworm-slim ซึ่งมี arm64 แท้ → รัน NATIVE บน M-series
+#     เครื่องมือ core ส่วนใหญ่อยู่ใน debian repo อยู่แล้ว (nmap, nikto, sqlmap,
+#     gobuster, ffuf, feroxbuster, hydra, john ฯลฯ) ติดตั้งผ่าน apt ได้ตรงๆ
+#
+# เครื่องมือที่ "ไม่มีใน debian" (subfinder/amass/nuclei เวอร์ชันใหม่ ฯลฯ) จะข้าม
+# ไป — hexstrike จะรายงานว่า tool นั้น "unavailable" เฉยๆ ไม่ crash
+# อยากได้ครบจริงค่อยเพิ่มทีหลัง (go install / แยก installer)
+#
+# ผล: บน Mac สั่ง `docker compose -f docker-compose.yml -f docker-compose.mac.yml up`
+# ครั้งเดียว container ทุกตัวขึ้นรวมถึง hexstrike-server (arm64 แท้) — "ปุ่มเดียว"
+# ยกเว้นโมเดล (llama.cpp) ที่ต้องรัน native เพราะ Docker Desktop Mac ไม่ส่ง GPU
+# =============================================================================
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    HEXSTRIKE_PORT=8888
+
+# ── core security tools (เท่าที่มีใน debian bookworm, arm64) + build toolchain ──
+# build-essential/libffi/libssl/rust: เผื่อ pip package บางตัว (zstandard,
+# cryptography, cffi) ไม่มี prebuilt wheel สำหรับ Python ของ debian แล้ว compile
+# เอง — มี compiler ไว้กันพัง (เหมือนเหตุผลใน Dockerfile.hexstrike-server ตัว Kali)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip python3-venv python3-dev \
+      build-essential libffi-dev libssl-dev pkg-config cargo rustc \
+      curl wget git ca-certificates \
+      nmap masscan dnsutils dnsenum dnsrecon \
+      nikto whatweb gobuster ffuf feroxbuster dirb wfuzz \
+      sqlmap hydra john \
+      netcat-traditional \
+      chromium chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── python deps ของ hexstrike_server.py (ลง venv แยก ไม่แตะ system python) ──────
+WORKDIR /app
+COPY hexstrike-ai-main/requirements.txt /app/requirements.txt
+
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# ตัด angr/pwntools เหมือนตัว Kali: ทั้งคู่อยู่ใน f-string ที่ server เขียนออกเป็น
+# สคริปต์ให้ผู้ใช้เอาไปรันเอง ไม่ใช่ import จริงตอนรัน — ตัดได้ไม่กระทบ endpoint
+# และเป็น dep tree ที่หนัก/เปราะที่สุด (native build เพียบ) โดยเฉพาะบน arm64
+RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
+    && pip install --no-cache-dir -r /app/requirements.container.txt
+
+# โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose.mac.yml) จึงไม่ COPY
+ENV CHROME_BIN=/usr/bin/chromium \
+    CHROMEDRIVER_PATH=/usr/bin/chromedriver
+
+EXPOSE 8888
+CMD ["python3", "/app/hexstrike-ai-main/hexstrike_server.py", "--port", "8888"]
