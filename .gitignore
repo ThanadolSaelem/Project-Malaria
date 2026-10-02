@@ -8,3 +8,7 @@ __pycache__/
 # mac native hexstrike venv
 pipeline/mac/hexstrike-env/
 pipeline/mac/.reqs.txt
+
+# mac one-button local config + logs
+pipeline/mac/llama.env
+pipeline/mac/logs/
