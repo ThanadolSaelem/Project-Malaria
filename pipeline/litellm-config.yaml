@@ -1,64 +1,52 @@
 # =============================================================================
-# LiteLLM — provider-switch layer (ชั้นสลับ provider กัน timeout/delay)
+# LiteLLM — LOCAL-FIRST (Mac / Apple Silicon)
 # -----------------------------------------------------------------------------
-# หน้าที่ในไปป์ไลน์: harness (ผ่าน HarnessRouter) ยิงมาที่ endpoint เดียวชื่อ
-# "big-brain" → LiteLLM ส่งไป NIM เป็นหลัก ถ้า NIM 429/5xx/timeout ค่อย fallback
+# harness (ผ่าน HarnessRouter) ยิงชื่อโมเดลมา → LiteLLM ส่งต่อไป llama.cpp ที่รัน
+# native บน host :8090 (เสิร์ฟโมเดลชื่อ "cybermodel" — ยืนยันจาก /v1/models)
 #
-# สำคัญ: big-brain = NIM "ตัวเดียว" (deterministic) ไม่ใช่สุ่ม 3 เจ้าแบบเดิม
-# ของเดิมใช้ simple-shuffle ทำให้บางรอบสุ่มไป Cerebras/Groq แทน NIM
-# (Cerebras เจอ "Payment required", Groq เจอเพดาน tools 128 ตัว)
+# สำคัญ: "ชื่อ 3 ชั้นต้องตรงกัน"
+#   1) ชื่อที่ integration ใน HarnessRouter ส่งออกมา (model_id)  ← OpenCode ส่ง "cybermodel"
+#   2) model_name ในไฟล์นี้ (ต้องมีชื่อนั้น ไม่งั้น LiteLLM หาไม่เจอแล้วเดาไป OpenAI
+#      → error "Invalid model name ... for your key")
+#   3) ชื่อโมเดลที่ llama.cpp เสิร์ฟจริง = target `model: openai/<ชื่อ>` ← "cybermodel"
 #
-# !! ชื่อโมเดลของ Groq/Cerebras ยังต้องยืนยันกับ /v1/models ของแต่ละเจ้า !!
+# เผื่อไว้ให้ทุกชื่อที่เคยตั้ง (cybermodel / big-brain / local-cybertiel) ชี้ llama
+# ตัวเดียวกันหมด จะเลือกชื่อไหนใน integration ก็ติด
 # =============================================================================
 
 model_list:
-  # ---- big-brain = NVIDIA NIM เท่านั้น (primary, context 1.3M, ไม่มีเพดาน token) ----
+  # ---- llama.cpp local (host :8090, เสิร์ฟ "cybermodel") — ทุก alias ชี้ที่เดียว ----
+  - model_name: cybermodel
+    litellm_params:
+      model: openai/cybermodel            # ต้องตรงกับ id ใน curl :8090/v1/models
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"                 # llama รัน loopback ไม่เช็ค key แต่ต้องมีค่า
+
   - model_name: big-brain
     litellm_params:
-      model: nvidia_nim/deepseek-ai/deepseek-v4-flash-0731   # ยืนยันจาก /v1/models แล้วว่ามีจริง
-      api_key: os.environ/NVIDIA_API_KEY
-      api_base: https://integrate.api.nvidia.com/v1
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
 
-  # ---- fallback แยก group (ใช้เมื่อ NIM ล่มเท่านั้น) ----
-  # หมายเหตุ: Groq จำกัด tools ≤128 ตัว — HexStrike มี 150+ ดังนั้น task ที่แนบ
-  # MCP tools ครบชุดจะ fallback ไป Groq ไม่ได้ (400) ใช้ได้เฉพาะ task ที่ tools น้อย
-  - model_name: big-brain-groq
+  - model_name: local-cybertiel           # เผื่อ integration เก่าที่ตั้งชื่อนี้
     litellm_params:
-      model: groq/openai/gpt-oss-120b                  # <- ยืนยันชื่อจาก console.groq.com
-      api_key: os.environ/GROQ_API_KEY
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
 
-  # Cerebras: ต้องเปิด billing ก่อน (free tier เจอ "Payment required")
-  # ปิดไว้ก่อน ถ้าเปิด billing แล้วค่อยเอา comment ออก + ใส่ใน fallbacks ด้านล่าง
-  # - model_name: big-brain-cerebras
+  # ---- (ออปชัน) cloud fallback — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
+  # เปิดใช้: เอา comment ออก + ใส่ชื่อใน router_settings.fallbacks
+  # - model_name: big-brain-groq
   #   litellm_params:
-  #     model: cerebras/gpt-oss-120b
-  #     api_key: os.environ/CEREBRAS_API_KEY
-
-  # ---- โมเดลเร็วสำหรับงานง่ายซ้ำๆ / prompt ยาวเกิน context ----
-  - model_name: fast
-    litellm_params:
-      model: groq/llama-3.3-70b-versatile              # <- ยืนยันชื่อ
-      api_key: os.environ/GROQ_API_KEY
-
-  - model_name: local-cybertiel
-    litellm_params:
-      model: openai/cybertiel              # openai/ = คุยแบบ OpenAI-compatible
-      api_base: http://host.docker.internal:8080/v1
-      api_key: "none"
-
-router_settings:
-  num_retries: 3
-  timeout: 120
-  cooldown_time: 30                # พัก provider ที่เพิ่งพังไว้ 30 วิ ก่อนลองใหม่
-
-  # NIM ล่ม → ลอง Groq (เฉพาะ task ที่ tools ไม่เกิน 128)
-  fallbacks:
-    - big-brain: ["big-brain-groq"]
-
-  # prompt ยาวเกิน context ของ NIM → เด้งไปตัวที่รับไหว
-  context_window_fallbacks:
-    - big-brain: ["big-brain-groq", "fast"]
+  #     model: groq/openai/gpt-oss-120b
+  #     api_key: os.environ/GROQ_API_KEY
 
 litellm_settings:
-  drop_params: true                # ตัด param ที่ provider ปลายทางไม่รองรับทิ้ง แทนที่จะ error
-  # set_verbose: true              # เปิดตอน debug
+  drop_params: true                        # ตัด param ที่ปลายทางไม่รองรับทิ้ง แทน error
+
+router_settings:
+  timeout: 600                             # โมเดล local ตอบช้ากว่าคลาวด์ ให้เวลาเยอะ
+  num_retries: 2
+  # NIM/Groq ล่ม → fallback (เปิดเมื่อ uncomment entry ด้านบน + ใส่ key)
+  # fallbacks:
+  #   - big-brain: ["big-brain-groq"]
