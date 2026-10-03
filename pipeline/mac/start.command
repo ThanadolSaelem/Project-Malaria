@@ -59,13 +59,13 @@ if [ ! -f .env ]; then
   echo "      (ไม่มี .env — ก็อปจาก .env.example ให้ก่อน)"
   cp .env.example .env 2>/dev/null || true
 fi
-docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
 
 # ── 3) เปิดหน้า console ───────────────────────────────────────────────────────
 echo "[3/3] เปิด HarnessRouter → http://localhost:3000"
 open "http://localhost:3000" 2>/dev/null || true
 
 echo ""
-echo "เสร็จ. เช็คสถานะ: docker compose -f docker-compose.yml -f docker-compose.mac.yml ps"
-echo "ปิดทั้งหมด:      docker compose -f docker-compose.yml -f docker-compose.mac.yml down"
+echo "เสร็จ. เช็คสถานะ: docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full ps"
+echo "ปิดทั้งหมด:      docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full down"
 echo "(llama.cpp ที่สตาร์ทจากสคริปต์นี้รัน background — ปิดด้วย: pkill -f llama-server)"

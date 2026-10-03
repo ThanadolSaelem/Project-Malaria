@@ -34,13 +34,18 @@ cp pipeline/mac/llama.env.example pipeline/mac/llama.env   # แก้ path โ�
 ```bash
 llama-server -m <model.gguf> --host 0.0.0.0 --port 8090 --alias cybermodel -ngl 99 --jinja
 ```
-แล้วขึ้น stack ด้วย override ของ Mac:
+แล้วขึ้น stack ด้วย override ของ Mac (ต้องมี `--profile full` เพื่อให้
+hexstrike-server ขึ้นด้วย):
 ```bash
 cd pipeline
-docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
 ```
 Docker Desktop จะเห็น project นี้ กดปุ่ม ▶ / ⏹ สตาร์ท/หยุดทุก container พร้อมกันได้
 (หลังจากครั้งแรกที่ `up` แล้ว)
+
+> ทำไมต้อง `--profile full`: hexstrike-server ถูกตั้ง profile `full` ไว้ใน
+> docker-compose.yml (กัน Linux/Kali build image หนักโดยไม่ตั้งใจ) flag นี้เปิดมัน
+> ส่วน override ของ Mac จะสลับ build ไปเป็น arm64 ให้เอง
 
 ## เช็ค
 ```bash

@@ -1,27 +1,31 @@
 # =============================================================================
 # Override สำหรับ Mac (Apple Silicon / arm64) — "ปุ่มเดียวใน Docker"
 # -----------------------------------------------------------------------------
-# ใช้คู่กับ docker-compose.yml:
+# ใช้คู่กับ docker-compose.yml + เปิด profile "full" (เพื่อให้ hexstrike-server ขึ้น):
 #
-#     docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+#     docker compose -f docker-compose.yml -f docker-compose.mac.yml \
+#                    --profile full up -d --build
 #
-# (หรือใช้ pipeline/mac/start.command คลิกเดียวจบ — รัน llama.cpp native + อันนี้)
+# (หรือใช้ pipeline/mac/start.command คลิกเดียวจบ — ใส่ flag พวกนี้ให้แล้ว)
 #
 # override นี้ทำ 2 อย่าง:
-#   1) ปลดล็อก hexstrike-server ให้ขึ้นอัตโนมัติ (ลบ profile "full") และ build
-#      จาก Dockerfile.hexstrike-server.arm64 → รัน NATIVE arm64 ไม่ใช่ emulation
+#   1) เปลี่ยน build ของ hexstrike-server ไปใช้ Dockerfile.hexstrike-server.arm64
+#      → รัน NATIVE arm64 ไม่ใช่ emulation (image Kali เดิมเป็น amd64)
 #   2) ชี้ hexstrike-mcp ให้ต่อ hexstrike-server "ภายใน compose network" แทน
 #      host.docker.internal → ไม่ต้องรัน server native แยกอีก
 #
+# ทำไมยังต้องมี `--profile full`: hexstrike-server ใน docker-compose.yml ถูกตั้ง
+# profiles:["full"] ไว้ (กัน Linux/Kali ที่รัน server native อยู่แล้วไม่ต้อง build
+# image หนักโดยไม่ตั้งใจ) การ override เป็น profiles:[] "ไม่" ปลดล็อก เพราะ compose
+# มองข้าม empty-list ตอน merge → จึงเปิด profile ตรงๆ แทน (เชื่อถือได้กว่า)
+#
 # สิ่งเดียวที่ยังต้องรัน native นอก Docker คือ "โมเดล" (llama.cpp) เพราะ
-# Docker Desktop Mac ไม่ส่ง GPU (Metal) เข้า container — รันในนั้นจะได้แต่ CPU
-# ช้ามาก ดังนั้น llama.cpp อยู่บน host :8090 แล้ว litellm วิ่งออกมาหาผ่าน
-# host.docker.internal (ตั้งค่าใน litellm-config.yaml อยู่แล้ว)
+# Docker Desktop Mac ไม่ส่ง GPU (Metal) เข้า container — llama.cpp อยู่บน host
+# :8090 แล้ว litellm วิ่งออกมาหาผ่าน host.docker.internal (ตั้งใน litellm-config)
 # =============================================================================
 services:
 
   hexstrike-server:
-    profiles: []                       # ปลดล็อก: ขึ้นทุกครั้งโดยไม่ต้อง --profile full
     build:
       context: ..
       dockerfile: pipeline/Dockerfile.hexstrike-server.arm64
@@ -29,7 +33,5 @@ services:
 
   hexstrike-mcp:
     environment:
-      # ต่อ server ที่อยู่ใน compose network เดียวกัน (ชื่อ service = DNS)
+      # ต่อ server ที่อยู่ใน compose network เดียวกัน (ชื่อ service = DNS ภายใน)
       HEXSTRIKE_SERVER: http://hexstrike-server:8888
-    depends_on:
-      - hexstrike-server
