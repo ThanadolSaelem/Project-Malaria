@@ -67,6 +67,26 @@ services:
       - "host.docker.internal:host-gateway"   # ให้ container เห็น service บน host (Linux)
     restart: unless-stopped
 
+  # ── ชั้นความจำ (knowledge-graph memory, MCP over HTTP) ───────────────────
+  # ให้โมเดลจำข้ามรอบ/ข้าม session — เก็บ entities+observations+relations ลง JSON
+  # บน volume (ไม่มี embedding/vector → ไม่มีปัญหา dimension ตอนเปลี่ยนโมเดล)
+  # reuse image เดียวกับ hexstrike-mcp (มี mcp SDK อยู่แล้ว) แค่เปลี่ยน command
+  memory-mcp:
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.hexstrike-mcp
+    command: ["python", "/app/pipeline/memory_mcp_http.py"]
+    volumes:
+      - ./memory_mcp_http.py:/app/pipeline/memory_mcp_http.py:ro
+      - memory-data:/data
+    environment:
+      MEMORY_FILE: /data/memory.json
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8002
+    ports:
+      - "127.0.0.1:8002:8002"
+    restart: unless-stopped
+
   # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
   harnessrouter:
     image: harnessrouter/harnessrouter:latest
@@ -88,3 +108,4 @@ services:
 
 volumes:
   harnessrouter-data:
+  memory-data:
