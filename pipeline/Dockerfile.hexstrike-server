@@ -114,7 +114,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # ถ้าอยากได้ไว้ใช้จริงในนี้ด้วย ลบสองบรรทัด grep -v นี้ออก แล้วเผื่อเวลา build
 # นานขึ้นมาก (และอาจต้องเพิ่ม cmake/z3 headers เอง)
 RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
-    && pip install --no-cache-dir -r /app/requirements.container.txt
+    && pip install --no-cache-dir --timeout 120 --retries 10 \
+         -r /app/requirements.container.txt
 
 # แก้ httpx "-l"/"-list" ใช้ไม่ได้: Kali ไม่มี ProjectDiscovery httpx ใน repo
 # (package "httpx-toolkit" เป็น metapackage ที่ดึง python3-httpx ซึ่ง CLI ชื่อ httpx
