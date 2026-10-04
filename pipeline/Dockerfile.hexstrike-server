@@ -49,6 +49,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       nmap masscan dnsenum dnsrecon fierce \
       nikto whatweb gobuster ffuf feroxbuster dirb wfuzz wafw00f \
       sqlmap nuclei subfinder amass \
+      hydra john hashcat \
+      netcat-traditional seclists wordlists \
+      chromium chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
 
 # nuclei จาก apt มาแบบไม่มี template — ต้องดึงเองครั้งแรก ไม่งั้นสั่ง nuclei แล้ว
 # ไม่มีอะไรให้สแกน ดึงตอน build ฝังลง image เลย (|| true กัน build ล้มถ้าเน็ตสะดุด
