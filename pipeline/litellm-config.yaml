@@ -41,6 +41,14 @@ model_list:
   #     model: groq/openai/gpt-oss-120b
   #     api_key: os.environ/GROQ_API_KEY
 
+general_settings:
+  # litellm (main-stable) เวอร์ชันใหม่ปฏิเสธ boot ถ้าไม่มี master key
+  # pipeline นี้ litellm bind 127.0.0.1 + อยู่ใน compose network ภายในเท่านั้น
+  # (ไม่เปิดออกนอกเครื่อง) จึงอนุญาตให้ไม่มี master key ได้สำหรับ local
+  # ⚠️ ถ้าจะเปิด litellm ให้เครื่อง/คนอื่นเข้าถึง → ลบบรรทัดนี้ แล้วตั้ง
+  #    LITELLM_MASTER_KEY=sk-... ใน .env + ให้ caller ส่ง key นั้นมาแทน
+  dangerously_permit_weak_or_unset_master_key: true
+
 litellm_settings:
   drop_params: true                        # ตัด param ที่ปลายทางไม่รองรับทิ้ง แทน error
 
