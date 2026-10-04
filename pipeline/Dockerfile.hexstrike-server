@@ -54,6 +54,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       chromium chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
+# ── เครื่องมือ "เผื่อ" เพิ่ม: HexStrike wrap ไว้แต่ core image ไม่มี binary ──────
+# router ให้โมเดล query ได้เท่าเดิม (always-on ~2k tokens) → ลงเผื่อ "ไม่เปลือง
+# context" คุ้มกับพื้นที่/เวลา build ที่เพิ่ม. ลงทีละตัวแบบ tolerant: ตัวไหนไม่มีใน
+# Kali repo/ลงไม่ได้ ข้าม ไม่ล้ม build (Kali apt มีเกือบหมด รวม Go tools ที่ Kali
+# แพ็กไว้ เช่น katana/dnsx/naabu/gau/hakrawler/anew/qsreplace/uro)
+# ตัดกลุ่มหนักมากออก (เปิด opt-in ทีหลังได้): metasploit, ghidra, burpsuite/zap,
+# volatility/angr/pwntools — GB-scale / เปราะบน arm64
+RUN apt-get update && for t in \
+      dalfox dirsearch arjun wpscan xsser dotdotpwn \
+      enum4linux smbmap nbtscan rpcclient responder netexec \
+      exiftool binwalk foremost steghide radare2 \
+      rustscan katana hakrawler gau waybackurls qsreplace anew uro paramspider \
+      jaeles dnsx naabu trivy ; do \
+      apt-get install -y --no-install-recommends "$t" \
+        && echo "  [extra] ✓ $t" \
+        || echo "  [extra] ⚠ ข้าม $t (ไม่มีใน Kali repo)" ; \
+    done ; rm -rf /var/lib/apt/lists/*
+
+# ── cloud/IaC scanners (pip) — tolerant; dep tree ใหญ่ build นานขึ้น และต้องมี
+#    cloud creds ถึงจะใช้จริง. ไม่อยากได้/อยากให้ build เร็ว ลบ RUN นี้ได้เลย ──────
+RUN for p in prowler scoutsuite checkov ; do \
+      pip install --no-cache-dir "$p" \
+        && echo "  [cloud] ✓ $p" \
+        || echo "  [cloud] ⚠ ข้าม $p" ; \
+    done
+
 # nuclei จาก apt มาแบบไม่มี template — ต้องดึงเองครั้งแรก ไม่งั้นสั่ง nuclei แล้ว
 # ไม่มีอะไรให้สแกน ดึงตอน build ฝังลง image เลย (|| true กัน build ล้มถ้าเน็ตสะดุด
 # ตอนนั้น รันซ้ำตอน runtime ได้ด้วย `nuclei -update-templates`)
