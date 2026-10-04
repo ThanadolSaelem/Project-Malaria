@@ -9,6 +9,10 @@
 # ลงชุด "core" ตามที่ README ของ hexstrike แนะนำเป็นหลัก เครื่องมือที่เหลือ
 # (rustscan, httpx, katana, ฯลฯ ที่เป็น Go/แยก installer) เพิ่มเองภายหลังได้
 #
+# เพิ่มจากที่โมเดลฟ้องว่าขาด: wafw00f, fierce (อยู่ใน repo Kali) + wordlists
+# (เติม /usr/share/wordlists/ ที่เคยว่าง) + ดึง nuclei templates ตอน build
+# ถ้า wafw00f/fierce หาไม่เจอในช่วงที่ build ให้ตัดออกแล้ว build ต่อได้ตามเดิม
+#
 # ทำไมมี build toolchain (gcc/rust) ข้างล่าง: kali-rolling เป็น image ที่
 # ตาม Python เวอร์ชันล่าสุดของ Debian testing ตลอดเวลา (ตอนนี้คือ 3.14) ซึ่งใหม่
 # กว่าที่ package หลายตัวบน PyPI มี prebuilt wheel ให้ (โดยเฉพาะสายที่ mitmproxy
@@ -36,13 +40,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-pip python3-venv python3-dev \
       build-essential libffi-dev libssl-dev pkg-config rustc cargo \
       curl wget git ca-certificates \
-      nmap masscan dnsenum dnsrecon \
-      nikto whatweb gobuster ffuf feroxbuster dirb wfuzz \
+      nmap masscan dnsenum dnsrecon fierce \
+      nikto whatweb gobuster ffuf feroxbuster dirb wfuzz wafw00f \
       sqlmap nuclei subfinder amass \
       hydra john hashcat \
-      netcat-traditional seclists \
+      netcat-traditional seclists wordlists \
       chromium chromium-driver \
     && rm -rf /var/lib/apt/lists/*
+
+# nuclei จาก apt มาแบบไม่มี template — ต้องดึงเองครั้งแรก ไม่งั้นสั่ง nuclei แล้ว
+# ไม่มีอะไรให้สแกน ดึงตอน build ฝังลง image เลย (|| true กัน build ล้มถ้าเน็ตสะดุด
+# ตอนนั้น รันซ้ำตอน runtime ได้ด้วย `nuclei -update-templates`)
+RUN nuclei -update-templates || true
 
 # ── python deps ของ hexstrike_server.py ────────────────────────────────────
 WORKDIR /app
