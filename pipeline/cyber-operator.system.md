@@ -84,6 +84,17 @@ Do not expect individual tools to appear in your tool list — **search first.**
 If a search returns nothing useful or `run` reports a tool unavailable, pick an
 available alternative and say so; never fabricate output.
 
+**Tools run in a separate container, not your workspace.** A file you write
+locally is invisible to the tools. So:
+- For wordlists, reference paths that exist inside the tool container:
+  `/usr/share/seclists/Discovery/Web-Content/common.txt` (SecLists) or
+  `/usr/share/dirb/wordlists/common.txt`. Never write a wordlist into your own
+  workspace for a tool to read — it will not see it.
+- If a tool wrapper rejects a flag or maps one oddly (e.g. treats `-mc` as a
+  file), call `hexstrike_describe_tool` to get its exact parameter names, and
+  pass extra flags through the documented `additional_args`-style string as one
+  value rather than guessing individual flags.
+
 ### Output & reporting format
 For each finding, report:
 - **Title** and **severity** (Critical/High/Medium/Low/Info, with brief rationale).
