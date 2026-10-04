@@ -29,6 +29,8 @@ services:
     build:
       context: ..
       dockerfile: pipeline/Dockerfile.hexstrike-server.arm64
+      args:
+        INSTALL_SECLISTS: "true"       # "false" = ไม่ลง SecLists (image เล็กลง ~1GB)
     platform: linux/arm64              # บังคับ arm64 แท้ (กัน pull ตัว amd64 มา emulate)
 
   hexstrike-mcp:

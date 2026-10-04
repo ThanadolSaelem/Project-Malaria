@@ -56,10 +56,17 @@ curl http://localhost:8888/health      # hexstrike-server (ใน docker, arm64)
 ```
 
 ## หมายเหตุ
-- **เครื่องมือความปลอดภัย**: `Dockerfile.hexstrike-server.arm64` ลง core tools จาก
-  debian repo (nmap, nikto, sqlmap, gobuster, ffuf, feroxbuster, hydra, john ฯลฯ)
-  ตัวที่ไม่มีใน debian (subfinder/amass/nuclei รุ่นใหม่) hexstrike จะรายงานว่า
-  `unavailable` เฉยๆ ไม่ crash — เพิ่มทีหลังได้
+- **เครื่องมือความปลอดภัย (ครบชุด)**: `Dockerfile.hexstrike-server.arm64` ลงให้
+  ครบเท่าที่ทำได้บน arm64:
+  - apt: `nmap masscan dirb wfuzz sqlmap hydra john dnsenum dnsrecon`
+  - Go (ProjectDiscovery): `nuclei httpx subfinder naabu katana dnsx` + `gobuster`
+  - Rust: `feroxbuster` (binary)
+  - clone: `whatweb` (ruby), `nikto` (perl)
+  - data: nuclei templates + **SecLists** ที่ `/usr/share/seclists`
+  ตัวไหนโหลด/บิลด์พลาดจะข้าม (ไม่ล้ม build) hexstrike รายงาน `unavailable` เฉยๆ
+  > ⚠️ build นานขึ้นมาก (Go compile หลายตัว) + image ใหญ่ขึ้น (SecLists ~1GB+)
+  > ไม่อยากได้ SecLists: แก้ `docker-compose.mac.yml` → `INSTALL_SECLISTS: "false"`
+  > wordlist สำหรับ ffuf/gobuster: `/usr/share/seclists/...` หรือ `/usr/share/dirb/wordlists/common.txt`
 - **อยากรัน hexstrike-server แบบ native แทน** (เร็วกว่า build image / ใช้ tool ที่
   brew ลงได้ครบกว่า) → ใช้ `1-install-tools.sh` + `2-run-hexstrike.sh` แล้ว **ไม่ต้อง
   ใช้** `docker-compose.mac.yml` (ขึ้น `docker compose up -d` เฉยๆ hexstrike-mcp จะ

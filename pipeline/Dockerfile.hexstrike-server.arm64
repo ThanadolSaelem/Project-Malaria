@@ -1,20 +1,20 @@
 # =============================================================================
-# HexStrike server — arm64-NATIVE build (สำหรับ Apple Silicon / Mac)
+# HexStrike server — arm64-NATIVE + เครื่องมือครบชุด (สำหรับ Apple Silicon / Mac)
 # -----------------------------------------------------------------------------
-# ทำไมต้องมีไฟล์นี้แยกจาก Dockerfile.hexstrike-server (ตัว Kali):
-#   - image Kali (kalilinux/kali-rolling) เป็น amd64 เท่านั้น บน Apple Silicon
-#     จะรันผ่าน QEMU emulation → tool สแกนช้ามาก ใช้งานจริงไม่ไหว
-#   - ตัวนี้ใช้ debian:bookworm-slim ซึ่งมี arm64 แท้ → รัน NATIVE บน M-series
-#     เครื่องมือ core ส่วนใหญ่อยู่ใน debian repo อยู่แล้ว (nmap, nikto, sqlmap,
-#     gobuster, ffuf, feroxbuster, hydra, john ฯลฯ) ติดตั้งผ่าน apt ได้ตรงๆ
+# ต่างจาก Dockerfile.hexstrike-server (Kali/amd64) ตรงที่ตัวนี้เป็น debian arm64
+# แท้ → รัน NATIVE บน M-series ไม่ emulate และลงเครื่องมือให้ "ครบ" ที่สุดเท่าที่
+# ทำได้บน arm64:
+#   - apt:   nmap masscan dirb wfuzz sqlmap hydra john dnsenum dnsrecon ฯลฯ
+#   - Go:    nuclei httpx subfinder naabu katana dnsx gobuster (ProjectDiscovery+)
+#   - Rust:  feroxbuster (binary สำเร็จรูป)
+#   - clone: whatweb (ruby) + nikto (perl)
+#   - data:  nuclei templates + SecLists wordlists
 #
-# เครื่องมือที่ "ไม่มีใน debian" (subfinder/amass/nuclei เวอร์ชันใหม่ ฯลฯ) จะข้าม
-# ไป — hexstrike จะรายงานว่า tool นั้น "unavailable" เฉยๆ ไม่ crash
-# อยากได้ครบจริงค่อยเพิ่มทีหลัง (go install / แยก installer)
+# ออกแบบให้ "ทนพลาด": ตัวที่โหลด/บิลด์ไม่สำเร็จจะข้าม (|| echo skip) ไม่ล้มทั้ง
+# build — hexstrike จะรายงาน tool ที่ขาดว่า unavailable เฉยๆ
 #
-# ผล: บน Mac สั่ง `docker compose -f docker-compose.yml -f docker-compose.mac.yml up`
-# ครั้งเดียว container ทุกตัวขึ้นรวมถึง hexstrike-server (arm64 แท้) — "ปุ่มเดียว"
-# ยกเว้นโมเดล (llama.cpp) ที่ต้องรัน native เพราะ Docker Desktop Mac ไม่ส่ง GPU
+# ⚠️ build นานขึ้นมาก (Go compile หลายตัว) และ image ใหญ่ขึ้น (SecLists ~1GB+)
+#    ไม่อยากได้ SecLists:  --build-arg INSTALL_SECLISTS=false
 # =============================================================================
 FROM debian:bookworm-slim
 
@@ -22,48 +22,85 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     HEXSTRIKE_PORT=8888
 
-# ── ชั้น 1: build toolchain + base (ต้องมีจริง ถ้าล้ม = build ควรล้ม) ─────────
-# build-essential/libffi/libssl/rust: เผื่อ pip package บางตัว (zstandard,
-# cryptography, cffi) ไม่มี prebuilt wheel สำหรับ Python ของ debian แล้ว compile
-# เอง — มี compiler ไว้กันพัง (เหมือนเหตุผลใน Dockerfile.hexstrike-server ตัว Kali)
+ARG INSTALL_SECLISTS=true
+ARG GO_VERSION=1.23.4
+
+# ── ชั้น 1: build toolchain + ภาษา/ไลบรารีที่เครื่องมือต้องใช้ (ต้องมีจริง) ────
+#   ruby/perl+libnet-ssleay → whatweb/nikto ; libpcap-dev → naabu ; cargo → rust
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-pip python3-venv python3-dev \
       build-essential libffi-dev libssl-dev pkg-config cargo rustc \
-      curl wget git ca-certificates \
+      curl wget git ca-certificates unzip libpcap-dev \
+      ruby perl libnet-ssleay-perl \
     && rm -rf /var/lib/apt/lists/*
 
-# ── ชั้น 2: security tools — ลง "ทีละตัว" ตัวที่ไม่มีใน debian repo ข้ามไป ─────
-# ทำไมต้องวนทีละตัว: Debian bookworm ไม่มี tool หลายตัวที่เป็นของ Kali
-# (nikto/gobuster/ffuf/feroxbuster/whatweb ฯลฯ) ถ้าใส่รวม apt บรรทัดเดียวแล้วขาด
-# ตัวใดตัวหนึ่ง apt จะ fail ทั้งชุด (exit 100) การวน `|| echo skip` ทำให้ build
-# ผ่านด้วยเท่าที่ debian มี — ตัวที่ขาด hexstrike รายงานว่า unavailable ไม่ crash
-# (เพิ่มภายหลังได้ด้วย go install / แยก installer)  chromium เผื่อ selenium
+# ── ชั้น 2: security tools จาก apt — ลงทีละตัว ตัวที่ debian ไม่มี ข้ามไป ──────
 RUN apt-get update && for t in \
       nmap masscan dnsutils dnsenum dnsrecon \
-      nikto whatweb gobuster ffuf feroxbuster dirb wfuzz \
-      sqlmap hydra john netcat-traditional \
+      dirb wfuzz sqlmap hydra john netcat-traditional \
       chromium chromium-driver ; do \
       apt-get install -y --no-install-recommends "$t" \
-        && echo "  [tool] ✓ $t" \
-        || echo "  [tool] ⚠ ข้าม $t (ไม่มีใน debian repo — เพิ่มทีหลังได้)" ; \
+        && echo "  [apt] ✓ $t" \
+        || echo "  [apt] ⚠ ข้าม $t" ; \
     done ; rm -rf /var/lib/apt/lists/*
 
-# ── python deps ของ hexstrike_server.py (ลง venv แยก ไม่แตะ system python) ──────
+# ── ชั้น 3: Go toolchain (official arm64) — debian golang เก่าไปสำหรับ PD tools ──
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-arm64.tar.gz" -o /tmp/go.tgz \
+    && tar -C /usr/local -xzf /tmp/go.tgz && rm /tmp/go.tgz \
+    && /usr/local/go/bin/go version
+ENV PATH="/usr/local/go/bin:/usr/local/bin:${PATH}" \
+    GOBIN=/usr/local/bin \
+    GOFLAGS=-buildvcs=false
+
+# ── ชั้น 4: Go-based tools (ProjectDiscovery + gobuster) — ทนพลาดทีละตัว ──────
+#   PD httpx ตัวนี้รองรับ -l (แก้ปัญหา "No such option '-l'" ของ httpx ตัวเดิม)
+RUN set -x; \
+    go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest       || echo "⚠ skip nuclei"; \
+    go install github.com/projectdiscovery/httpx/cmd/httpx@latest            || echo "⚠ skip httpx"; \
+    go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || echo "⚠ skip subfinder"; \
+    go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest         || echo "⚠ skip naabu"; \
+    go install github.com/projectdiscovery/katana/cmd/katana@latest          || echo "⚠ skip katana"; \
+    go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest              || echo "⚠ skip dnsx"; \
+    go install github.com/OJ/gobuster/v3@latest                              || echo "⚠ skip gobuster"; \
+    go clean -cache -modcache 2>/dev/null || true
+
+# ── ชั้น 5: feroxbuster (ตัวติดตั้งทางการ auto-detect arch → binary arm64) ────
+RUN curl -fsSL https://raw.githubusercontent.com/epi052/feroxbuster/main/install-nix.sh \
+      | bash -s /usr/local/bin \
+    && /usr/local/bin/feroxbuster --version || echo "⚠ skip feroxbuster"
+
+# ── ชั้น 6: whatweb (ruby) + nikto (perl) จาก git ───────────────────────────
+RUN git clone --depth 1 https://github.com/urbanadventurer/WhatWeb /opt/whatweb \
+      && ln -sf /opt/whatweb/whatweb /usr/local/bin/whatweb \
+      && echo "✓ whatweb" || echo "⚠ skip whatweb"
+RUN git clone --depth 1 https://github.com/sullo/nikto /opt/nikto \
+      && ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
+      && echo "✓ nikto" || echo "⚠ skip nikto"
+
+# ── ชั้น 7: data — nuclei templates + SecLists wordlists ────────────────────
+RUN (command -v nuclei >/dev/null && nuclei -update-templates -silent) \
+      && echo "✓ nuclei templates" \
+      || echo "⚠ nuclei templates จะโหลดตอนรันครั้งแรกแทน"
+RUN if [ "$INSTALL_SECLISTS" = "true" ]; then \
+      git clone --depth 1 https://github.com/danielmiessler/SecLists /usr/share/seclists \
+        && echo "✓ SecLists -> /usr/share/seclists" \
+        || echo "⚠ skip SecLists (clone พลาด)"; \
+    else echo "skip SecLists (INSTALL_SECLISTS=$INSTALL_SECLISTS)"; fi
+
+# ── ชั้น 8: python deps ของ hexstrike_server.py (venv แยก ไม่แตะ system python) ─
 WORKDIR /app
 COPY hexstrike-ai-main/requirements.txt /app/requirements.txt
-
 RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# ตัด angr/pwntools เหมือนตัว Kali: ทั้งคู่อยู่ใน f-string ที่ server เขียนออกเป็น
-# สคริปต์ให้ผู้ใช้เอาไปรันเอง ไม่ใช่ import จริงตอนรัน — ตัดได้ไม่กระทบ endpoint
-# และเป็น dep tree ที่หนัก/เปราะที่สุด (native build เพียบ) โดยเฉพาะบน arm64
+ENV PATH="/opt/venv/bin:${PATH}"
+# ตัด angr/pwntools (อยู่ใน f-string ที่ server เขียนเป็นไฟล์ให้ผู้ใช้ ไม่ใช่ import
+# จริง — ตัดได้ไม่กระทบ endpoint, เป็น dep tree หนัก/เปราะสุดโดยเฉพาะบน arm64)
 RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
     && pip install --no-cache-dir -r /app/requirements.container.txt
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose.mac.yml) จึงไม่ COPY
 ENV CHROME_BIN=/usr/bin/chromium \
-    CHROMEDRIVER_PATH=/usr/bin/chromedriver
+    CHROMEDRIVER_PATH=/usr/bin/chromedriver \
+    SECLISTS_PATH=/usr/share/seclists
 
 EXPOSE 8888
 CMD ["python3", "/app/hexstrike-ai-main/hexstrike_server.py", "--port", "8888"]
