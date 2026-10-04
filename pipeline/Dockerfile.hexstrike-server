@@ -29,8 +29,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Pin mirror ตรงไปที่ kali.download (Cloudflare CDN) แทน redirector http.kali.org
 # ที่สุ่มเด้งไป mirror ช้า/ล่ม (เคส build นี้เด้งไป mirror.kku.ac.th แล้วค้าง 30+ นาที
 # วน Ign ไม่คืบ) การ pin CDN ตรงๆ ทำให้ build reproducible ไม่ขึ้นกับ mirror สุ่ม
+# สำคัญ: ต้องลบ /etc/apt/sources.list.d/* ด้วย เพราะ base image Kali มี source อีกไฟล์
+# (เช่น kali.sources) ที่ยังชี้ redirector → ถ้าไม่ลบ apt จะไปอ่าน InRelease ของมัน
+# แล้วติด timeout×retry ค้าง (แม้ package หลักจะมาจาก kali.download แล้วก็ตาม)
 # + ForceIPv4 กัน IPv6 resolve เพี้ยน + Retries 5 (เดิม 15 ทำให้ค้างนานเกินตอน mirror พัง)
-RUN echo 'deb http://kali.download/kali kali-rolling main contrib non-free non-free-firmware' \
+RUN rm -f /etc/apt/sources.list.d/* \
+    && echo 'deb http://kali.download/kali kali-rolling main contrib non-free non-free-firmware' \
         > /etc/apt/sources.list \
     && echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 \
     && echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/99retries \
