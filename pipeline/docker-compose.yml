@@ -39,6 +39,10 @@ services:
       - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
     environment:
       HEXSTRIKE_PORT: 8888
+    # nmap -sS / masscan ต้องใช้ raw socket → ให้ capability นี้กับ container
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
     ports:
       - "127.0.0.1:8888:8888"
     restart: unless-stopped
@@ -52,6 +56,7 @@ services:
     volumes:
       - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
       - ./hexstrike_mcp_http.py:/app/pipeline/hexstrike_mcp_http.py:ro
+      - ./hexstrike_mcp_router.py:/app/pipeline/hexstrike_mcp_router.py:ro   # tool-RAG (ใช้ผ่าน command override)
     environment:
       HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
       MCP_HOST: 0.0.0.0
