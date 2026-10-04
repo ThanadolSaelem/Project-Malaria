@@ -14,7 +14,7 @@ HexStrike MCP over HTTP  —  ตัวห่อ (wrapper) ให้ HarnessRout
 
 env:
     HEXSTRIKE_SERVER   URL ของ hexstrike_server.py (ค่าเริ่ม http://127.0.0.1:8888)
-    HEXSTRIKE_TIMEOUT  timeout ต่อ request (วินาที, ค่าเริ่ม 300)
+    HEXSTRIKE_TIMEOUT  timeout ต่อ request (วินาที, ค่าเริ่ม 900)
     MCP_HOST           host ที่จะ bind (ค่าเริ่ม 0.0.0.0)
     MCP_PORT           port ที่จะ bind (ค่าเริ่ม 8001)
 
@@ -35,7 +35,7 @@ from hexstrike_mcp import HexStrikeClient, setup_mcp_server  # noqa: E402
 
 def main() -> None:
     server = os.environ.get("HEXSTRIKE_SERVER", "http://127.0.0.1:8888")
-    timeout = int(os.environ.get("HEXSTRIKE_TIMEOUT", "300"))
+    timeout = int(os.environ.get("HEXSTRIKE_TIMEOUT", "900"))
     host = os.environ.get("MCP_HOST", "0.0.0.0")
     port = int(os.environ.get("MCP_PORT", "8001"))
 

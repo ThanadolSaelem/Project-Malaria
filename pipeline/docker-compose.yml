@@ -39,6 +39,10 @@ services:
       - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
     environment:
       HEXSTRIKE_PORT: 8888
+    # nmap -sS / masscan ต้องใช้ raw socket → ให้ capability นี้กับ container
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
     ports:
       - "127.0.0.1:8888:8888"
     restart: unless-stopped
