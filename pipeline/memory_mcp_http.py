@@ -2,19 +2,20 @@
 """
 Knowledge-graph memory — MCP over HTTP (streamable-http)  [non-vector]
 =============================================================================
-ความจำแบบ "knowledge graph" ให้โมเดลจำข้ามรอบ/ข้าม session ได้ — เก็บเป็น
-entities (โหนด) + observations (ข้อเท็จจริงของโหนด) + relations (เส้นเชื่อม)
-ลง JSON ไฟล์เดียวบน volume → persist, ไม่มี embedding/vector → **ไม่มีปัญหา
-dimension ตอนเปลี่ยนโมเดล** และไม่ต้องรัน embedding model เพิ่ม
+Gives the model memory that persists across turns/sessions as a knowledge
+graph: entities (nodes) + observations (facts about a node) + relations
+(directed edges). Stored in a single JSON file on a volume -> persistent, with
+no embeddings/vectors, so there is **no dimension problem when the chat model
+changes** and nothing extra to run.
 
-เหมาะกับงาน pentest ที่ข้อมูลมีโครงสร้าง (host/port/service/vuln):
+Well suited to pentest work where data is structured (host/port/service/vuln):
   memory_add("scanme.nmap.org", "host", ["80/tcp open http", "22/tcp open ssh"])
   memory_relate("scanme.nmap.org", "CVE-XXXX", "affected_by")
-  memory_search("scanme")   → คืนโหนด + observations + relations ที่ match (keyword)
+  memory_search("scanme")   -> matching nodes + observations + relations (keyword)
 
 env:
-  MEMORY_FILE   path ไฟล์ JSON (ค่าเริ่ม /data/memory.json — ควร mount volume)
-  MCP_HOST / MCP_PORT   host:port ที่ bind (ค่าเริ่ม 0.0.0.0:8002)
+  MEMORY_FILE   path to the JSON file (default /data/memory.json — mount a volume)
+  MCP_HOST / MCP_PORT   host:port to bind (default 0.0.0.0:8002)
 endpoint: http://<host>:<MCP_PORT>/mcp
 """
 import json
@@ -46,7 +47,7 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    """เขียนแบบ atomic (temp + replace) กันไฟล์พังถ้าดับกลางคัน."""
+    """Write atomically (temp + replace) so the file is never left corrupt."""
     os.makedirs(os.path.dirname(MEMORY_FILE) or ".", exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(MEMORY_FILE) or ".",
                                prefix=".memory.", suffix=".tmp")
@@ -96,9 +97,9 @@ def main() -> None:
     @mcp.tool()
     def memory_add(name: str, entity_type: str = "",
                    observations: list[str] | None = None) -> dict:
-        """บันทึก/อัปเดต entity (โหนดความจำ) หนึ่งตัว พร้อม observations (ข้อเท็จจริง).
-        ถ้ามี entity ชื่อนี้อยู่แล้ว จะ "เพิ่ม" observations ใหม่ต่อท้าย (ไม่ซ้ำ) และ
-        อัปเดต type ถ้าส่งมา. ใช้บันทึก finding เช่น
+        """Create or update one entity (memory node) with observations (facts).
+        If the entity already exists, new observations are appended (deduped) and
+        the type is updated when provided. Use it to record findings, e.g.
         memory_add("scanme.nmap.org", "host", ["80/tcp open http", "title: Go ..."])."""
         observations = observations or []
         with _LOCK:
@@ -118,9 +119,10 @@ def main() -> None:
 
     @mcp.tool()
     def memory_relate(source: str, target: str, relation: str) -> dict:
-        """เชื่อมความสัมพันธ์ระหว่าง entity สองตัว (มีทิศทาง source → target).
-        เช่น memory_relate("scanme.nmap.org", "CVE-2023-XXXX", "affected_by").
-        สร้าง entity ปลายทางอัตโนมัติถ้ายังไม่มี (type ว่าง)."""
+        """Link two entities with a directed relation (source -> target).
+        e.g. memory_relate("scanme.nmap.org", "CVE-2023-XXXX", "affected_by").
+        The target entity is created automatically if it does not exist yet
+        (with an empty type)."""
         with _LOCK:
             data = _load()
             for n in (source, target):
@@ -133,9 +135,9 @@ def main() -> None:
 
     @mcp.tool()
     def memory_search(query: str, limit: int = 10) -> dict:
-        """ค้นความจำด้วย keyword (ชื่อ/type/observations) — คืน entity ที่ match
-        พร้อม observations และ relations ของมัน. ใช้ "ก่อนเริ่มงาน" เพื่อเรียกคืน
-        สิ่งที่เคยรู้เกี่ยวกับเป้าหมาย/หัวข้อ."""
+        """Search memory by keyword (name/type/observations) and return the
+        matching entities with their observations and relations. Call this at the
+        start of a task to recall what is already known about a target/topic."""
         data = _load()
         scored = []
         for name, ent in data["entities"].items():
@@ -155,8 +157,9 @@ def main() -> None:
 
     @mcp.tool()
     def memory_read(limit: int = 50) -> dict:
-        """คืนภาพรวมกราฟความจำ (entities + relations) จำกัดจำนวน entity ด้วย limit.
-        ใช้ดูว่ามีอะไรเก็บไว้บ้างทั้งหมด."""
+        """Return an overview of the whole memory graph (entities + relations),
+        capping the number of entities with `limit`. Use it to see everything
+        that is stored."""
         data = _load()
         names = list(data["entities"].keys())[:limit]
         return {
@@ -168,7 +171,7 @@ def main() -> None:
 
     @mcp.tool()
     def memory_delete(name: str) -> dict:
-        """ลบ entity ชื่อ name และ relations ที่เกี่ยวข้องทั้งหมด."""
+        """Delete the entity named `name` and every relation that touches it."""
         with _LOCK:
             data = _load()
             existed = data["entities"].pop(name, None) is not None
@@ -179,7 +182,8 @@ def main() -> None:
             return {"deleted": name, "existed": existed,
                     "relations_removed": before - len(data["relations"])}
 
-    # host/port + ปิด DNS-rebinding (เหมือน hexstrike_mcp_router.py — ดูเหตุผลที่นั่น)
+    # host/port + disable DNS-rebinding protection (same as hexstrike_mcp_router.py
+    # — see the reasoning there: this is an internal loopback/compose service)
     try:
         mcp.settings.host = host
         mcp.settings.port = port
@@ -192,7 +196,7 @@ def main() -> None:
             enable_dns_rebinding_protection=False
         )
     except Exception as e:
-        print(f"[memory-mcp] WARN: ตั้ง transport_security ไม่ได้ ({e})",
+        print(f"[memory-mcp] WARN: could not set transport_security ({e})",
               file=sys.stderr)
 
     n = len(_load()["entities"])

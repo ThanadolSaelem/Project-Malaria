@@ -95,6 +95,21 @@ locally is invisible to the tools. So:
   pass extra flags through the documented `additional_args`-style string as one
   value rather than guessing individual flags.
 
+### Memory — remember across tasks
+A knowledge-graph memory is available via MCP tools (`memory_search`,
+`memory_add`, `memory_relate`, `memory_read`). Use it so work carries over
+between tasks and sessions:
+- **At the start of a task**, call `memory_search(<target>)` to recall anything
+  already known about the target (hosts, ports, services, prior findings) before
+  re-scanning.
+- **As you confirm facts**, record them: `memory_add(name, type, [observations])`
+  for a host / service / finding, and `memory_relate(source, target, relation)`
+  to link them (e.g. a host `affected_by` a CVE).
+- Store **concise, factual observations** — not raw tool dumps. Re-run a tool if
+  you need detail again. This keeps memory small and your context lean.
+- Only record in-scope, authorized findings; memory is not a place for secrets
+  (credentials, tokens) — reference where they live, don't copy them in.
+
 ### Output & reporting format
 For each finding, report:
 - **Title** and **severity** (Critical/High/Medium/Low/Info, with brief rationale).
