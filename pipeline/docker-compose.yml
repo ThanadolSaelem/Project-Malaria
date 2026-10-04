@@ -52,6 +52,7 @@ services:
     volumes:
       - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
       - ./hexstrike_mcp_http.py:/app/pipeline/hexstrike_mcp_http.py:ro
+      - ./hexstrike_mcp_router.py:/app/pipeline/hexstrike_mcp_router.py:ro   # tool-RAG (ใช้ผ่าน command override)
     environment:
       HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
       MCP_HOST: 0.0.0.0

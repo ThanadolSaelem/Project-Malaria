@@ -32,6 +32,10 @@ services:
     platform: linux/arm64              # บังคับ arm64 แท้ (กัน pull ตัว amd64 มา emulate)
 
   hexstrike-mcp:
+    # ใช้ tool-RAG router แทน wrapper เต็ม: expose แค่ 3 meta-tools
+    # (search / describe / run) → ประหยัด context ~95% แต่เข้าถึงครบ 150 tool
+    # endpoint เดิม /mcp:8001 ไม่เปลี่ยน — OpenCode แค่ refresh ก็เห็น 3 tool
+    command: ["python", "/app/pipeline/hexstrike_mcp_router.py"]
     environment:
       # ต่อ server ที่อยู่ใน compose network เดียวกัน (ชื่อ service = DNS ภายใน)
       HEXSTRIKE_SERVER: http://hexstrike-server:8888
