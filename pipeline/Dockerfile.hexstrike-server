@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl wget git ca-certificates \
       nmap masscan dnsenum dnsrecon \
       nikto whatweb gobuster ffuf feroxbuster dirb wfuzz \
-      sqlmap nuclei subfinder amass \
+      sqlmap nuclei subfinder amass httpx-toolkit \
       hydra john hashcat \
       netcat-traditional seclists \
       chromium chromium-driver \
@@ -70,6 +70,15 @@ ENV PATH="/opt/venv/bin:$PATH"
 # นานขึ้นมาก (และอาจต้องเพิ่ม cmake/z3 headers เอง)
 RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
     && pip install --no-cache-dir -r /app/requirements.container.txt
+
+# แก้ httpx "-l"/"-list" ใช้ไม่ได้: venv มี python-httpx ซึ่ง CLI ชื่อ `httpx` เหมือนกัน
+# แต่ไม่รองรับ -l และอยู่หน้า PATH (/opt/venv/bin มาก่อน) เลยบังตัวจริง → ชี้ `httpx`
+# ตัวแรกบน PATH ไปที่ httpx-toolkit (ProjectDiscovery httpx รองรับ -l/-list ตามที่
+# hexstrike เรียกใช้). ไม่กระทบ `import httpx` ของ python (นั่นเป็น library ใน
+# site-packages คนละตัวกับ binary นี้)
+RUN HX="$(command -v httpx-toolkit || true)"; \
+    if [ -n "$HX" ]; then ln -sf "$HX" /opt/venv/bin/httpx && echo "httpx -> $HX"; \
+    else echo "WARN: ไม่พบ httpx-toolkit — httpx -l อาจยังพัง"; fi
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose) จึงไม่ COPY ทั้งชุด
 # ให้ selenium หา chromium ที่ apt ลงไว้เจอ
