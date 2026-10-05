@@ -41,7 +41,7 @@ from mcp.server.fastmcp import FastMCP
 LITELLM_BASE = os.environ.get("LITELLM_BASE", "http://litellm:4000/v1").rstrip("/")
 SPECIALIST_MODEL = os.environ.get("SPECIALIST_MODEL", "exploit-specialist")
 LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "sk-local")
-TIMEOUT = int(os.environ.get("SPECIALIST_TIMEOUT", "900"))
+TIMEOUT = int(os.environ.get("SPECIALIST_TIMEOUT", "1200"))
 MAX_TOKENS = int(os.environ.get("SPECIALIST_MAX_TOKENS", "4096"))
 
 # The specialist assumes authorization/scope were already verified by the

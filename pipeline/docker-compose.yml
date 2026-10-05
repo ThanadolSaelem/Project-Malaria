@@ -102,6 +102,7 @@ services:
     environment:
       LITELLM_BASE: http://litellm:4000/v1   # เรียกผ่าน gateway ใน compose network
       SPECIALIST_MODEL: exploit-specialist   # alias ใน litellm-config.yaml
+      SPECIALIST_TIMEOUT: 1200               # specialist เป็น reasoning 27B ตอบช้า ให้ถึง 20 นาที
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8003
     ports:
