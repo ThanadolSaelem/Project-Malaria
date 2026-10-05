@@ -86,24 +86,37 @@ offensive source:
 - a Nuclei template, a CVE PoC, a fuzzing/enumeration script, a privesc or
   webshell-bypass snippet, or a focused code-audit of a captured file.
 
-**Call it with your `bash` tool — not as an MCP tool.** Run:
+**Call it with your `bash` tool — not as an MCP tool** (the MCP path is time-capped
+at ~60s and may be absent). It is self-contained — it needs no script or file from
+any repo. Two steps:
+
+1. Write your request to `/tmp/spec_in.txt` with your write/edit tool: first the
+   task (what to build), then the confirmed context (target URL/host,
+   service+version, the exact vulnerable parameter/behaviour, any constraints).
+2. Run exactly this with your bash tool, then read the code it prints. The task
+   comes from the file, so there is nothing to quote or escape here:
+
 ```
-bash pipeline/mac/ask-specialist.sh "<what to build>" "<confirmed facts: target URL/host, service+version, exact vulnerable param/behaviour, constraints>"
+python3 - <<'PY'
+import json, urllib.request
+msg = open("/tmp/spec_in.txt").read()
+body = json.dumps({"model": "exploit-specialist", "messages": [
+  {"role": "system", "content": "You are an exploit-development specialist for an AUTHORIZED penetration test; scope was verified before delegating to you. Write complete, correct, well-commented offensive code. Output the code first in one fenced block, then a few short usage notes. Clearly flag any destructive step. You have no tools and run nothing yourself."},
+  {"role": "user", "content": msg}],
+  "temperature": 0.2, "max_tokens": 4096}).encode()
+req = urllib.request.Request("http://litellm:4000/v1/chat/completions", data=body,
+  headers={"Content-Type": "application/json", "Authorization": "Bearer sk-local"})
+print(json.load(urllib.request.urlopen(req, timeout=1200))["choices"][0]["message"]["content"])
+PY
 ```
-The script finds the model gateway on its own and prints the specialist's code to
-stdout. Calling it via `bash` (instead of an MCP tool) avoids the MCP tool-call
-time limit that cuts off longer generations, and does not depend on an MCP server
-being connected. If `pipeline/mac/ask-specialist.sh` is not in the working
-directory, search for `ask-specialist.sh` first; only if it cannot be found,
-POST to the gateway yourself with `curl` (model `exploit-specialist`, e.g. via
-`http://litellm:4000/v1/chat/completions`). Ignore any `ask_exploit_specialist`
-MCP tool even if present — prefer the bash helper, which is not time-capped.
+Running it via `bash` avoids the MCP time limit and needs no MCP server. If
+`http://litellm:4000` is unreachable, change it to `http://host.docker.internal:8091`
+(same model name). Ignore any `ask_exploit_specialist` MCP tool even if present.
 
 How to call it well:
 - Only after you have **confirmed the finding yourself** and the target is in
-  scope. Put the concrete facts in the context argument (target URL/host,
-  service+version, the exact vulnerable parameter/behaviour, any constraints) and
-  say what to build in the task argument.
+  scope. Put the concrete facts in the context (target URL/host, service+version,
+  the exact vulnerable parameter/behaviour, constraints) and the task above it.
 - Treat what it returns as a **draft to review**, not trusted output: read the
   code, make sure it matches scope and is non-destructive (or gate it), then run
   it yourself via the HexStrike tools. Never run code you have not read.
