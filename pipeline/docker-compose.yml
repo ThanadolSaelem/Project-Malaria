@@ -87,6 +87,29 @@ services:
       - "127.0.0.1:8002:8002"
     restart: unless-stopped
 
+  # ── ชั้นผู้ช่วยเขียน exploit (MCP over HTTP) ─────────────────────────────
+  # ให้ Tiel (orchestrator) delegate งานเขียน exploit/PoC/payload ไปโมเดล
+  # offensive เฉพาะทาง (ดีฟอลต์ BugTraceAI-CORE-Ultra-27B บน llama :8091) ผ่าน
+  # LiteLLM — expose ออกมาเป็น tool เดียว `ask_exploit_specialist`
+  # reuse image เดียวกับ hexstrike-mcp (มี mcp SDK + requests อยู่แล้ว)
+  specialist-mcp:
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.hexstrike-mcp
+    command: ["python", "/app/pipeline/specialist_mcp_http.py"]
+    volumes:
+      - ./specialist_mcp_http.py:/app/pipeline/specialist_mcp_http.py:ro
+    environment:
+      LITELLM_BASE: http://litellm:4000/v1   # เรียกผ่าน gateway ใน compose network
+      SPECIALIST_MODEL: exploit-specialist   # alias ใน litellm-config.yaml
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8003
+    ports:
+      - "127.0.0.1:8003:8003"
+    depends_on:
+      - litellm
+    restart: unless-stopped
+
   # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
   harnessrouter:
     image: harnessrouter/harnessrouter:latest

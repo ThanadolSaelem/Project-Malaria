@@ -16,41 +16,49 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PIPELINE="$(cd "$HERE/.." && pwd)"
 LLAMA_PORT="${LLAMA_PORT:-8090}"
+LLAMA_PORT_SPECIALIST="${LLAMA_PORT_SPECIALIST:-8091}"
 
 echo "════════════════════════════════════════════════════════════"
 echo "  Project-Malaria — start ทุกอย่าง (Mac / Apple Silicon)"
 echo "════════════════════════════════════════════════════════════"
 
-# ── 1) โมเดล: llama.cpp native ───────────────────────────────────────────────
-llama_up() { curl -s -o /dev/null -w '%{http_code}' "http://localhost:${LLAMA_PORT}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; }
+# โหลด llama.env ก่อน (มีคำสั่งของทั้ง orchestrator + specialist) เพื่อให้สตาร์ท
+# ได้ทั้งคู่ แม้ตัวใดตัวหนึ่งจะขึ้นอยู่แล้ว
+[ -f "$HERE/llama.env" ] && { echo "[1/3] อ่าน pipeline/mac/llama.env"; source "$HERE/llama.env"; }
 
-if llama_up; then
-  echo "[1/3] ✓ llama.cpp ตอบอยู่แล้วบน :${LLAMA_PORT} — ข้าม"
-else
-  if [ -f "$HERE/llama.env" ]; then
-    # llama.env ต้อง export ตัวแปร LLAMA_CMD เป็นคำสั่งเต็มของ llama-server
-    echo "[1/3] สตาร์ท llama.cpp จาก pipeline/mac/llama.env …"
-    # shellcheck disable=SC1091
-    source "$HERE/llama.env"
-    if [ -z "${LLAMA_CMD:-}" ]; then
-      echo "      ⚠️  llama.env ไม่ได้ตั้ง LLAMA_CMD — ข้ามการสตาร์ทโมเดล"
-    else
-      mkdir -p "$HERE/logs"
-      # รัน background, log ไว้ที่ logs/llama.log
-      nohup bash -c "$LLAMA_CMD" > "$HERE/logs/llama.log" 2>&1 &
-      echo "      กำลังรอ llama.cpp ขึ้นบน :${LLAMA_PORT} (ดู log: pipeline/mac/logs/llama.log)…"
-      for _ in $(seq 1 60); do llama_up && break; sleep 1; done
-      llama_up && echo "      ✓ llama.cpp พร้อม" || echo "      ⚠️  ยังไม่ตอบใน 60 วิ — เช็ค logs/llama.log"
-    fi
-  else
-    echo "[1/3] ⚠️  ไม่พบ llama.cpp บน :${LLAMA_PORT} และไม่มี pipeline/mac/llama.env"
-    echo "      → สตาร์ทโมเดลเองก่อน เช่น:"
-    echo "          llama-server -m <model.gguf> --port ${LLAMA_PORT} --host 0.0.0.0 \\"
-    echo "                       --alias cybermodel -ngl 99 --jinja"
-    echo "      หรือ cp pipeline/mac/llama.env.example pipeline/mac/llama.env แล้วแก้ให้ตรงเครื่อง"
-    echo "      (จะ start container ต่อไปให้ แต่ task โมเดลจะยังไม่ทำงานจนกว่า llama.cpp จะขึ้น)"
+# สตาร์ท llama-server หนึ่งตัว: port, คำสั่ง, ป้ายชื่อ
+start_llama() {
+  local port="$1" cmd="$2" label="$3" logf="$4"
+  if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
+    echo "      ✓ ${label} ตอบอยู่แล้วบน :${port} — ข้าม"; return
   fi
+  if [ -z "$cmd" ]; then
+    echo "      • ${label}: ไม่มีคำสั่งใน llama.env (ข้าม) — ถ้าต้องใช้ ตั้ง LLAMA_CMD ให้ครบ"
+    return
+  fi
+  mkdir -p "$HERE/logs"
+  nohup bash -c "$cmd" > "$HERE/logs/${logf}" 2>&1 &
+  echo "      กำลังรอ ${label} ขึ้นบน :${port} (log: pipeline/mac/logs/${logf})…"
+  for _ in $(seq 1 90); do
+    curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$' && break
+    sleep 1
+  done
+  if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
+    echo "      ✓ ${label} พร้อม"
+  else
+    echo "      ⚠️  ${label} ยังไม่ตอบใน 90 วิ — เช็ค logs/${logf} (โมเดลใหญ่ prefill นานได้)"
+  fi
+}
+
+# ── 1) โมเดล: llama.cpp native (orchestrator :8090 + specialist :8091) ───────
+echo "[1/3] โมเดล llama.cpp (native — ต้องใช้ Metal GPU)…"
+if [ ! -f "$HERE/llama.env" ]; then
+  echo "      ⚠️  ไม่มี pipeline/mac/llama.env — คัดลอกจาก example แล้วแก้ path gguf:"
+  echo "          cp pipeline/mac/llama.env.example pipeline/mac/llama.env"
+  echo "      (จะ start container ต่อ แต่ task โมเดลจะยังไม่ทำงานจนกว่า llama.cpp จะขึ้น)"
 fi
+start_llama "${LLAMA_PORT}"            "${LLAMA_CMD:-}"            "orchestrator (Tiel-35B)"     "llama.log"
+start_llama "${LLAMA_PORT_SPECIALIST}" "${LLAMA_CMD_SPECIALIST:-}" "specialist (exploit model)"  "llama-specialist.log"
 
 # ── 2) container ทั้ง stack ──────────────────────────────────────────────────
 echo "[2/3] docker compose up (litellm + hexstrike-server arm64 + hexstrike-mcp + harnessrouter)…"

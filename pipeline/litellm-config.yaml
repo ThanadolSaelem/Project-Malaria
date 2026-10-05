@@ -34,6 +34,16 @@ model_list:
       api_base: http://host.docker.internal:8090/v1
       api_key: "sk-local"
 
+  # ---- exploit specialist (llama.cpp ตัวที่ 2, host :8091) ----
+  # โมเดล offensive เฉพาะทาง (ดีฟอลต์ BugTraceAI-CORE-Ultra-27B) ที่ Tiel เรียกผ่าน
+  # MCP tool `ask_exploit_specialist` เพื่อเขียน exploit/PoC/payload
+  # สลับโมเดลได้ด้วยการเปลี่ยน llama-server ที่เสิร์ฟ :8091 + --alias ให้ตรงชื่อนี้
+  - model_name: exploit-specialist
+    litellm_params:
+      model: openai/exploit-specialist     # ต้องตรงกับ id ใน curl :8091/v1/models
+      api_base: http://host.docker.internal:8091/v1
+      api_key: "sk-local"
+
   # ---- (ออปชัน) cloud fallback — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
   # เปิดใช้: เอา comment ออก + ใส่ชื่อใน router_settings.fallbacks
   # - model_name: big-brain-groq
