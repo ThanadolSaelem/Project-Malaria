@@ -1,0 +1,18 @@
+{#-
+  Trusted ChatML template for the exploit specialist (llama.cpp --chat-template-file).
+  We pass this instead of trusting the template embedded in the downloaded GGUF,
+  because the known 2025 "Poisoned GGUF Templates" attack hides malicious
+  instructions in that embedded chat template. The specialist is text-in/out and
+  does not need tool-calling, so a plain ChatML formatter is all it needs.
+
+  Most Qwen-family / BugTraceAI / DeepHat models use ChatML. If your specialist
+  model uses a different format and output looks wrong, either point
+  SPECIALIST_CHAT_TEMPLATE at the right template, or drop --chat-template-file
+  and use the built-in by name instead:  --chat-template chatml
+-#}
+{%- for message in messages -%}
+{{- '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>\n' -}}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+{{- '<|im_start|>assistant\n' -}}
+{%- endif -%}

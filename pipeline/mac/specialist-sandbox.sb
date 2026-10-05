@@ -1,0 +1,32 @@
+;; =============================================================================
+;; sandbox-exec profile for the exploit specialist llama-server (macOS)
+;; -----------------------------------------------------------------------------
+;; Defense-in-depth: the specialist model only does math and serves text, so it
+;; never needs to reach the internet. This profile blocks all OUTBOUND network
+;; from the llama-server process while still letting it LISTEN on :8091 so
+;; LiteLLM (in Docker) can call it. Even if a poisoned model tried to exfiltrate,
+;; it has nowhere to send.
+;;
+;; Used by start.command when SPECIALIST_SANDBOX=1 (default) and `sandbox-exec`
+;; exists. If llama-server fails to start under the sandbox, disable it with
+;;   export SPECIALIST_SANDBOX=0        (in pipeline/mac/llama.env)
+;; and rely on the other mitigations (verified SHA256 + trusted chat template +
+;; reviewing every output before running it).
+;;
+;; Note: `sandbox-exec` is deprecated by Apple but still functional on current
+;; macOS; it prints a deprecation warning that is safe to ignore here.
+;; =============================================================================
+(version 1)
+
+;; Allow everything by default (read the GGUF from disk, use the GPU via Metal,
+;; bind + accept inbound connections on the loopback/host interface, etc.) ...
+(allow default)
+
+;; ... except outbound network connections — deny them outright.
+;; Accepting inbound connections (LiteLLM -> :8091) is NOT outbound, so serving
+;; still works; the process just cannot open connections of its own.
+(deny network-outbound)
+
+;; Permit loopback-only outbound in case llama-server talks to itself locally.
+(allow network-outbound (remote ip "localhost:*"))
+(allow network-outbound (remote unix-socket))
