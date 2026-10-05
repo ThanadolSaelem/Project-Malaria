@@ -95,6 +95,24 @@ locally is invisible to the tools. So:
   pass extra flags through the documented `additional_args`-style string as one
   value rather than guessing individual flags.
 
+### Exploit specialist — delegate heavy offensive code
+A second, offensive-tuned model is available as a single MCP tool,
+`ask_exploit_specialist(task, context)`. It **writes code only** — it has no
+tools and runs nothing. Use it when you need working offensive **source**:
+- a proof-of-concept exploit or payload (SQLi/XSS/SSTI/deserialization/etc.),
+- a Nuclei template, a CVE PoC, a fuzzing/enumeration script, a privesc or
+  webshell-bypass snippet, or a focused code-audit of a captured file.
+How to call it well:
+- Only after you have **confirmed the finding yourself** and the target is in
+  scope. Put the concrete facts in `context` (target URL/host, service+version,
+  the exact vulnerable parameter/behaviour, any constraints) and say what to
+  build in `task`.
+- Treat what it returns as a **draft to review**, not trusted output: read the
+  code, make sure it matches scope and is non-destructive (or gate it), then run
+  it yourself via the HexStrike tools. Never run code you have not read.
+- Do **not** use it for planning, recon, or interpreting scan output — do those
+  yourself. It is for code-writing only.
+
 ### Memory — remember across tasks
 A knowledge-graph memory is available via MCP tools (`memory_search`,
 `memory_add`, `memory_relate`, `memory_read`). Use it so work carries over

@@ -49,11 +49,31 @@ Docker Desktop จะเห็น project นี้ กดปุ่ม ▶ / ⏹
 
 ## เช็ค
 ```bash
-curl http://localhost:8090/v1/models   # llama.cpp native (โมเดล)
+curl http://localhost:8090/v1/models   # llama.cpp native (orchestrator / Tiel-35B)
+curl http://localhost:8091/v1/models   # llama.cpp native (specialist / exploit model)
 curl http://localhost:4000/v1/models   # litellm (big-brain → llama.cpp)
 curl http://localhost:8888/health      # hexstrike-server (ใน docker, arm64)
 # harnessrouter: เปิด http://localhost:3000
 ```
+
+## ผู้ช่วยเขียน exploit (specialist, :8091) + การ hardening
+`start.command` จะสตาร์ท llama.cpp **2 ตัว**: orchestrator (:8090) และ specialist
+(:8091, ดีฟอลต์ BugTraceAI-CORE-Ultra-27B) ที่ Tiel เรียกผ่าน MCP tool
+`ask_exploit_specialist`. ตั้งค่าใน `pipeline/mac/llama.env` (ดู `.example`).
+
+เพราะ specialist เป็นโมเดล offensive/uncensored ที่โหลดจาก HuggingFace จึงมี 3 ชั้นกัน:
+- **(3) เช็ก SHA256 ก่อนสตาร์ท** — ตั้ง `SPECIALIST_MODEL_SHA256` ให้ตรงค่าจาก repo
+  ทางการ ถ้าไม่ตรง start.command จะ**ไม่สตาร์ท** specialist (กันไฟล์ถูกแก้/โหลดผิดตัว).
+  หา hash เอง: `shasum -a 256 <file.gguf>`
+- **(1a) override chat template** — ใช้ `pipeline/mac/chatml.jinja` ของเราแทน template
+  ที่ฝังในไฟล์ gguf (จุดที่ "Poisoned GGUF Templates" ฝังคำสั่งอันตราย). ถ้า build
+  llama.cpp ไม่รองรับ `--chat-template-file` เปลี่ยนเป็น `--chat-template chatml`
+- **(1b) ขังไม่ให้ออกเน็ต** — รันใต้ `sandbox-exec` (profile `specialist-sandbox.sb`)
+  บล็อก outbound ทั้งหมด แต่ยัง listen :8091 ให้ LiteLLM ได้. ถ้า llama ไม่ยอมขึ้น
+  ใต้ sandbox ปิดด้วย `export SPECIALIST_SANDBOX=0` ใน `llama.env`
+
+> ชั้นสุดท้าย (สำคัญสุด): system prompt บังคับ "อ่าน code ก่อนรันเสมอ" — output ของ
+> specialist เป็น **draft ให้ review** ไม่ใช่ของที่เอาไปรันดิบๆ
 
 ## หมายเหตุ
 - **เครื่องมือความปลอดภัย (ครบชุด)**: `Dockerfile.hexstrike-server.arm64` ลงให้

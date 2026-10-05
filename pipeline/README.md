@@ -90,11 +90,18 @@ powershell -ExecutionPolicy Bypass -File pipeline\verify.ps1
     -d '{"model":"big-brain","messages":[{"role":"user","content":"ping"}],"max_tokens":20}'
   ```
 - HexStrike MCP ตอบที่ `http://localhost:8001/mcp`
+- Memory MCP ตอบที่ `http://localhost:8002/mcp`
+- Specialist MCP ตอบที่ `http://localhost:8003/mcp`
 
-### 5. ลงทะเบียน HexStrike MCP ใน HarnessRouter Console
-เปิด `http://localhost:3000` (login จาก `.env`) → หน้า plugins/MCP ของ harness ที่จะใช้ → เพิ่ม remote MCP:
-- **URL**: `http://hexstrike-mcp:8001/mcp`  (ใช้ชื่อ service ในเครือข่าย compose)
-- **Transport**: HTTP (streamable)
+### 5. ลงทะเบียน MCP ทั้ง 3 ตัวใน HarnessRouter Console
+เปิด `http://localhost:3000` (login จาก `.env`) → หน้า plugins/MCP ของ harness ที่จะใช้ → เพิ่ม remote MCP (ใช้ชื่อ service ในเครือข่าย compose, **Transport**: HTTP streamable):
+- **HexStrike** (เครื่องมือ pentest): `http://hexstrike-mcp:8001/mcp`
+- **Memory** (จำข้ามรอบ): `http://memory-mcp:8002/mcp`
+- **Specialist** (เขียน exploit): `http://specialist-mcp:8003/mcp` — tool `ask_exploit_specialist`
+
+> Specialist จะคืน error จนกว่าจะมี llama-server ตัวที่ 2 (โมเดล offensive) ขึ้นบน
+> host `:8091` + มี alias `exploit-specialist` ใน `litellm-config.yaml` (ตั้งให้แล้ว).
+> บน Mac: ตั้ง `LLAMA_CMD_SPECIALIST` ใน `pipeline/mac/llama.env` (ดู example).
 
 connection ไปยัง LiteLLM ถูกตั้งไว้ใน `.env` แล้ว (`HR_SECRET_GLOBAL_HARNESS_CONN_LITELLM` + policy) HarnessRouter จะให้ harness ยิงโมเดลผ่าน `http://litellm:4000/v1` เอง ไม่ต้องตั้งใน UI ซ้ำ
 
