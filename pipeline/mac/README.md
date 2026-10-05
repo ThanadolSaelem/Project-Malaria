@@ -75,6 +75,23 @@ curl http://localhost:8888/health      # hexstrike-server (ใน docker, arm64)
 > ชั้นสุดท้าย (สำคัญสุด): system prompt บังคับ "อ่าน code ก่อนรันเสมอ" — output ของ
 > specialist เป็น **draft ให้ review** ไม่ใช่ของที่เอาไปรันดิบๆ
 
+### วิธีเรียก specialist: ใช้ "direct path" สำหรับงานหนัก
+BugTraceAI เป็น reasoning model (คิดก่อนเขียน) + 27B ~15 tok/s → PoC ตัวนึงมักใช้
+เกิน **60 วิ** ซึ่งเกิน **MCP request timeout ของ OpenCode (-32001, ตั้งเพิ่มบน setup นี้
+ไม่ได้)** → การ delegate ผ่าน `ask_exploit_specialist` **ในflow ของ harness จะ timeout**
+สำหรับ PoC ที่ต้องคิดนาน
+
+ทางแก้ที่ใช้จริง — เรียก specialist **ตรงผ่าน LiteLLM** (ไม่ผ่าน harness, ไม่มี 60s cap,
+ได้ reasoning เต็ม):
+```bash
+pipeline/mac/ask-specialist.sh "สิ่งที่อยากให้เขียน" "context: ข้อเท็จจริงที่ยืนยันแล้ว"
+```
+output = code ที่ specialist เขียน (review ก่อนรันเสมอ). ใน harness ปล่อยให้ orchestrator
+(Tiel) เขียนโค้ดเล็กๆ เอง แล้วใช้ `ask-specialist.sh` ตอนต้องการ exploit/PoC จริงจัง.
+
+> อยาก delegate ในflow ให้ลื่น → เปลี่ยน alias `exploit-specialist` ไปชี้โมเดลเล็กเร็ว
+> (เช่น DeepHat-V1-7B) ที่ตอบทัน 60s แล้วเก็บ BugTraceAI-27B ไว้ใช้ผ่าน `ask-specialist.sh`
+
 ## หมายเหตุ
 - **เครื่องมือความปลอดภัย (ครบชุด)**: `Dockerfile.hexstrike-server.arm64` ลงให้
   ครบเท่าที่ทำได้บน arm64:
