@@ -76,15 +76,20 @@ RUN apt-get update && for t in \
 #    release ตรงๆ แบบเดียวกับ httpx (เลือก arch, resolve version ตอน build, tolerant)
 # หมายเหตุ: ตัด cloud scanners (prowler/scoutsuite/checkov) ออกแล้ว เพราะ dep ใหญ่
 #    ทำ build ช้า ~30 นาที + ต้องมี cloud creds ถึงใช้จริง — ลงแยกทีหลังได้ตอนทำงาน cloud
+# retry 3 รอบ + curl --retry: กัน GitHub API rate-limit/เน็ตสะดุดชั่วคราวตอน build
+# (เคสจริง: step นี้พลาดเงียบๆ ตอน build ครั้งนึง ทำให้ image ไม่มี gau)
 RUN A="$(dpkg --print-architecture)"; \
-    VER="$(curl -fsSL https://api.github.com/repos/lc/gau/releases/latest \
+    VER="$(curl -fsSL --retry 3 --retry-delay 2 https://api.github.com/repos/lc/gau/releases/latest \
             | grep -oE '"tag_name"[ :]+"v[0-9.]+"' | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"; \
     VER="${VER:-2.2.4}"; \
     url="https://github.com/lc/gau/releases/download/v${VER}/gau_${VER}_linux_${A}.tar.gz"; \
-    if curl -fsSL "$url" -o /tmp/gau.tgz && tar -C /usr/local/bin -xzf /tmp/gau.tgz gau; then \
-      chmod +x /usr/local/bin/gau && rm -f /tmp/gau.tgz \
-      && echo "gau v${VER} (${A}) -> /usr/local/bin/gau"; \
-    else echo "WARN: gau install failed (url=$url)"; fi
+    ok=0; for i in 1 2 3; do \
+      if curl -fsSL --retry 3 --retry-delay 2 "$url" -o /tmp/gau.tgz \
+         && tar -C /usr/local/bin -xzf /tmp/gau.tgz gau; then \
+        chmod +x /usr/local/bin/gau && rm -f /tmp/gau.tgz \
+        && echo "gau v${VER} (${A}) -> /usr/local/bin/gau" && ok=1 && break; \
+      fi; echo "  [gau] attempt $i failed, retrying…"; sleep $((i*3)); \
+    done; [ "$ok" = 1 ] || echo "WARN: gau install failed after 3 tries (url=$url)"
 
 # nuclei จาก apt มาแบบไม่มี template — ต้องดึงเองครั้งแรก ไม่งั้นสั่ง nuclei แล้ว
 # ไม่มีอะไรให้สแกน ดึงตอน build ฝังลง image เลย (|| true กัน build ล้มถ้าเน็ตสะดุด
@@ -124,16 +129,19 @@ RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/require
 # resolve เวอร์ชันล่าสุดตอน build (API ล่ม → fallback เวอร์ชัน pin); ทนพลาด (|| WARN)
 # ไม่กระทบ `import httpx` ของ python (เป็น library ใน site-packages คนละตัวกับ binary)
 RUN A="$(dpkg --print-architecture)"; \
-    VER="$(curl -fsSL https://api.github.com/repos/projectdiscovery/httpx/releases/latest \
+    VER="$(curl -fsSL --retry 3 --retry-delay 2 https://api.github.com/repos/projectdiscovery/httpx/releases/latest \
             | grep -oE '"tag_name"[ :]+"v[0-9.]+"' | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"; \
     VER="${VER:-1.6.10}"; \
     url="https://github.com/projectdiscovery/httpx/releases/download/v${VER}/httpx_${VER}_linux_${A}.zip"; \
-    if curl -fsSL "$url" -o /tmp/httpx.zip && unzip -o /tmp/httpx.zip httpx -d /usr/local/bin; then \
-      chmod +x /usr/local/bin/httpx \
-      && ln -sf /usr/local/bin/httpx /opt/venv/bin/httpx \
-      && rm -f /tmp/httpx.zip \
-      && echo "PD httpx v${VER} (${A}) -> /opt/venv/bin/httpx"; \
-    else echo "WARN: ติดตั้ง PD httpx ไม่สำเร็จ (url=$url) — httpx -l อาจยังพัง"; fi
+    ok=0; for i in 1 2 3; do \
+      if curl -fsSL --retry 3 --retry-delay 2 "$url" -o /tmp/httpx.zip \
+         && unzip -o /tmp/httpx.zip httpx -d /usr/local/bin; then \
+        chmod +x /usr/local/bin/httpx \
+        && ln -sf /usr/local/bin/httpx /opt/venv/bin/httpx \
+        && rm -f /tmp/httpx.zip \
+        && echo "PD httpx v${VER} (${A}) -> /opt/venv/bin/httpx" && ok=1 && break; \
+      fi; echo "  [httpx] attempt $i failed, retrying…"; sleep $((i*3)); \
+    done; [ "$ok" = 1 ] || echo "WARN: PD httpx install failed after 3 tries (url=$url) — httpx -l อาจยังพัง"
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose) จึงไม่ COPY ทั้งชุด
 # ให้ selenium หา chromium ที่ apt ลงไว้เจอ
