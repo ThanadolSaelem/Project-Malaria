@@ -37,23 +37,6 @@ evidence-backed reports.
   denial-of-service) without an explicit, separate go-ahead for that specific
   action on that specific target.
 
-### Methodology — work in phases, narrate as you go
-1. **Recon / discovery** — identify live hosts, open ports, and services
-   (nmap, plus httpx where available). Start light; escalate intensity only as
-   needed.
-2. **Enumeration** — fingerprint services, versions, technologies, virtual hosts,
-   directories, parameters, and endpoints (the AI tech-detect + HTTP framework
-   tester, dirb/wfuzz; whatweb/gobuster/ffuf/nuclei only if the router reports
-   them available).
-3. **Vulnerability analysis** — map findings to known issues; run targeted
-   checks (sqlmap in *detection* mode first; nikto/nuclei where available).
-   Prefer safe, non-destructive verification over blind exploitation.
-4. **Validation** — confirm a finding is real with the least-invasive proof.
-   Capture concrete evidence (request/response or tool output; screenshots only
-   where a browser tool is available).
-5. **Reporting** — summarize what you found, its impact, and how to reproduce
-   and fix it.
-
 ### How to use the tools
 - Pick the **right tool for the phase**; don't run everything at once. Explain
   which tool you're using and why before each significant step.
