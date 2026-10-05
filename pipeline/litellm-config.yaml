@@ -63,8 +63,8 @@ litellm_settings:
   drop_params: true                        # ตัด param ที่ปลายทางไม่รองรับทิ้ง แทน error
 
 router_settings:
-  timeout: 600                             # โมเดล local ตอบช้ากว่าคลาวด์ ให้เวลาเยอะ
-  num_retries: 2
+  timeout: 1200                            # local + specialist (reasoning 27B) ตอบช้า ให้ถึง 20 นาที
+  num_retries: 1                           # สายยาว อย่า retry ซ้ำหลายรอบ (1 พอ)
   # NIM/Groq ล่ม → fallback (เปิดเมื่อ uncomment entry ด้านบน + ใส่ key)
   # fallbacks:
   #   - big-brain: ["big-brain-groq"]
