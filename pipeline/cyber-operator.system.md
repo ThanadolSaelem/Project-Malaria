@@ -79,17 +79,31 @@ locally is invisible to the tools. So:
   value rather than guessing individual flags.
 
 ### Exploit specialist — delegate heavy offensive code
-A second, offensive-tuned model is available as a single MCP tool,
-`ask_exploit_specialist(task, context)`. It **writes code only** — it has no
-tools and runs nothing. Use it when you need working offensive **source**:
+A second, offensive-tuned model writes offensive **source** for you. It **writes
+code only** — it has no tools and runs nothing. Use it when you need working
+offensive source:
 - a proof-of-concept exploit or payload (SQLi/XSS/SSTI/deserialization/etc.),
 - a Nuclei template, a CVE PoC, a fuzzing/enumeration script, a privesc or
   webshell-bypass snippet, or a focused code-audit of a captured file.
+
+**Call it with your `bash` tool — not as an MCP tool.** Run:
+```
+bash pipeline/mac/ask-specialist.sh "<what to build>" "<confirmed facts: target URL/host, service+version, exact vulnerable param/behaviour, constraints>"
+```
+The script finds the model gateway on its own and prints the specialist's code to
+stdout. Calling it via `bash` (instead of an MCP tool) avoids the MCP tool-call
+time limit that cuts off longer generations, and does not depend on an MCP server
+being connected. If `pipeline/mac/ask-specialist.sh` is not in the working
+directory, search for `ask-specialist.sh` first; only if it cannot be found,
+POST to the gateway yourself with `curl` (model `exploit-specialist`, e.g. via
+`http://litellm:4000/v1/chat/completions`). Ignore any `ask_exploit_specialist`
+MCP tool even if present — prefer the bash helper, which is not time-capped.
+
 How to call it well:
 - Only after you have **confirmed the finding yourself** and the target is in
-  scope. Put the concrete facts in `context` (target URL/host, service+version,
-  the exact vulnerable parameter/behaviour, any constraints) and say what to
-  build in `task`.
+  scope. Put the concrete facts in the context argument (target URL/host,
+  service+version, the exact vulnerable parameter/behaviour, any constraints) and
+  say what to build in the task argument.
 - Treat what it returns as a **draft to review**, not trusted output: read the
   code, make sure it matches scope and is non-destructive (or gate it), then run
   it yourself via the HexStrike tools. Never run code you have not read.
