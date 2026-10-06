@@ -79,10 +79,19 @@ if [ -n "$SPEC_CMD" ] && [ "${SPECIALIST_SANDBOX:-1}" = "1" ]; then
 fi
 start_llama "${LLAMA_PORT_SPECIALIST}" "$SPEC_CMD" "specialist (exploit model)" "llama-specialist.log"
 
+# ── summarizer (:8092) — โมเดลเล็กสำหรับ dashboard (SHA เช็กถ้าตั้งไว้, ไม่ sandbox) ──
+SUM_CMD="${LLAMA_CMD_SUMMARIZER:-}"
+if [ -n "$SUM_CMD" ] && ! verify_sha256 "${SUMMARIZER_MODEL_FILE:-}" "${SUMMARIZER_MODEL_SHA256:-}" "summarizer model"; then
+  echo "⚠️  ข้ามการสตาร์ท summarizer — ไฟล์ไม่ผ่านการตรวจ"
+  SUM_CMD=""
+fi
+start_llama "${LLAMA_PORT_SUMMARIZER:-8092}" "$SUM_CMD" "summarizer (Qwen2.5-3B)" "llama-summarizer.log"
+
 echo ""
 echo "──────────────────────────────────────────────────────────────"
 echo "โมเดลพร้อม:"
 echo "  • Tiel       : http://localhost:${LLAMA_PORT}/v1/models"
 echo "  • specialist : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/models"
-echo "ปิดทั้งคู่: pkill -f llama-server"
+echo "  • summarizer : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092}/v1/models"
+echo "ปิดทั้งหมด: pkill -f llama-server"
 echo "──────────────────────────────────────────────────────────────"
