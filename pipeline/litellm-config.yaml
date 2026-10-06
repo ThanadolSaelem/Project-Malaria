@@ -44,6 +44,15 @@ model_list:
       api_base: http://host.docker.internal:8091/v1
       api_key: "sk-local"
 
+  # ---- summarizer (llama.cpp ตัวที่ 3, host :8092) ----
+  # โมเดลเล็ก (ดีฟอลต์ Qwen2.5-3B-Instruct) สำหรับ observer dashboard —
+  # สรุปงานของ Tiel เป็น EN+TH แบบ parallel (ไม่กวน orchestrator/specialist)
+  - model_name: summarizer
+    litellm_params:
+      model: openai/summarizer             # ต้องตรงกับ id ใน curl :8092/v1/models
+      api_base: http://host.docker.internal:8092/v1
+      api_key: "sk-local"
+
   # ---- (ออปชัน) cloud fallback — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
   # เปิดใช้: เอา comment ออก + ใส่ชื่อใน router_settings.fallbacks
   # - model_name: big-brain-groq

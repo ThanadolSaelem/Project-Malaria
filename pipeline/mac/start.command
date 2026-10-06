@@ -103,6 +103,14 @@ if [ -n "$SPEC_CMD" ] && [ "${SPECIALIST_SANDBOX:-1}" = "1" ]; then
 fi
 start_llama "${LLAMA_PORT_SPECIALIST}" "$SPEC_CMD" "specialist (exploit model)" "llama-specialist.log"
 
+# ── summarizer (:8092) — โมเดลเล็กสำหรับ observer dashboard (SHA เช็กถ้าตั้ง, ไม่ sandbox) ──
+SUM_CMD="${LLAMA_CMD_SUMMARIZER:-}"
+if [ -n "$SUM_CMD" ] && ! verify_sha256 "${SUMMARIZER_MODEL_FILE:-}" "${SUMMARIZER_MODEL_SHA256:-}" "summarizer model"; then
+  echo "      ⚠️  ข้ามการสตาร์ท summarizer — ไฟล์ไม่ผ่านการตรวจ"
+  SUM_CMD=""
+fi
+start_llama "${LLAMA_PORT_SUMMARIZER:-8092}" "$SUM_CMD" "summarizer (Qwen2.5-3B)" "llama-summarizer.log"
+
 # ── 2) container ทั้ง stack ──────────────────────────────────────────────────
 echo "[2/3] docker compose up (litellm + hexstrike-server arm64 + hexstrike-mcp + harnessrouter)…"
 cd "$PIPELINE" || { echo "เข้า $PIPELINE ไม่ได้"; exit 1; }
@@ -112,15 +120,28 @@ if [ ! -f .env ]; then
 fi
 docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
 
+# ── observer dashboard (สรุปงาน Tiel EN+TH + alert) — รัน background ถ้ามี summarizer ──
+if [ -f "$HERE/summarize-watch.py" ] && command -v python3 >/dev/null 2>&1; then
+  if ! curl -s -o /dev/null -w '%{http_code}' "http://localhost:${WATCH_PORT:-8005}/state" 2>/dev/null | grep -q '^200$'; then
+    nohup python3 "$HERE/summarize-watch.py" > "$HERE/logs/summarize-watch.log" 2>&1 &
+    echo "      • observer dashboard → http://localhost:${WATCH_PORT:-8005} (log: logs/summarize-watch.log)"
+  else
+    echo "      • observer dashboard ทำงานอยู่แล้ว → http://localhost:${WATCH_PORT:-8005}"
+  fi
+  open "http://localhost:${WATCH_PORT:-8005}" 2>/dev/null || true
+fi
+
 # ── 3) เปิดหน้า console ───────────────────────────────────────────────────────
 echo "[3/3] เปิด HarnessRouter → http://localhost:3000"
 open "http://localhost:3000" 2>/dev/null || true
 
 echo ""
 echo "──────────────────────────────────────────────────────────────"
-echo "สรุป: โมเดล 2 ตัวรัน native, ที่เหลืออยู่ใน docker"
+echo "สรุป: โมเดล native + stack ใน docker"
 echo "  • orchestrator (Tiel) : http://localhost:${LLAMA_PORT}/v1/models"
 echo "  • specialist          : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/models"
+echo "  • summarizer          : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092}/v1/models"
+echo "  • observer dashboard  : http://localhost:${WATCH_PORT:-8005}"
 echo "  • console             : http://localhost:3000"
 echo ""
 echo "เรียก specialist เขียน exploit/PoC แบบ full-quality (direct path, ไม่ติด harness timeout):"
