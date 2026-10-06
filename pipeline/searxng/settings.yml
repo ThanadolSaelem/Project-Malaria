@@ -15,7 +15,13 @@ general:
   contact_url: false
 
 server:
-  secret_key: "local-only-change-me-4d9f1c2b7a6e8f0313255c9ab1e7d0f4"
+  # secret_key เซ็น session/CSRF ของ "หน้าเว็บ" SearXNG เท่านั้น — instance นี้
+  # ไม่ publish ออกนอกเครื่อง (search-mcp เรียกแบบ server-to-server ภายใน compose)
+  # จึงใช้ค่า default placeholder ได้อย่างปลอดภัยใน lab นี้ (ไม่ใช่ secret จริง)
+  # ถ้าวันหน้าจะเปิดหน้าเว็บให้คนอื่นเข้าถึง → ตั้งค่าสุ่มของตัวเองแทน เช่น
+  #   ตั้ง SEARXNG_SECRET ใน .env (gitignored) + mount /etc/searxng แบบ rw ให้
+  #   entrypoint แทน "ultrasecret" ด้วยค่านั้น
+  secret_key: "ultrasecret"
   limiter: false
   image_proxy: false
 
