@@ -111,6 +111,33 @@ services:
       - litellm
     restart: unless-stopped
 
+  # ── ชั้นค้นหาเว็บ (MCP over HTTP) ────────────────────────────────────────
+  # SearXNG (metasearch self-hosted, ไม่ต้องใช้ API key) + MCP wrapper ให้ Tiel มี
+  # tool web_search / fetch_url. การออกเน็ตเกิดในคอนเทนเนอร์พวกนี้ (มีเน็ตเหมือน
+  # hexstrike-server ที่โหลด nuclei templates) → Tiel ไม่ต้องมีเน็ตใน sandbox เอง
+  searxng:
+    image: searxng/searxng:latest
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+
+  search-mcp:
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.hexstrike-mcp
+    command: ["python", "/app/pipeline/search_mcp_http.py"]
+    volumes:
+      - ./search_mcp_http.py:/app/pipeline/search_mcp_http.py:ro
+    environment:
+      SEARXNG_BASE: http://searxng:8080   # service DNS ภายใน compose network
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8004
+    ports:
+      - "127.0.0.1:8004:8004"
+    depends_on:
+      - searxng
+    restart: unless-stopped
+
   # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
   harnessrouter:
     image: harnessrouter/harnessrouter:latest
