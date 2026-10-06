@@ -1,0 +1,33 @@
+# =============================================================================
+# SearXNG — ตั้งค่าขั้นต่ำสำหรับใช้เป็น search backend ภายใน (เรียกจาก search-mcp)
+# -----------------------------------------------------------------------------
+# - เปิด format "json" เพื่อให้ search-mcp ดึงผลเป็น JSON ได้
+# - ปิด limiter/bot-detection เพราะเรียกแบบ server-to-server ภายใน compose network
+#   (SearXNG bind ภายในเท่านั้น ไม่ได้ publish ออกนอกเครื่อง)
+# - secret_key: ใช้ภายใน local lab เท่านั้น — ถ้าจะเปิดให้คนอื่นเข้าถึง ให้เปลี่ยนเป็น
+#   ค่าสุ่มของตัวเอง:  python3 -c "import secrets;print(secrets.token_hex(32))"
+# =============================================================================
+use_default_settings: true
+
+general:
+  instance_name: "pipeline-search"
+  donation_url: false
+  contact_url: false
+
+server:
+  # secret_key เซ็น session/CSRF ของ "หน้าเว็บ" SearXNG เท่านั้น — instance นี้
+  # ไม่ publish ออกนอกเครื่อง (search-mcp เรียกแบบ server-to-server ภายใน compose)
+  # จึงใช้ค่า default placeholder ได้อย่างปลอดภัยใน lab นี้ (ไม่ใช่ secret จริง)
+  # ถ้าวันหน้าจะเปิดหน้าเว็บให้คนอื่นเข้าถึง → ตั้งค่าสุ่มของตัวเองแทน เช่น
+  #   ตั้ง SEARXNG_SECRET ใน .env (gitignored) + mount /etc/searxng แบบ rw ให้
+  #   entrypoint แทน "ultrasecret" ด้วยค่านั้น
+  secret_key: "ultrasecret"
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json

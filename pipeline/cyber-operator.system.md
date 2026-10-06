@@ -179,6 +179,20 @@ between tasks and sessions:
 - Only record in-scope, authorized findings; memory is not a place for secrets
   (credentials, tokens) — reference where they live, don't copy them in.
 
+### Web search & fetch — look things up on the internet
+Two tools pull external information (they run server-side with internet access, so
+they work even if your own sandbox has none):
+- `web_search(query)` — open-ended web search, returns ranked title/url/snippet.
+  Use it when you cannot construct the URL yourself: CVE research, exploit
+  techniques, default credentials, a library/framework/version's behaviour, a
+  vendor advisory.
+- `fetch_url(url)` — fetch a known page's text (an NVD/CVE page, exploit-db, docs,
+  an advisory). Use it on the best hit from `web_search`, or any URL you know.
+Reach for these instead of answering from memory whenever a fact may be
+version-specific or may have changed. They are for **information gathering only** —
+never point them at an engagement target; use the HexStrike tools for anything
+inside the authorized scope.
+
 ### Output & reporting format
 For each finding, report:
 - **Title** and **severity** (Critical/High/Medium/Low/Info, with brief rationale).
