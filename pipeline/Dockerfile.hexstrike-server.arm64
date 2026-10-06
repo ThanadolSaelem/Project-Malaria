@@ -4,10 +4,13 @@
 # ต่างจาก Dockerfile.hexstrike-server (Kali/amd64) ตรงที่ตัวนี้เป็น debian arm64
 # แท้ → รัน NATIVE บน M-series ไม่ emulate และลงเครื่องมือให้ "ครบ" ที่สุดเท่าที่
 # ทำได้บน arm64:
-#   - apt:   nmap masscan dirb wfuzz sqlmap hydra john dnsenum dnsrecon ฯลฯ
-#   - Go:    nuclei httpx subfinder naabu katana dnsx gobuster (ProjectDiscovery+)
+#   - apt:   nmap masscan dirb wfuzz sqlmap hydra john dnsenum dnsrecon whois
+#            jq openssl dnsutils(dig) netcat ฯลฯ
+#   - Go:    nuclei httpx subfinder naabu katana dnsx gobuster ffuf dalfox gau
+#            waybackurls hakrawler anew qsreplace amass
 #   - Rust:  feroxbuster (binary สำเร็จรูป)
 #   - clone: whatweb (ruby) + nikto (perl)
+#   - pip:   wafw00f + theHarvester (OSINT)
 #   - data:  nuclei templates + SecLists wordlists
 #
 # ออกแบบให้ "ทนพลาด": ตัวที่โหลด/บิลด์ไม่สำเร็จจะข้าม (|| echo skip) ไม่ล้มทั้ง
@@ -36,7 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── ชั้น 2: security tools จาก apt — ลงทีละตัว ตัวที่ debian ไม่มี ข้ามไป ──────
 RUN apt-get update && for t in \
-      nmap masscan dnsutils dnsenum dnsrecon \
+      nmap masscan dnsutils dnsenum dnsrecon whois \
+      jq openssl \
       dirb wfuzz sqlmap hydra john netcat-traditional \
       chromium chromium-driver ; do \
       apt-get install -y --no-install-recommends "$t" \
@@ -62,6 +66,14 @@ RUN set -x; \
     go install github.com/projectdiscovery/katana/cmd/katana@latest          || echo "⚠ skip katana"; \
     go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest              || echo "⚠ skip dnsx"; \
     go install github.com/OJ/gobuster/v3@latest                              || echo "⚠ skip gobuster"; \
+    go install github.com/ffuf/ffuf/v2@latest                                || echo "⚠ skip ffuf"; \
+    go install github.com/hahwul/dalfox/v2@latest                            || echo "⚠ skip dalfox"; \
+    go install github.com/lc/gau/v2/cmd/gau@latest                           || echo "⚠ skip gau"; \
+    go install github.com/tomnomnom/waybackurls@latest                       || echo "⚠ skip waybackurls"; \
+    go install github.com/hakluke/hakrawler@latest                           || echo "⚠ skip hakrawler"; \
+    go install github.com/tomnomnom/anew@latest                              || echo "⚠ skip anew"; \
+    go install github.com/tomnomnom/qsreplace@latest                         || echo "⚠ skip qsreplace"; \
+    go install github.com/owasp-amass/amass/v4/...@master                    || echo "⚠ skip amass"; \
     go clean -cache -modcache 2>/dev/null || true
 
 # ── ชั้น 5: feroxbuster (ตัวติดตั้งทางการ auto-detect arch → binary arm64) ────
@@ -96,6 +108,9 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # จริง — ตัดได้ไม่กระทบ endpoint, เป็น dep tree หนัก/เปราะสุดโดยเฉพาะบน arm64)
 RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
     && pip install --no-cache-dir -r /app/requirements.container.txt
+# เครื่องมือ OSINT/recon แบบ python (ทนพลาด — ตัวไหนลงไม่ได้ข้าม ไม่ล้ม build)
+RUN pip install --no-cache-dir wafw00f    || echo "⚠ skip wafw00f"
+RUN pip install --no-cache-dir theHarvester || echo "⚠ skip theHarvester"
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose.mac.yml) จึงไม่ COPY
 ENV CHROME_BIN=/usr/bin/chromium \
