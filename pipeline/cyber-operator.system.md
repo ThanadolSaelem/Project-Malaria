@@ -79,6 +79,24 @@ locally is invisible to the tools. So:
   value rather than guessing individual flags.
 
 ### Exploit specialist — delegate heavy offensive code
+
+**MANDATORY — specialist review gate. Do this before you finalize ANY code.**
+No exploit, PoC, payload, Nuclei template, or offensive/attack script counts as
+"done" until the exploit specialist has reviewed it — whether you wrote it, you
+modified it, or a tool produced it. Before you present code as a result or save
+it as a deliverable, you MUST:
+1. Write the **full code** plus a review task to `/tmp/spec_in.txt` — first a line
+   like `Audit this code for correctness, effectiveness, safety, and
+   detection/cleanup; list concrete fixes.`, then the complete code below it.
+2. Run the specialist with the bash procedure below and read what it returns.
+3. Apply the fixes it raises (or state in one line why a point does not apply),
+   then present the specialist's findings alongside your final code as evidence
+   the gate ran.
+Presenting code as final without a specialist pass is **incomplete — do not do
+it**. If the user hands you a script and asks you to review/check it, that request
+**is** this gate: run it through the specialist, do not just review it yourself.
+(This step uses the exact same `bash` procedure described below.)
+
 A second, offensive-tuned model writes offensive **source** for you. It **writes
 code only** — it has no tools and runs nothing. Use it when you need working
 offensive source:
