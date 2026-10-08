@@ -87,11 +87,24 @@ if [ -n "$SUM_CMD" ] && ! verify_sha256 "${SUMMARIZER_MODEL_FILE:-}" "${SUMMARIZ
 fi
 start_llama "${LLAMA_PORT_SUMMARIZER:-8092}" "$SUM_CMD" "summarizer (Qwen2.5-3B)" "llama-summarizer.log"
 
+# ── vision: SHA เช็กถ้าตั้ง + ต้องมี mmproj → สตาร์ท ─────────────────────────
+VIS_CMD="${LLAMA_CMD_VISION:-}"
+if [ -n "$VIS_CMD" ] && ! verify_sha256 "${VISION_MODEL_FILE:-}" "${VISION_MODEL_SHA256:-}" "vision model"; then
+  echo "⚠️  ข้ามการสตาร์ท vision — ไฟล์ไม่ผ่านการตรวจ"
+  VIS_CMD=""
+fi
+if [ -n "$VIS_CMD" ] && [ ! -f "${VISION_MMPROJ_FILE:-}" ]; then
+  echo "⚠️  ข้ามการสตาร์ท vision — ไม่พบไฟล์ mmproj (จำเป็นสำหรับอ่านภาพ): ${VISION_MMPROJ_FILE:-<ไม่ได้ตั้ง>}"
+  VIS_CMD=""
+fi
+start_llama "${LLAMA_PORT_VISION:-8093}" "$VIS_CMD" "vision (Qwen2.5-VL-7B)" "llama-vision.log"
+
 echo ""
 echo "──────────────────────────────────────────────────────────────"
 echo "โมเดลพร้อม:"
 echo "  • Tiel       : http://localhost:${LLAMA_PORT}/v1/models"
 echo "  • specialist : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/models"
 echo "  • summarizer : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092}/v1/models"
+echo "  • vision     : http://localhost:${LLAMA_PORT_VISION:-8093}/v1/models"
 echo "ปิดทั้งหมด: pkill -f llama-server"
 echo "──────────────────────────────────────────────────────────────"
