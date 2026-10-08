@@ -53,6 +53,16 @@ model_list:
       api_base: http://host.docker.internal:8092/v1
       api_key: "sk-local"
 
+  # ---- vision (llama.cpp ตัวที่ 4, host :8093) ----
+  # โมเดล multimodal (ดีฟอลต์ Qwen2.5-VL-7B) ที่ "อ่านภาพได้" — รับ messages ที่มี
+  # image_url (data URL base64) ส่งเข้ามา แล้วตอบข้อความ. เรียกผ่าน ask-vision.sh
+  # ต้องสตาร์ท llama-server :8093 ด้วย --mmproj (ดู llama.env) ไม่งั้นอ่านภาพไม่ได้
+  - model_name: vision
+    litellm_params:
+      model: openai/vision                 # ต้องตรงกับ id ใน curl :8093/v1/models
+      api_base: http://host.docker.internal:8093/v1
+      api_key: "sk-local"
+
   # ---- (ออปชัน) cloud fallback — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
   # เปิดใช้: เอา comment ออก + ใส่ชื่อใน router_settings.fallbacks
   # - model_name: big-brain-groq

@@ -111,6 +111,18 @@ if [ -n "$SUM_CMD" ] && ! verify_sha256 "${SUMMARIZER_MODEL_FILE:-}" "${SUMMARIZ
 fi
 start_llama "${LLAMA_PORT_SUMMARIZER:-8092}" "$SUM_CMD" "summarizer (Qwen2.5-3B)" "llama-summarizer.log"
 
+# ── vision (:8093) — โมเดลอ่านภาพ (ต้องมี mmproj); SHA เช็กถ้าตั้ง, ไม่ sandbox ──
+VIS_CMD="${LLAMA_CMD_VISION:-}"
+if [ -n "$VIS_CMD" ] && ! verify_sha256 "${VISION_MODEL_FILE:-}" "${VISION_MODEL_SHA256:-}" "vision model"; then
+  echo "      ⚠️  ข้ามการสตาร์ท vision — ไฟล์ไม่ผ่านการตรวจ"
+  VIS_CMD=""
+fi
+if [ -n "$VIS_CMD" ] && [ ! -f "${VISION_MMPROJ_FILE:-}" ]; then
+  echo "      ⚠️  ข้ามการสตาร์ท vision — ไม่พบไฟล์ mmproj (${VISION_MMPROJ_FILE:-<ไม่ได้ตั้ง>}) ซึ่งจำเป็นสำหรับอ่านภาพ"
+  VIS_CMD=""
+fi
+start_llama "${LLAMA_PORT_VISION:-8093}" "$VIS_CMD" "vision (Qwen2.5-VL-7B)" "llama-vision.log"
+
 # ── 2) container ทั้ง stack ──────────────────────────────────────────────────
 echo "[2/3] docker compose up (litellm + hexstrike-server arm64 + hexstrike-mcp + harnessrouter)…"
 cd "$PIPELINE" || { echo "เข้า $PIPELINE ไม่ได้"; exit 1; }
@@ -141,11 +153,15 @@ echo "สรุป: โมเดล native + stack ใน docker"
 echo "  • orchestrator (Tiel) : http://localhost:${LLAMA_PORT}/v1/models"
 echo "  • specialist          : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/models"
 echo "  • summarizer          : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092}/v1/models"
+echo "  • vision (อ่านภาพ)     : http://localhost:${LLAMA_PORT_VISION:-8093}/v1/models"
 echo "  • observer dashboard  : http://localhost:${WATCH_PORT:-8005}"
 echo "  • console             : http://localhost:3000"
 echo ""
 echo "เรียก specialist เขียน exploit/PoC แบบ full-quality (direct path, ไม่ติด harness timeout):"
 echo "  pipeline/mac/ask-specialist.sh \"สิ่งที่อยากให้เขียน\" \"context...\""
+echo ""
+echo "ให้โมเดลอ่านภาพ (screenshot เว็บมิจฉาชีพ / PDF ราชการที่ scan):"
+echo "  pipeline/mac/ask-vision.sh รูป.png \"ในภาพเขียนว่าอะไร สรุปเป็นภาษาไทย\""
 echo "──────────────────────────────────────────────────────────────"
 echo "เช็คสถานะ: docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full ps"
 echo "ปิดทั้งหมด:      docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full down"
