@@ -138,6 +138,30 @@ services:
       - searxng
     restart: unless-stopped
 
+  # ── ชั้นสแกนภาพเอกสาร (vFlat — dewarp + enhance ก่อนป้อน vision model) ─────
+  # รูปถ่ายเอกสาร/หลักฐานที่เบี้ยว/แสงไม่ดี → รีดให้แบน ลบเงา ทำพื้นขาว คมขึ้น
+  # ก่อนส่งให้ vision model (Qwen2.5-VL) อ่าน → OCR แม่นขึ้นมาก
+  #   POST /scan  (file=@photo.jpg | doc.pdf)  → image/jpeg หรือ application/pdf
+  #   GET  /healthz
+  # รัน CPU ล้วน (TFLite + OpenCV, ไม่ต้องใช้ GPU) โมเดลฝังใน image (~7MB)
+  # ภายใน compose: http://vflat-scan:8000  |  จาก host: http://localhost:8006
+  vflat-scan:
+    build:
+      context: ./vflat
+      dockerfile: Dockerfile
+    environment:
+      VFLAT_THREADS: ${VFLAT_THREADS:-4}   # 4 บน Mac หลายคอร์ (host คอร์เดียวตั้ง 1)
+    ports:
+      - "127.0.0.1:8006:8000"
+    mem_limit: 1500m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
   # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
   harnessrouter:
     image: harnessrouter/harnessrouter:latest
