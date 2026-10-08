@@ -193,6 +193,49 @@ version-specific or may have changed. They are for **information gathering only*
 never point them at an engagement target; use the HexStrike tools for anything
 inside the authorized scope.
 
+### Read images (vision) — screenshots, photos, scanned documents
+A vision model (`vision`) can **read and understand an image**: text in a
+screenshot, a photo of a document, a scanned PDF page, a login/UI capture, a
+QR/label. Use it whenever evidence or source material is an image rather than
+text — do not guess what an image says, read it.
+
+**Call it with your `bash` tool — not as an MCP tool** (self-contained, needs no
+repo file). The image must be a path your bash can read (a file in your
+workspace, or one you fetched/saved there). Set the three variables at the top,
+run it, and read what it prints:
+
+```
+python3 - <<'PY'
+import base64, json, urllib.request, mimetypes
+IMG  = "/path/to/image.png"   # รูปที่จะให้อ่าน (path ที่ bash อ่านได้)
+Q    = "อ่านข้อความในภาพให้ครบ แล้วสรุปสาระสำคัญเป็นภาษาไทย"
+SCAN = False                  # True = รีดเอกสารให้แบน+ลบเงาก่อน (เฉพาะ "รูปถ่าย" เอกสารเบี้ยว)
+raw = open(IMG, "rb").read()
+if SCAN:  # ผ่าน vFlat ก่อน (screenshot/ภาพคมอยู่แล้วไม่ต้องเปิด — ถ้า vFlat พลาดใช้รูปเดิม)
+    b = "----b"; body = (f"--{b}\r\nContent-Disposition: form-data; name=\"file\"; "
+        f"filename=\"in.jpg\"\r\n\r\n").encode() + raw + f"\r\n--{b}--\r\n".encode()
+    try:
+        r = urllib.request.Request("http://vflat-scan:8000/scan?dewarp=true", data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={b}"})
+        raw = urllib.request.urlopen(r, timeout=120).read()
+    except Exception as e:
+        print("vflat skip:", e)
+url = f"data:{mimetypes.guess_type(IMG)[0] or 'image/png'};base64," + base64.b64encode(raw).decode()
+body = json.dumps({"model": "vision", "messages": [{"role": "user", "content": [
+    {"type": "image_url", "image_url": {"url": url}}, {"type": "text", "text": Q}]}],
+    "temperature": 0.1, "max_tokens": 2048}).encode()
+req = urllib.request.Request("http://litellm:4000/v1/chat/completions", data=body,
+    headers={"Content-Type": "application/json", "Authorization": "Bearer sk-local"})
+print(json.load(urllib.request.urlopen(req, timeout=600))["choices"][0]["message"]["content"])
+PY
+```
+If `http://litellm:4000` is unreachable, use `http://host.docker.internal:8093`
+(same model name `vision`). Set `SCAN = True` only for a **photo** of a paper
+document (skewed/shadowed) — for screenshots or already-flat images leave it
+`False`. Treat the text it returns as **read from the image, to verify** — quote
+it as evidence, don't invent detail the model may have mis-read. Vision reads
+images only; it runs nothing and is not a target interaction.
+
 ### Output & reporting format
 For each finding, report:
 - **Title** and **severity** (Critical/High/Medium/Low/Info, with brief rationale).
