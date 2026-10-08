@@ -1,0 +1,19 @@
+# As it runs in the Chamer project (~/chamer/docker-compose.yml on the Oracle VM).
+# Build first:  docker build -t vflat-scan:arm64 .
+# Other services on the same compose network call http://vflat-scan:8000/scan
+# Health check endpoint: /healthz
+services:
+  vflat-scan:
+    image: vflat-scan:arm64
+    restart: unless-stopped
+    # No published port: reachable only from the compose network.
+    # Add `ports: ["8000:8000"]` to call it from the host.
+    environment:
+      VFLAT_THREADS: "1"   # 1 on a single-core host; image default is 4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    mem_limit: 1500m
