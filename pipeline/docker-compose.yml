@@ -37,6 +37,9 @@ services:
       dockerfile: pipeline/Dockerfile.hexstrike-server
     volumes:
       - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
+      # วางไฟล์ handshake ที่จับมา (.cap/.pcap/.hccapx) ไว้ใน pipeline/captures/
+      # แล้ว aircrack-ng/hashcat ในคอนเทนเนอร์อ่านได้ที่ /captures (เขียนผลกลับได้)
+      - ./captures:/captures
     environment:
       HEXSTRIKE_PORT: 8888
     # nmap -sS / masscan ต้องใช้ raw socket → ให้ capability นี้กับ container

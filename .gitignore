@@ -12,3 +12,7 @@ pipeline/mac/.reqs.txt
 # mac one-button local config + logs
 pipeline/mac/llama.env
 pipeline/mac/logs/
+
+# handshake/hash ที่จับมา — ไม่ commit (sensitive + ใหญ่) เก็บแค่ README
+pipeline/captures/*
+!pipeline/captures/README.txt

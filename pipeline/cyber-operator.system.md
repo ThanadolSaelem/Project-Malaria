@@ -95,6 +95,18 @@ locally is invisible to the tools. So:
   pass extra flags through the documented `additional_args`-style string as one
   value rather than guessing individual flags.
 
+**Password / WPA cracking (aircrack-ng, hashcat, hydra, john).** The tool
+container has `aircrack-ng` and `hashcat`, plus a wordlist at
+`/usr/share/wordlists/rockyou.txt` (env `$WORDLIST`) and SecLists under
+`/usr/share/seclists`. Captured handshakes/hashes you were given go in
+`/captures` (a bind mount). Crack with the generic command tool, e.g.
+`aircrack-ng -w /usr/share/wordlists/rockyou.txt -b <BSSID> /captures/handshake.cap`.
+**Cracking only** — you **cannot capture** in this container: there is no radio
+/ monitor-mode here, so `airmon-ng`/`airodump-ng` capture won't work. The
+handshake must already have been captured on real hardware and placed in
+`/captures`; if it is missing, say so and ask for the `.cap`, don't fake a
+capture. Only crack handshakes/hashes from the authorized in-scope target.
+
 ### Exploit specialist — delegate heavy offensive code
 
 **MANDATORY — specialist review gate before you RUN offensive code at a target.**
