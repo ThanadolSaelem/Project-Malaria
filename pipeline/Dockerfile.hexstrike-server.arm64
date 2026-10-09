@@ -5,7 +5,9 @@
 # แท้ → รัน NATIVE บน M-series ไม่ emulate และลงเครื่องมือให้ "ครบ" ที่สุดเท่าที่
 # ทำได้บน arm64:
 #   - apt:   nmap masscan dirb wfuzz sqlmap hydra john dnsenum dnsrecon whois
-#            jq openssl dnsutils(dig) netcat ฯลฯ
+#            jq openssl dnsutils(dig) netcat aircrack-ng hashcat ฯลฯ
+#   - wordlist: rockyou.txt (แตกจาก SecLists) ที่ /usr/share/wordlists ($WORDLIST)
+#            สำหรับแครก WPA handshake / hash — วางไฟล์ .cap ที่ /captures (bind mount)
 #   - Go:    nuclei httpx subfinder naabu katana dnsx gobuster ffuf dalfox gau
 #            waybackurls hakrawler anew qsreplace amass
 #   - Rust:  feroxbuster (binary สำเร็จรูป)
@@ -42,6 +44,7 @@ RUN apt-get update && for t in \
       nmap masscan dnsutils dnsenum dnsrecon whois \
       jq openssl \
       dirb wfuzz sqlmap hydra john netcat-traditional \
+      aircrack-ng hashcat \
       chromium chromium-driver ; do \
       apt-get install -y --no-install-recommends "$t" \
         && echo "  [apt] ✓ $t" \
@@ -99,6 +102,22 @@ RUN if [ "$INSTALL_SECLISTS" = "true" ]; then \
         || echo "⚠ skip SecLists (clone พลาด)"; \
     else echo "skip SecLists (INSTALL_SECLISTS=$INSTALL_SECLISTS)"; fi
 
+# ── ชั้น 7b: wordlist สำหรับ aircrack-ng / hashcat / hydra ───────────────────
+#   แตก rockyou.txt (~14M คำ) จาก SecLists มาวางที่ path มาตรฐาน /usr/share/wordlists
+#   เพื่อให้คำสั่งแครกสั้นลง:  aircrack-ng -w $WORDLIST -b <BSSID> /captures/hs.cap
+#   ถ้า INSTALL_SECLISTS=false (ไม่มี rockyou) ให้เอา wordlist ไปวางเองที่โฟลเดอร์นี้
+RUN mkdir -p /usr/share/wordlists \
+    && ROCK=/usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt.tar.gz; \
+    if [ -f "$ROCK" ]; then \
+      tar -xzf "$ROCK" -C /usr/share/wordlists/ \
+        && echo "✓ rockyou.txt -> /usr/share/wordlists/rockyou.txt"; \
+    elif [ -f /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt ]; then \
+      cp /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt /usr/share/wordlists/ \
+        && echo "✓ rockyou.txt (plain) -> /usr/share/wordlists/"; \
+    else \
+      echo "⚠ ไม่พบ rockyou ใน SecLists — ใส่ wordlist เองที่ /usr/share/wordlists (bind-mount ได้)"; \
+    fi
+
 # ── ชั้น 8: python deps ของ hexstrike_server.py (venv แยก ไม่แตะ system python) ─
 WORKDIR /app
 COPY hexstrike-ai-main/requirements.txt /app/requirements.txt
@@ -115,7 +134,8 @@ RUN pip install --no-cache-dir theHarvester || echo "⚠ skip theHarvester"
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose.mac.yml) จึงไม่ COPY
 ENV CHROME_BIN=/usr/bin/chromium \
     CHROMEDRIVER_PATH=/usr/bin/chromedriver \
-    SECLISTS_PATH=/usr/share/seclists
+    SECLISTS_PATH=/usr/share/seclists \
+    WORDLIST=/usr/share/wordlists/rockyou.txt
 
 EXPOSE 8888
 CMD ["python3", "/app/hexstrike-ai-main/hexstrike_server.py", "--port", "8888"]
