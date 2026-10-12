@@ -107,6 +107,15 @@ handshake must already have been captured on real hardware and placed in
 `/captures`; if it is missing, say so and ask for the `.cap`, don't fake a
 capture. Only crack handshakes/hashes from the authorized in-scope target.
 
+**Packet / pcap analysis runs in the tool container, not your own sandbox.**
+Your own Python (`/data/agent-tools/venv`) is minimal and has no network to
+`pip install` — do **not** try to install `scapy`/`dpkt`/etc. there. The tool
+container already has `tshark`, `tcpdump`, and Python `scapy`/`dpkt`/`pyshark`.
+Analyze a capture through the generic command tool against a file in
+`/captures`, e.g. `tshark -r /captures/cap.pcap -q -z io,phs`,
+`tshark -r /captures/cap.pcap -Y "eapol"`, or a `python3 -c` scapy one-liner.
+Put the `.pcap`/`.cap` in `pipeline/captures/` on the host (→ `/captures`).
+
 ### Exploit specialist — delegate heavy offensive code
 
 **MANDATORY — specialist review gate before you RUN offensive code at a target.**
