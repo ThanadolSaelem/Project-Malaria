@@ -16,3 +16,7 @@ pipeline/mac/logs/
 # handshake/hash ที่จับมา — ไม่ commit (sensitive + ใหญ่) เก็บแค่ README
 pipeline/captures/*
 !pipeline/captures/README.txt
+
+# ไฟล์เป้าหมายที่จะแกะด้วย REA — ไม่ commit (อาจเป็น malware/ใหญ่) เก็บแค่ README
+pipeline/rea-targets/*
+!pipeline/rea-targets/README.txt

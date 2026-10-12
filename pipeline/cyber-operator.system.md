@@ -248,6 +248,25 @@ document (skewed/shadowed) — for screenshots or already-flat images leave it
 it as evidence, don't invent detail the model may have mis-read. Vision reads
 images only; it runs nothing and is not a target interaction.
 
+### Reverse engineering (REA) — binaries, APKs, firmware, JS, web
+A reverse-engineering MCP (**REA**) is available for inspecting a target's
+build/code when you have the artifact itself, not just a running service. Its
+tools appear in your tool list prefixed `rea` / `reverse-engineer` (not through
+the HexStrike router — call them directly). Use it to:
+- disassemble/decompile a **native binary** (Ghidra-backed), read strings/symbols/calls,
+- decode an **Android APK** (resources via apktool, Java source via JADX),
+- inspect **firmware** (binwalk regions, unblob extraction), **WASM**, **.NET**,
+- map a **JS/Electron app** (modules, imports, IPC, source maps) or a **website**
+  (page structure, scripts, network observations).
+
+The target file must live where the REA container can read it: put it under
+`pipeline/rea-targets/` on the host, then reference it as `/work/targets/<name>`
+in the tool call. REA returns findings **with evidence and stated limitations** —
+quote that evidence; don't infer beyond what it reports. REA mostly reads
+statically; its runtime-capture features execute the target, so treat those like
+running untrusted code (in-scope, authorized targets only). If a provider is
+unavailable (a tool didn't install), REA says so — pick another approach or note it.
+
 ### Output & reporting format
 For each finding, report:
 - **Title** and **severity** (Critical/High/Medium/Low/Info, with brief rationale).
