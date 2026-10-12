@@ -165,6 +165,24 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # ── ชั้น reverse engineering (REA — MCP over HTTP) ───────────────────────
+  # ให้ Tiel แกะ binary/APK/firmware/JS/Electron/.NET/WASM/เว็บ ผ่าน REA (rea-agents)
+  # REA พูด MCP แบบ stdio → ครอบด้วย supergateway เป็น streamable-HTTP บน :8007
+  #   ลงทะเบียนใน HarnessRouter ด้วย url:  http://rea-mcp:8007/mcp
+  # image ใหญ่/build นาน (Ghidra+JDK+Chromium+unblob) → profile "full" (opt-in)
+  # เป้าหมายที่จะแกะ: วางไฟล์ใน pipeline/rea-targets/ → คอนเทนเนอร์เห็นที่ /work/targets
+  rea-mcp:
+    profiles: ["full"]
+    build:
+      context: ./rea
+      dockerfile: Dockerfile
+    volumes:
+      - ./rea-targets:/work/targets
+    ports:
+      - "127.0.0.1:8007:8007"
+    mem_limit: 4g
+    restart: unless-stopped
+
   # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
   harnessrouter:
     image: harnessrouter/harnessrouter:latest
