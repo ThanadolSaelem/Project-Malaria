@@ -5,7 +5,9 @@
 # แท้ → รัน NATIVE บน M-series ไม่ emulate และลงเครื่องมือให้ "ครบ" ที่สุดเท่าที่
 # ทำได้บน arm64:
 #   - apt:   nmap masscan dirb wfuzz sqlmap hydra john dnsenum dnsrecon whois
-#            jq openssl dnsutils(dig) netcat aircrack-ng hashcat ฯลฯ
+#            jq openssl dnsutils(dig) netcat aircrack-ng hashcat tshark tcpdump ฯลฯ
+#   - pcap:  tshark/tcpdump (CLI) + scapy/dpkt/pyshark (python) วิเคราะห์ไฟล์ .cap/.pcap
+#            ที่ /captures ได้ (bind mount เดียวกับ handshake)
 #   - wordlist: rockyou.txt (แตกจาก SecLists) ที่ /usr/share/wordlists ($WORDLIST)
 #            สำหรับแครก WPA handshake / hash — วางไฟล์ .cap ที่ /captures (bind mount)
 #   - Go:    nuclei httpx subfinder naabu katana dnsx gobuster ffuf dalfox gau
@@ -45,6 +47,7 @@ RUN apt-get update && for t in \
       jq openssl \
       dirb wfuzz sqlmap hydra john netcat-traditional \
       aircrack-ng hashcat \
+      tshark tcpdump \
       chromium chromium-driver ; do \
       apt-get install -y --no-install-recommends "$t" \
         && echo "  [apt] ✓ $t" \
@@ -130,6 +133,8 @@ RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/require
 # เครื่องมือ OSINT/recon แบบ python (ทนพลาด — ตัวไหนลงไม่ได้ข้าม ไม่ล้ม build)
 RUN pip install --no-cache-dir wafw00f    || echo "⚠ skip wafw00f"
 RUN pip install --no-cache-dir theHarvester || echo "⚠ skip theHarvester"
+# วิเคราะห์ pcap/แพ็กเก็ตด้วย python (scapy/dpkt) + pyshark (ครอบ tshark)
+RUN pip install --no-cache-dir scapy dpkt pyshark || echo "⚠ skip pcap libs"
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose.mac.yml) จึงไม่ COPY
 ENV CHROME_BIN=/usr/bin/chromium \
