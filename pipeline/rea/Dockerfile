@@ -65,13 +65,18 @@ ENV GHIDRA_INSTALL_DIR=/opt/ghidra
 #   REA ตรวจหา Ghidra/Features/Decompiler/os/linux_arm_64/decompile — ถ้าไม่มี
 #   decompile native binary ไม่ได้ (APK/JS/firmware ไม่กระทบ). build จาก cpp Makefile
 #   ที่มากับ release (ต้อง g++/make/bison/flex จากชั้น 1)
+#   วิธี: Makefile ตั้ง ARCH_TYPE=-m64/-m32 (flag x86 — arm64 ไม่รู้จัก) → sed ตัดทิ้ง
+#   แล้ว `make ghidra_opt` (target นี้ build ได้จริง; ไม่ใช้ install_ghidraopt ที่ก็อป
+#   ผิด path) → ได้ binary ชื่อ `ghidra_opt` → copy ไปเป็น os/linux_arm_64/decompile
 RUN set -e; \
     CPP=/opt/ghidra/Ghidra/Features/Decompiler/src/decompile/cpp; \
+    OS=/opt/ghidra/Ghidra/Features/Decompiler/os/linux_arm_64; \
     if [ -f "$CPP/Makefile" ]; then \
-      make -C "$CPP" decompile -j"$(nproc)" \
-      && mkdir -p /opt/ghidra/Ghidra/Features/Decompiler/os/linux_arm_64 \
-      && cp "$CPP/decompile" /opt/ghidra/Ghidra/Features/Decompiler/os/linux_arm_64/decompile \
-      && chmod +x /opt/ghidra/Ghidra/Features/Decompiler/os/linux_arm_64/decompile \
+      sed -i -E 's/-m32//g; s/-m64//g' "$CPP/Makefile"; \
+      make -C "$CPP" ghidra_opt -j"$(nproc)" \
+      && mkdir -p "$OS" \
+      && cp "$CPP/ghidra_opt" "$OS/decompile" \
+      && chmod +x "$OS/decompile" \
       && echo "✓ ghidra arm64 decompiler"; \
     else echo "WARN ไม่พบ cpp Makefile — ข้าม (Ghidra decompile จะใช้ไม่ได้บน arm64)"; fi \
     || echo "WARN build decompiler ไม่สำเร็จ"
