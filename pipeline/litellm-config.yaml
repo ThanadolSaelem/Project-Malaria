@@ -69,19 +69,15 @@ model_list:
   # วิธีใช้: เลือกโมเดลชื่อ "nim" หรือ "nim-reasoning" ใน Console (เลือกเอง ไม่ auto)
   # ต้องใส่ NVIDIA_API_KEY ใน .env (จาก build.nvidia.com/settings/api-keys)
   # เปลี่ยนรุ่นได้: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models มาใส่ที่ `model:`
-  - model_name: nim                          # งานหนักทั่วไป/โค้ด (ดีฟอลต์ Llama 3.3 70B)
+  - model_name: nim                          # งานหนัก/โค้ด/reasoning (GLM-5.3 — ยืนยันจาก catalog)
     litellm_params:
-      model: nvidia_nim/meta/llama-3.3-70b-instruct
+      model: nvidia_nim/z-ai/glm-5.3
       api_base: https://integrate.api.nvidia.com/v1
       api_key: os.environ/NVIDIA_API_KEY
-
-  - model_name: nim-reasoning                # งานที่ต้อง reasoning ลึก (DeepSeek-R1)
-    litellm_params:
-      model: nvidia_nim/deepseek-ai/deepseek-r1
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: os.environ/NVIDIA_API_KEY
-  # ทางเลือกอื่น (เปลี่ยนที่ `model:`): qwen/qwen2.5-coder-32b-instruct,
-  #   meta/llama-3.1-405b-instruct, nvidia/llama-3.3-nemotron-super-49b-v1 ฯลฯ
+  # อยากเพิ่มรุ่นอื่น: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models (โชว์ใน code sample)
+  #   แล้วเพิ่ม entry ใหม่แบบเดียวกัน (model: nvidia_nim/<id>)
+  # ⚠️ catalog เปลี่ยนบ่อย — รุ่นเก่าถูก EOL แล้วจะได้ 410 Gone (เช่น llama-3.3-70b EOL ส.ค.2026)
+  #   ถ้าเจอ 410 ให้ไปก็อป id รุ่นใหม่จาก build.nvidia.com มาแทน
 
   # ---- (ออปชัน) cloud fallback อื่นๆ — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
   # - model_name: big-brain-groq
