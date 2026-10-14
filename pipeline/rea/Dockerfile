@@ -25,7 +25,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl wget git unzip xz-utils ca-certificates gnupg \
       python3 python3-pip python3-venv python3-dev build-essential pkg-config \
-      cargo \
+      g++ make bison flex \
+      cargo liblzma-dev zlib1g-dev \
       wabt p7zip-full zstd lz4 lzop unar e2fsprogs \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
@@ -60,6 +61,21 @@ RUN set -e; \
     && echo "✓ ghidra" || echo "WARN ghidra skip"
 ENV GHIDRA_INSTALL_DIR=/opt/ghidra
 
+# ── ชั้น 3b: build Ghidra native decompiler สำหรับ linux/arm64 (release ไม่แถมให้) ─
+#   REA ตรวจหา Ghidra/Features/Decompiler/os/linux_arm_64/decompile — ถ้าไม่มี
+#   decompile native binary ไม่ได้ (APK/JS/firmware ไม่กระทบ). build จาก cpp Makefile
+#   ที่มากับ release (ต้อง g++/make/bison/flex จากชั้น 1)
+RUN set -e; \
+    CPP=/opt/ghidra/Ghidra/Features/Decompiler/src/decompile/cpp; \
+    if [ -f "$CPP/Makefile" ]; then \
+      make -C "$CPP" decompile -j"$(nproc)" \
+      && mkdir -p /opt/ghidra/Ghidra/Features/Decompiler/os/linux_arm_64 \
+      && cp "$CPP/decompile" /opt/ghidra/Ghidra/Features/Decompiler/os/linux_arm_64/decompile \
+      && chmod +x /opt/ghidra/Ghidra/Features/Decompiler/os/linux_arm_64/decompile \
+      && echo "✓ ghidra arm64 decompiler"; \
+    else echo "WARN ไม่พบ cpp Makefile — ข้าม (Ghidra decompile จะใช้ไม่ได้บน arm64)"; fi \
+    || echo "WARN build decompiler ไม่สำเร็จ"
+
 # ── ชั้น 4: apktool (wrapper + jar ล่าสุด) ────────────────────────────────────
 RUN curl -fsSL https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool \
       -o /usr/local/bin/apktool \
@@ -77,19 +93,12 @@ RUN URL=$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest \
     && echo "✓ jadx" || echo "WARN jadx skip"
 ENV PATH="/opt/jadx/bin:${PATH}"
 
-# ── ชั้น 6: binwalk 3.x — ลอง prebuilt arm64 ก่อน ไม่งั้น build จาก source (cargo) ─
-RUN set -e; \
-    URL=$(curl -fsSL https://api.github.com/repos/ReFirmLabs/binwalk/releases/latest \
-          | grep -oE 'https://[^"]*(aarch64|arm64)[^"]*linux[^"]*\.tar\.gz' | head -1); \
-    if [ -n "$URL" ]; then \
-      curl -fsSL "$URL" -o /tmp/bw.tgz && tar -xzf /tmp/bw.tgz -C /tmp && rm /tmp/bw.tgz \
-      && install -m755 "$(find /tmp -type f -name binwalk | head -1)" /usr/local/bin/binwalk \
-      && echo "✓ binwalk (prebuilt) $(/usr/local/bin/binwalk --version 2>/dev/null)"; \
-    else \
-      echo "ไม่มี prebuilt arm64 → build จาก source (cargo install binwalk)…"; \
-      cargo install --root /usr/local binwalk \
-      && echo "✓ binwalk (cargo) $(/usr/local/bin/binwalk --version 2>/dev/null)"; \
-    fi || echo "WARN binwalk skip (ตั้ง REA_BINWALK_COMMAND เองได้)"
+# ── ชั้น 6: binwalk 3.x — build จาก source ด้วย cargo (arm64 ไม่มี prebuilt ทางการ) ─
+#   ไม่ swallow error เงียบๆ: ถ้าพลาดจะเห็นใน build log (deps: cargo + liblzma/zlib ชั้น 1)
+RUN cargo install --root /usr/local binwalk \
+    && /usr/local/bin/binwalk --version \
+    && echo "✓ binwalk" \
+    || echo "WARN binwalk build ไม่สำเร็จ — firmware region/extract จะยังไม่พร้อม (ตั้ง REA_BINWALK_COMMAND เองได้)"
 
 # ── ชั้น 7: unblob (pip — หนัก/เปราะ; ทนพลาด) ────────────────────────────────
 RUN pip3 install --no-cache-dir unblob && echo "✓ unblob" || echo "WARN unblob skip"
