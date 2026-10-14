@@ -6,32 +6,42 @@
 # firmware (binwalk/unblob), เว็บไซต์ (Chrome CDP), พฤติกรรม runtime
 #
 # REA พูด MCP แบบ stdio เท่านั้น → ครอบด้วย supergateway แปลงเป็น streamable-HTTP
-# ให้ HarnessRouter ต่อด้วย url เดียว (เหมือน hexstrike_mcp_http):
-#     http://rea-mcp:8007/mcp
+# ให้ HarnessRouter ต่อด้วย url เดียว:  http://rea-mcp:8007/mcp
 #
-# ออกแบบ "ทนพลาด": แต่ละ tool หนัก (Ghidra/binwalk/unblob/jadx) ถ้าโหลด/ลงไม่สำเร็จ
-# จะข้าม (|| echo WARN) ไม่ล้มทั้ง build — REA มี readiness ต่อ provider (rea doctor /
-# rea inspect-*) ที่จะรายงานว่าตัวไหนพร้อม/ไม่พร้อมเอง
+# ⚠️ base = Ubuntu 24.04 (ไม่ใช่ node:debian) เพราะ REA ตรวจ host แล้วปฏิเสธ
+#    Debian 12 (unsupported_host). REA รองรับ: macOS 12+, Ubuntu 24.04+, Fedora 41+,
+#    Arch ฯลฯ → Ubuntu 24.04 ทำให้ `rea doctor` host ผ่าน
 #
-# ⚠️ image นี้ "ใหญ่และ build นาน" (Ghidra ~400MB + JDK + Chromium + unblob deps)
-#    จึงอยู่ใน profile "full" (opt-in) เหมือน hexstrike-server
-#    IDA/Hopper เป็น commercial/GUI → ไม่ลงในคอนเทนเนอร์ (ใช้ Ghidra แทน)
+# ออกแบบ "ทนพลาด": tool หนัก (Ghidra/binwalk/unblob/jadx) ถ้าลงไม่สำเร็จจะข้าม
+# (WARN) ไม่ล้ม build — REA มี readiness ต่อ provider (rea doctor) รายงานเอง
+# image ใหญ่/build นาน → profile "full" (opt-in). IDA/Hopper (commercial/GUI) ไม่ลง
 # =============================================================================
-FROM node:22-bookworm
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1
 
-# ── ชั้น 1: base + python + chromium + extractors ที่ unblob ใช้ (ต้องมีจริง) ──
+# ── ชั้น 1: base + Node 22 (NodeSource) + python + cargo(สำหรับ binwalk) + wabt + extractors ─
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl wget git unzip xz-utils ca-certificates gnupg \
-      python3 python3-pip python3-venv python3-dev build-essential \
-      chromium \
-      wabt \
-      p7zip-full zstd lz4 lzop unar e2fsprogs \
+      python3 python3-pip python3-venv python3-dev build-essential pkg-config \
+      cargo \
+      wabt p7zip-full zstd lz4 lzop unar e2fsprogs \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && node --version && npm --version \
     && rm -rf /var/lib/apt/lists/*
 
-# ── ชั้น 2: JDK 21 (Temurin, arm64 tarball) — Ghidra 11.x ต้อง JDK 21, apktool ก็ใช้ ─
+# chromium (เว็บวิเคราะห์) — Ubuntu ให้ผ่าน snap (ใช้ใน container ไม่ได้) → best-effort
+# arm64 ไม่มี Google Chrome .deb ด้วย → ถ้าข้าม ฟีเจอร์เว็บจะยังไม่พร้อม (ตั้ง CHROME_BIN
+# ชี้ไป chrome นอกคอนเทนเนอร์ผ่าน CDP ได้ — REA attach แบบ remote อยู่แล้ว)
+RUN apt-get update \
+    && (apt-get install -y --no-install-recommends chromium-browser \
+        || apt-get install -y --no-install-recommends chromium \
+        || echo "WARN chromium skip (web analysis จะยังไม่พร้อมในคอนเทนเนอร์)") ; \
+    rm -rf /var/lib/apt/lists/*
+
+# ── ชั้น 2: JDK 21 (Temurin, arm64 tarball) — Ghidra ต้อง JDK 21, apktool ก็ใช้ ──
 RUN curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/linux/aarch64/jdk/hotspot/normal/eclipse" \
       -o /tmp/jdk.tar.gz \
     && mkdir -p /opt/jdk && tar -xzf /tmp/jdk.tar.gz -C /opt/jdk --strip-components=1 \
@@ -67,16 +77,19 @@ RUN URL=$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest \
     && echo "✓ jadx" || echo "WARN jadx skip"
 ENV PATH="/opt/jadx/bin:${PATH}"
 
-# ── ชั้น 6: binwalk 3.x (Rust, prebuilt arm64) → /usr/local/bin/binwalk ──────
-RUN URL=$(curl -fsSL https://api.github.com/repos/ReFirmLabs/binwalk/releases/latest \
+# ── ชั้น 6: binwalk 3.x — ลอง prebuilt arm64 ก่อน ไม่งั้น build จาก source (cargo) ─
+RUN set -e; \
+    URL=$(curl -fsSL https://api.github.com/repos/ReFirmLabs/binwalk/releases/latest \
           | grep -oE 'https://[^"]*(aarch64|arm64)[^"]*linux[^"]*\.tar\.gz' | head -1); \
     if [ -n "$URL" ]; then \
-      curl -fsSL "$URL" -o /tmp/bw.tgz \
-      && tar -xzf /tmp/bw.tgz -C /tmp && rm /tmp/bw.tgz \
+      curl -fsSL "$URL" -o /tmp/bw.tgz && tar -xzf /tmp/bw.tgz -C /tmp && rm /tmp/bw.tgz \
       && install -m755 "$(find /tmp -type f -name binwalk | head -1)" /usr/local/bin/binwalk \
-      && echo "✓ binwalk $(binwalk --version 2>/dev/null)"; \
-    else echo "WARN binwalk: ไม่พบ arm64 release — ข้าม (ใส่ REA_BINWALK_COMMAND เองได้)"; fi \
-    || echo "WARN binwalk skip"
+      && echo "✓ binwalk (prebuilt) $(/usr/local/bin/binwalk --version 2>/dev/null)"; \
+    else \
+      echo "ไม่มี prebuilt arm64 → build จาก source (cargo install binwalk)…"; \
+      cargo install --root /usr/local binwalk \
+      && echo "✓ binwalk (cargo) $(/usr/local/bin/binwalk --version 2>/dev/null)"; \
+    fi || echo "WARN binwalk skip (ตั้ง REA_BINWALK_COMMAND เองได้)"
 
 # ── ชั้น 7: unblob (pip — หนัก/เปราะ; ทนพลาด) ────────────────────────────────
 RUN pip3 install --no-cache-dir unblob && echo "✓ unblob" || echo "WARN unblob skip"
