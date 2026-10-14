@@ -46,6 +46,9 @@ REA พูด MCP แบบ **stdio** เท่านั้น → ครอบ�
 
 ## หมายเหตุ build (อ่านก่อน)
 
+- ⚠️ **base = Ubuntu 24.04** (ไม่ใช่ Debian) — REA ตรวจ host แล้วปฏิเสธ Debian 12
+  (`unsupported_host`); รองรับ macOS 12+/Ubuntu 24.04+/Fedora 41+/Arch → เช็กด้วย
+  `rea doctor` ว่า host ผ่าน
 - ⚠️ **image ใหญ่ + build นาน** (Ghidra ~400MB, JDK, chromium, unblob deps) → profile `full`
 - ออกแบบ **ทนพลาด**: tool ไหนโหลด/ลงไม่สำเร็จจะ **ข้าม** (WARN) ไม่ล้ม build — REA จะ
   รายงาน provider นั้น unavailable เอง (`rea doctor`) ส่วน provider อื่นยังใช้ได้
