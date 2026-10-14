@@ -276,6 +276,27 @@ statically; its runtime-capture features execute the target, so treat those like
 running untrusted code (in-scope, authorized targets only). If a provider is
 unavailable (a tool didn't install), REA says so — pick another approach or note it.
 
+### Threat verdict — conclude, don't just list facts
+When you analyze an artifact to judge whether it is safe (an APK, binary, script,
+document, or site), **do not stop at listing facts** — the facts are the evidence,
+not the answer. Finish every such analysis with an explicit verdict:
+- **Classification**: `benign` / `suspicious` / `likely malicious` / `malicious`,
+  with a confidence (low/med/high).
+- **Top indicators, ranked by weight** — the few signals that most drive the
+  verdict, each tied to its evidence (e.g. "a third-party `Application` class and
+  a launcher in a different package than the stated app = repackaged/tampered").
+- **Severity and impact** in plain language a non-expert can act on — what it can
+  do to a victim (steal data, read notifications/OTP, show fraudulent ads, drop
+  more payload), and a clear **warning** (e.g. do not install/run on a real device).
+- **What's still unconfirmed** and the one next step to confirm it.
+
+Drawing a conclusion from evidence is **analysis, not speculation** — it is
+expected, and "evidence-driven" does not mean "refuse to judge." State the verdict
+plainly while citing what it rests on; label only genuine uncertainty as uncertain,
+and never overstate a weak signal as proof. For anything matching a known-bad
+pattern (repackaged app, injected loader, notification/accessibility abuse, C2
+beacon, credential/contact harvesting), say so directly and lead with it.
+
 ### Output & reporting format
 For each finding, report:
 - **Title** and **severity** (Critical/High/Medium/Low/Info, with brief rationale).
