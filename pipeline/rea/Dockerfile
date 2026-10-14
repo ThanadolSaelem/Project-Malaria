@@ -90,13 +90,14 @@ RUN curl -fsSL https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scri
     && chmod +x /usr/local/bin/apktool /usr/local/bin/apktool.jar \
     && echo "✓ apktool" || echo "WARN apktool skip"
 
-# ── ชั้น 5: JADX (Java-source จาก APK) → /opt/jadx/bin ───────────────────────
-RUN URL=$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest \
-          | grep -o 'https://[^"]*jadx-[0-9.]*\.zip' | head -1); \
-    curl -fsSL "$URL" -o /tmp/jadx.zip \
-    && unzip -q /tmp/jadx.zip -d /opt/jadx && rm /tmp/jadx.zip \
-    && echo "✓ jadx" || echo "WARN jadx skip"
-ENV PATH="/opt/jadx/bin:${PATH}"
+# ── ชั้น 5: jadx-headless-mcp JAR (REA Android provider ต้องการตัวนี้เป๊ะ v0.7.1) ─
+#   REA เรียก JADX ผ่าน "jadx-headless-mcp JAR" (ไม่ใช่ jadx CLI) — ชี้ด้วย
+#   REA_JADX_MCP_JAR + ต้องมี full JDK (มี JDK 21 ที่ /opt/jdk แล้ว). ปักเวอร์ชัน 0.7.1
+#   ตาม src/android/JadxRelease.ts ของ REA. ขาด JAR นี้ = inspect_android_* unavailable
+RUN curl -fsSL "https://github.com/1013503897/jadx-headless-mcp/releases/download/v0.7.1/jadx-headless-mcp-0.7.1-all.jar" \
+      -o /opt/jadx-headless-mcp-0.7.1-all.jar \
+    && echo "✓ jadx-headless-mcp 0.7.1" || echo "WARN jadx-headless-mcp jar skip"
+ENV REA_JADX_MCP_JAR=/opt/jadx-headless-mcp-0.7.1-all.jar
 
 # ── ชั้น 6: binwalk 3.x — build จาก source ด้วย cargo (arm64 ไม่มี prebuilt ทางการ) ─
 #   ไม่ swallow error เงียบๆ: ถ้าพลาดจะเห็นใน build log (deps: cargo + liblzma/zlib ชั้น 1)
