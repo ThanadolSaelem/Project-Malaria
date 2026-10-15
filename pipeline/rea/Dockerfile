@@ -25,8 +25,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl wget git unzip xz-utils ca-certificates gnupg \
       python3 python3-pip python3-venv python3-dev build-essential pkg-config \
-      g++ make bison flex \
+      g++ make bison flex cmake \
       cargo liblzma-dev zlib1g-dev \
+      file libmagic1 libmagic-dev \
       wabt p7zip-full zstd lz4 lzop unar e2fsprogs \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
@@ -107,7 +108,22 @@ RUN cargo install --root /usr/local binwalk \
     || echo "WARN binwalk build ไม่สำเร็จ — firmware region/extract จะยังไม่พร้อม (ตั้ง REA_BINWALK_COMMAND เองได้)"
 
 # ── ชั้น 7: unblob (pip — หนัก/เปราะ; ทนพลาด) ────────────────────────────────
+#   ต้องมี libmagic (ชั้น 1) ไม่งั้น import พัง
 RUN pip3 install --no-cache-dir unblob && echo "✓ unblob" || echo "WARN unblob skip"
+
+# ── ชั้น 7b: เครื่องมือแกะ Python/PyInstaller exe (มัลแวร์ Python pack เป็น .exe) ─
+#   pyinstxtractor-ng = แตก PyInstaller archive → ได้ .pyc ; pycdc (Decompyle++) =
+#   decompile .pyc → .py อ่านโค้ด Python จริง (รองรับหลายเวอร์ชัน รวม 3.11/3.12).
+#   uncompyle6/decompyle3 ไม่รองรับ 3.11+ จึงใช้ pycdc (build จาก source, ต้อง cmake ชั้น 1)
+RUN pip3 install --no-cache-dir pyinstxtractor-ng \
+    && echo "✓ pyinstxtractor-ng" || echo "WARN pyinstxtractor-ng skip"
+RUN (git clone --depth 1 https://github.com/zrax/pycdc /tmp/pycdc \
+     && cmake -S /tmp/pycdc -B /tmp/pycdc/build >/dev/null \
+     && cmake --build /tmp/pycdc/build -j"$(nproc)" >/dev/null \
+     && install -m755 /tmp/pycdc/build/pycdc  /usr/local/bin/pycdc \
+     && install -m755 /tmp/pycdc/build/pycdas /usr/local/bin/pycdas \
+     && echo "✓ pycdc (Decompyle++)") \
+    || echo "WARN pycdc build ไม่สำเร็จ" ; rm -rf /tmp/pycdc
 
 # ── ชั้น 8: REA (rea-agents) + supergateway (stdio→HTTP bridge) ──────────────
 #   pin เวอร์ชัน rea-agents กัน supply-chain (อยากอัปเดต: เปลี่ยนเลขแล้ว rebuild)
