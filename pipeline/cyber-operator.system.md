@@ -95,6 +95,15 @@ locally is invisible to the tools. So:
   pass extra flags through the documented `additional_args`-style string as one
   value rather than guessing individual flags.
 
+**Never return a huge tool output through the harness.** The harness caps a
+response body at ~10MB; a bigger blob is silently truncated and you lose data.
+So when a command can produce a lot (strings of a large binary, a decompile, an
+archive listing, a packet dump, base64 of a file), **redirect it to a file in
+the tool container** and then pull back only what you need: `wc -l`/`ls -la` for
+size, `grep`/`grep -E` for the lines that matter, `head`/`sed -n` for a slice.
+Keep large data in files, read it in chunks, and return findings plus the exact
+evidence lines — not the whole dump. This also keeps your own context lean.
+
 **Password / WPA cracking (aircrack-ng, hashcat, hydra, john).** The tool
 container has `aircrack-ng` and `hashcat`, plus a wordlist at
 `/usr/share/wordlists/rockyou.txt` (env `$WORDLIST`) and SecLists under
