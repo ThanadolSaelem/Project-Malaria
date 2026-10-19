@@ -35,3 +35,14 @@
 ## WPA / cracking
 
 <!-- - [ ] ... -->
+
+## Report / docx (TLP:AMBER)
+
+- [✅] แยก format ออกจากเนื้อหา: ให้โมเดลผลิต "content JSON + รูปหลักฐาน" แล้วใช้
+  `pipeline/reporting/assemble.py` ประกอบ docx → format ตรงเฉลยเสมอ
+  (หลักฐาน: 2026-10-19 เคส NHSO — โมเดลประกอบเองได้ Times New Roman 14KB ไม่มีรูป;
+  ประกอบผ่าน template แล้ว font/ขอบ/heading/banner/ฝัง Sarabun ตรงเฉลยหมด)
+- [❌] ให้โมเดลประกอบ .docx เอง / สอนกฎ Sarabun 16pt ใน prompt → เปราะ เลือก font ผิด
+  ตัด: ย้าย format ไป template + script แทน
+- [ ] ยังขาด: workflow ให้ Tiel เซฟรูปหลักฐานลง evidence/ อัตโนมัติ (web ผ่าน REA,
+  โค้ด render เป็นรูป) — ต้องทดสอบกับ Tiel จริง

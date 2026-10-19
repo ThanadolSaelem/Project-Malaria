@@ -135,6 +135,8 @@ RUN pip install --no-cache-dir wafw00f    || echo "⚠ skip wafw00f"
 RUN pip install --no-cache-dir theHarvester || echo "⚠ skip theHarvester"
 # วิเคราะห์ pcap/แพ็กเก็ตด้วย python (scapy/dpkt) + pyshark (ครอบ tshark)
 RUN pip install --no-cache-dir scapy dpkt pyshark || echo "⚠ skip pcap libs"
+# Pillow: ให้ assemble.py ใส่รูปหลักฐานลงรายงาน TLP ได้ (ดู pipeline/reporting/)
+RUN pip install --no-cache-dir pillow || echo "⚠ skip pillow"
 
 # โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose.mac.yml) จึงไม่ COPY
 ENV CHROME_BIN=/usr/bin/chromium \
