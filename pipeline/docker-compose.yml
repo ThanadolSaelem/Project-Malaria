@@ -40,6 +40,9 @@ services:
       # วางไฟล์ handshake ที่จับมา (.cap/.pcap/.hccapx) ไว้ใน pipeline/captures/
       # แล้ว aircrack-ng/hashcat ในคอนเทนเนอร์อ่านได้ที่ /captures (เขียนผลกลับได้)
       - ./captures:/captures
+      # รูปหลักฐานสำหรับรายงาน TLP: Tiel เซฟรูป (render โค้ด/ผลเครื่องมือ) ลง pipeline/evidence/
+      # → เห็นที่ /evidence แล้ว assemble.py หยิบไปใส่ในรายงาน (ดู pipeline/reporting/)
+      - ./evidence:/evidence
     environment:
       HEXSTRIKE_PORT: 8888
     # nmap -sS / masscan ต้องใช้ raw socket → ให้ capability นี้กับ container
@@ -178,6 +181,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./rea-targets:/work/targets
+      # รูปหลักฐานสำหรับรายงาน: REA เซฟ screenshot เว็บ (headless Chromium) ลง /evidence
+      - ./evidence:/evidence
     ports:
       - "127.0.0.1:8007:8007"
     mem_limit: 4g

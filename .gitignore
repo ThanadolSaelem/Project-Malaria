@@ -20,3 +20,7 @@ pipeline/captures/*
 # ไฟล์เป้าหมายที่จะแกะด้วย REA — ไม่ commit (อาจเป็น malware/ใหญ่) เก็บแค่ README
 pipeline/rea-targets/*
 !pipeline/rea-targets/README.txt
+
+# รูปหลักฐานของเคส — ไม่ commit (sensitive) เก็บแค่ README
+pipeline/evidence/*
+!pipeline/evidence/README.txt
