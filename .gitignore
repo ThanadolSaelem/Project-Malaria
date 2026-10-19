@@ -24,3 +24,7 @@ pipeline/rea-targets/*
 # รูปหลักฐานของเคส — ไม่ commit (sensitive) เก็บแค่ README
 pipeline/evidence/*
 !pipeline/evidence/README.txt
+
+# รายงานที่ประกอบแล้ว (.json/.docx ของเคส) — ไม่ commit เก็บแค่ README
+pipeline/reports/*
+!pipeline/reports/README.txt

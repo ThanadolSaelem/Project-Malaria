@@ -43,6 +43,10 @@ services:
       # รูปหลักฐานสำหรับรายงาน TLP: Tiel เซฟรูป (render โค้ด/ผลเครื่องมือ) ลง pipeline/evidence/
       # → เห็นที่ /evidence แล้ว assemble.py หยิบไปใส่ในรายงาน (ดู pipeline/reporting/)
       - ./evidence:/evidence
+      # ประกอบรายงานอัตโนมัติในคอนเทนเนอร์: โค้ด reporting (read-only) + โฟลเดอร์ output
+      # Tiel เขียน /reports/<ชื่อ>.json แล้วสั่ง python3 /reporting/assemble.py เอง→ ได้ .docx ที่ /reports
+      - ./reporting:/reporting:ro
+      - ./reports:/reports
     environment:
       HEXSTRIKE_PORT: 8888
     # nmap -sS / masscan ต้องใช้ raw socket → ให้ capability นี้กับ container

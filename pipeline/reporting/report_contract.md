@@ -23,16 +23,30 @@ Tiel  ──produces──►  content.json  +  รูปหลักฐาน (
 
 ## วิธีรัน
 
+**โหมดอัตโนมัติเต็ม (แบบ C) — Tiel ทำเองในคอนเทนเนอร์:**
+mount ไว้ให้แล้วใน `hexstrike-server` (ดู docker-compose):
+`/reporting` (โค้ด+template, read-only) · `/evidence` (รูป) · `/reports` (output, เขียนได้)
+```bash
+# Tiel สั่งเองผ่าน command tool:
+python3 /reporting/assemble.py /reports/<name>.json -o /reports/<name>.docx
+```
+ได้ `.docx` โผล่ที่ `pipeline/reports/` บน Mac ทันที (ไม่ต้อง copy-paste)
+
+**โหมดแมนนวล (รันบน Mac):**
 ```bash
 cd pipeline/reporting
 python3 assemble.py <content.json> -o /path/to/report.docx
 #   --template <file>       override template.docx
 #   --evidence-dir <dir>    override โฟลเดอร์รูป (ดีฟอลต์ ../evidence)
 ```
+ต้องมี `Pillow` ถ้ามี figure จริง (คอนเทนเนอร์ลงให้แล้ว; บน Mac: `pip install pillow`)
+
 รูปที่อ้างใน JSON แต่ยังไม่มีไฟล์ → assemble.py ใส่ **placeholder กรอบ** ให้ (ไม่ fail)
-และพิมพ์ `WARN:` บอกว่ารูปไหนยังขาด — ดูว่าต้องเติมรูปใดบ้าง
+และพิมพ์ `WARN:` บอกว่ารูปไหนยังขาด — เติมรูปแล้วรันซ้ำได้
 
 ไฟล์ตัวอย่าง: `sample_report.json` (ลองรันได้เลย — รูปจะเป็น placeholder)
+
+⚠️ โหมด C ไม่มีจังหวะให้คนตรวจก่อนประกอบ → **ตรวจ redaction ที่ไฟล์ .docx ผลลัพธ์ก่อนส่งออกนอกเสมอ**
 
 ## สคีมา JSON
 
