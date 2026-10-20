@@ -1,0 +1,42 @@
+# =============================================================================
+# deepseek-harness config layer → ชี้ stack เดิมของเรา (Tiel/LiteLLM + MCP tools)
+# -----------------------------------------------------------------------------
+# วางไฟล์นี้ที่ $DSH_HOME/profiles/web/cordis.patch.yml (deploy.sh ทำให้)
+# cordis.patch เป็น "list ของ config patch ต่อ plugin": provider = plugin นึง, MCP = อีก plugin
+#
+# ✅ CONFIRMED (จาก docs/user/guide/providers.md ของ deepseek-harness):
+#    รูปแบบ provider custom OpenAI-compatible ด้านล่าง (baseURL/api/apiKeyEnv/models/compat)
+# ⚠️ NEEDS-VERIFY: โครง key ของบล็อก MCP (อิงเอกสาร dsh-mcp-client — เช็กเป๊ะอีกที)
+# =============================================================================
+
+# ── (1) model provider → LiteLLM gateway บน host:4000 (Tiel / vision / nim) ──
+- id: llm-litellm-local
+  config:
+    providers:
+      litellm-local:
+        apiKeyEnv: LITELLM_KEY              # ตั้ง env LITELLM_KEY=sk-local (llama ไม่เช็ค แต่ field ต้องมี)
+        api: openai-completions
+        baseURL: http://localhost:4000/v1   # = LiteLLM ที่ publish ออก host (127.0.0.1:4000)
+        models:
+          - id: cybermodel                  # Tiel (orchestrator) — งาน sensitive/หลักฐาน
+          - id: vision                       # Qwen2.5-VL (อ่านภาพ)
+          - id: nim                           # GLM cloud — ⚠️ งาน non-sensitive เท่านั้น
+        compat:
+          supportsDeveloperRole: false       # llama.cpp มักต้องตั้ง (ถ้า request โดนปฏิเสธทั้งที่ url/key ถูก)
+          maxTokensField: max_tokens
+
+# ── (2) MCP tools → HexStrike router + REA (streamable-http) ─────────────────
+#   ⚠️ โครงด้านล่าง "อิงรูปแบบ" dsh-mcp-client (transport: stdio|streamable-http; http ใช้ url/headers)
+#      ยังไม่ได้ยืนยัน key/การ nest เป๊ะ 100% — ดู packages/mcp/mcp-client ของ repo ประกอบ
+#   tool จะโผล่แบบ namespaced: mcp__<serverName>__<toolName> (แบบเดียวกับที่คุ้นอยู่)
+- id: "@deepseek-ai/dsh-mcp-client"
+  config:
+    servers:
+      hexstrike:                             # 3 meta-tool: search/describe/run (tool-RAG router)
+        transport: streamable-http
+        url: http://localhost:8001/mcp
+      rea:                                   # reverse engineering (ต้องเปิด --profile full)
+        transport: streamable-http
+        url: http://localhost:8007/mcp
+#   หมายเหตุ: vision/specialist เราเรียกผ่าน bash heredoc → litellm:4000 (ไม่ใช่ MCP)
+#   บน deepseek-harness ก็ยังเรียกแบบเดิมได้ (มันมี shell/command tool) ไม่ต้องลง MCP
