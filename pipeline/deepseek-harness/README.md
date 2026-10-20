@@ -63,6 +63,26 @@ bash pipeline/deepseek-harness/deploy.sh
 - **llama ไม่ขึ้น** → LiteLLM:4000 ตอบ error; รัน `pipeline/mac/start.command`
 - **REA ไม่มา** → ต้อง `--profile full` (deploy.sh ใส่ให้แล้ว) + rebuild ถ้าเพิ่ง pull
 
-## ทำไมไม่ copy ทั้ง repo เป็น repo ใหม่
+## ต้อง clone deepseek-harness ไหม? — ไม่ต้อง (เป็น dependency)
+
+ตัว harness **ไม่ได้ถูก vendor เข้า repo นี้** (มันคือ codebase 22,000+ commit — เอาเข้ามา =
+บวม + drift ตามเขาไม่ทัน) มันเป็น **dependency** เหมือน docker/llama.cpp — เหมือน HarnessRouter
+เดิมก็เป็น app แยกที่ไม่ได้อยู่ใน repo คุณ **4 ไฟล์ในโฟลเดอร์นี้ = ชั้น config เชื่อมเท่านั้น**
+
+deploy.sh มี 2 โหมด:
+| โหมด | ได้ harness มายังไง | ใช้เมื่อ |
+|---|---|---|
+| **`npx` (ดีฟอลต์)** | `npx @deepseek-ai/dsh` ดึง package จาก npm | ปกติ — **ไม่ต้อง clone** |
+| **`source`** | `git clone` + `pnpm build` เอง (`DSH_MODE=source bash deploy.sh`) | อยาก bleeding-edge ของ dev-preview / แก้โค้ด harness เอง |
+
+```bash
+# ปกติ (npx, ไม่ clone):
+bash pipeline/deepseek-harness/deploy.sh
+# จาก source (clone + build):
+DSH_MODE=source bash pipeline/deepseek-harness/deploy.sh
+```
+> dev-preview → package npm อาจตามโค้ด repo ไม่ทัน ถ้าเจอบั๊กที่ repo แก้แล้วแต่ npm ยังไม่อัป ใช้โหมด `source`
+
+## ทำไมไม่ copy ทั้ง pipeline เป็น repo ใหม่
 เลือก "branch แยก" → pipeline เต็มมากับ main อยู่แล้ว ชั้น deepseek แค่เสริมบน branch นี้
 → **ไม่มี 2 สำเนา drift กัน** อยากได้อะไรใหม่จาก main ก็ `git merge origin/main` เข้า branch นี้ได้

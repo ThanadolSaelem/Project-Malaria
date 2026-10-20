@@ -38,6 +38,25 @@ cp "$PIPE/cyber-operator.system.md" "$DSH_HOME/cyber-operator.system.md"
 echo "✓ วาง cyber-operator.system.md → $DSH_HOME/ (ต้อง wire เป็น system prompt ใน DSH เอง — ดู README)"
 
 # ── 4) launch harness (web UI :3080 — ไม่ชนกับ HarnessRouter :3000) ──────────
-echo "→ launching deepseek-harness (web UI → http://127.0.0.1:3080) ..."
-echo "   (ครั้งแรก npx จะดาวน์โหลด package; ถ้าช้า/พัง ดู README หัวข้อ troubleshooting)"
-exec npx @deepseek-ai/dsh web
+#   2 โหมด:
+#     npx (ดีฟอลต์)  = ดึง package @deepseek-ai/dsh จาก npm มารัน → "ไม่ต้อง clone repo"
+#     source         = clone + pnpm build เอง (ได้ bleeding-edge ของ dev-preview / แก้โค้ดได้)
+#   เลือกด้วย env:  DSH_MODE=source bash deploy.sh
+MODE="${DSH_MODE:-npx}"
+if [ "$MODE" = "source" ]; then
+  SRC="${DSH_SRC:-$HOME/deepseek-harness}"
+  if [ ! -d "$SRC/.git" ]; then
+    echo "→ clone deepseek-harness → $SRC"
+    git clone https://github.com/deepseek-ai/deepseek-harness.git "$SRC"
+  else
+    echo "→ อัปเดต deepseek-harness ($SRC)"; ( cd "$SRC" && git pull --ff-only || true )
+  fi
+  echo "→ pnpm install && build (ครั้งแรกนาน) ..."
+  ( cd "$SRC" && pnpm install && pnpm run build )
+  echo "→ launching from source (web UI → http://127.0.0.1:3080) ..."
+  exec sh -c "cd '$SRC' && pnpm dsh web"
+else
+  echo "→ launching via npx (ดึง @deepseek-ai/dsh จาก npm — ไม่ต้อง clone) → http://127.0.0.1:3080 ..."
+  echo "   (ครั้งแรก npx จะดาวน์โหลด package; ถ้าช้า/พัง ดู README)"
+  exec npx @deepseek-ai/dsh web
+fi
