@@ -25,18 +25,25 @@
           supportsDeveloperRole: false       # llama.cpp มักต้องตั้ง (ถ้า request โดนปฏิเสธทั้งที่ url/key ถูก)
           maxTokensField: max_tokens
 
-# ── (2) MCP tools → HexStrike router + REA (streamable-http) ─────────────────
-#   ⚠️ โครงด้านล่าง "อิงรูปแบบ" dsh-mcp-client (transport: stdio|streamable-http; http ใช้ url/headers)
-#      ยังไม่ได้ยืนยัน key/การ nest เป๊ะ 100% — ดู packages/mcp/mcp-client ของ repo ประกอบ
-#   tool จะโผล่แบบ namespaced: mcp__<serverName>__<toolName> (แบบเดียวกับที่คุ้นอยู่)
-- id: "@deepseek-ai/dsh-mcp-client"
+# ── (2) MCP tools → HexStrike router + REA ──────────────────────────────────
+#   ✅ โครงถูกต้องจาก README ของ @deepseek-ai/dsh-mcp-client:
+#      "1 entry ต่อ 1 server" — แต่ละ entry มี id (unique), name (= plugin), config (flat)
+#      ไม่ใช่ servers: map (อันเดิมผมเดาผิด). tool โผล่แบบ mcp__<serverName>__<toolName>
+#   ⚠️ url ต้องเป็น localhost (harness รันบน host) ไม่ใช่ชื่อ service ภายใน docker
+- id: mcp-hexstrike
+  name: '@deepseek-ai/dsh-mcp-client'
   config:
-    servers:
-      hexstrike:                             # 3 meta-tool: search/describe/run (tool-RAG router)
-        transport: streamable-http
-        url: http://localhost:8001/mcp
-      rea:                                   # reverse engineering (ต้องเปิด --profile full)
-        transport: streamable-http
-        url: http://localhost:8007/mcp
-#   หมายเหตุ: vision/specialist เราเรียกผ่าน bash heredoc → litellm:4000 (ไม่ใช่ MCP)
-#   บน deepseek-harness ก็ยังเรียกแบบเดิมได้ (มันมี shell/command tool) ไม่ต้องลง MCP
+    serverName: hexstrike                    # → tool: mcp__hexstrike__* (search/describe/run)
+    transport: streamable-http
+    url: http://localhost:8001/mcp
+    failOnStartupError: false                # ต่อไม่ติด = harness ยังขึ้น แต่ไม่มี tool (ดู log)
+
+- id: mcp-rea
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: rea                          # → tool: mcp__rea__* (ต้องเปิด --profile full)
+    transport: streamable-http
+    url: http://localhost:8007/mcp
+    failOnStartupError: false
+#   หมายเหตุ: vision/specialist เราเรียกผ่าน bash heredoc → localhost:4000 (ไม่ใช่ MCP)
+#   deepseek-harness มี bash/command tool อยู่แล้ว → เรียกแบบเดิมได้ ไม่ต้องลง MCP
