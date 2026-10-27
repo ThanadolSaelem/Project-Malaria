@@ -1,88 +1,80 @@
-# pipeline-deepseek — รัน stack เราบน deepseek-harness
+# pipeline-deepseek — รัน stack เราบน deepseek-harness (ใน container)
 
-ชั้น config ที่ทำให้ **deepseek-harness** (ตัวใหม่ แทน HarnessRouter) ขับ **Tiel ผ่าน LiteLLM**
-และต่อ **MCP tools เดิม** (HexStrike/REA) ได้ โดย **ใช้ stack เดิมทั้งหมดร่วมกัน** (compose/llama/litellm
-ไม่ต้องแก้) — รันขนานกับ HarnessRouter ได้ (deepseek-harness UI = `:3080`, ของเดิม = `:3000`)
+ชั้นที่ทำให้ **deepseek-harness** ขับ **Tiel ผ่าน LiteLLM** และต่อ **MCP tools เดิม** (HexStrike/REA)
+โดยรัน **ใน container** เป็น service `deepseek-harness` ขนานกับ `harnessrouter` ใน compose เดิม
+(deepseek UI = `:3080`, HarnessRouter เดิม = `:3000`) ใช้ stack เดิมทั้งหมดร่วมกัน
 
-> branch นี้ = main (pipeline เต็ม) + โฟลเดอร์ `pipeline/deepseek-harness/` นี้
-> deploy: `git checkout pipeline-deepseek && git pull` แล้วรัน `deploy.sh`
+## ทำไมรันใน container (ไม่ใช่ `npx` บน host)
 
-## ⚠️ ความจริงที่ต้องรู้ก่อน (อ่านก่อนคาดหวัง)
+| รันบน host (`npx`) แบบเดิม | รันใน container (ตอนนี้) |
+|---|---|
+| bash/command tool ของ Tiel รัน **บน Mac** — เสี่ยงกับงานมัลแวร์ | bash รัน **ใน container** = isolation |
+| host ต้องลง node/pnpm/npx/corepack เอง (เปราะ) | อบใน image ครั้งเดียวตอน build |
+| ต้องใช้ `localhost:xxxx` + เจอพอร์ตชน | ใช้ **ชื่อ service** (`litellm:4000` ฯลฯ) ใน network เดียว |
+| หลาย step | `docker compose --profile full up -d --build` หรือดับเบิลคลิก `start.command` |
 
-- **deepseek-harness = developer preview** — ทีมมันเตือนเองว่า breaking changes รัวๆ
-- ผม (ผู้สร้างไฟล์นี้) **รันทดสอบไม่ได้** ในที่ที่สร้าง → config นี้อิง **เอกสารทางการเท่าที่อ่านได้**
-  บางจุดจึง **"ต้อง verify ตอนรันจริง"** (ดูตารางล่าง) — **ไม่ใช่ pull แล้วเดินเป๊ะ 100%**
-- **ความลื่น = ตัว Tiel (โมเดล) ไม่ใช่ harness** — deepseek-harness จูนมาเพื่อโมเดล DeepSeek
-  อาจลื่นกับ DeepSeek มากกว่า Tiel (local 35B) → อย่าคาดหวังว่าเปลี่ยน harness แล้ว Tiel = Claude
+> โมเดล Tiel ยังอยู่บน host (llama.cpp Metal GPU) — containerize แค่ตัว orchestrator
+> มันคุยกับ llama ผ่าน `litellm` (service) เหมือนเดิม **ไม่เสีย GPU**
 
-## สถานะแต่ละส่วน
-
-| ส่วน | สถานะ | อ้างอิง |
-|---|---|---|
-| provider ชี้ LiteLLM (`baseURL/api/compat`) | ✅ **confirmed** รูปแบบ | docs/user/guide/providers.md ของ deepseek-harness |
-| พอร์ต host (LiteLLM 4000 / HexStrike 8001 / REA 8007) | ✅ confirmed | docker-compose.yml ของเรา |
-| MCP รองรับ | ✅ confirmed (มี `dsh-mcp-client`) | packages/mcp/mcp-client |
-| โครง key ของบล็อก MCP ใน `cordis.patch.yml` | ⚠️ **verify** | อิงรูปแบบ — เช็ก key เป๊ะกับ dsh-mcp-client |
-| วิธี wire system prompt เข้า harness | ⚠️ **verify** | ยังไม่รู้กลไกเป๊ะ (plugin prompt/agent หรือ Settings) |
-| server ไม่มี key ใช้ได้ไหม / compat flags จำเป็นไหม | ⚠️ **verify** | ทดสอบจริง |
-
-## Deploy (ขั้นตอนที่คุณทำ)
+## Deploy (คุณทำแค่นี้)
 
 ```bash
-# 1. ดึง branch นี้
-git fetch origin && git checkout pipeline-deepseek && git pull origin pipeline-deepseek
-
-# 2. ตั้ง env (ครั้งเดียว)
-cp pipeline/deepseek-harness/.env.example pipeline/deepseek-harness/.env
-#   แก้ค่าถ้าต้องการ (ดีฟอลต์ LITELLM_KEY=sk-local, DSH_HOME=~/.dsh)
-source pipeline/deepseek-harness/.env
-
-# 3. ให้ llama.cpp (Tiel:8090, vision:8093) รันอยู่ก่อน
-#    ถ้ายัง: รัน pipeline/mac/start.command
-
-# 4. deploy (ยก docker stack + วาง config + launch harness)
-bash pipeline/deepseek-harness/deploy.sh
-#    → เปิด http://127.0.0.1:3080
+git checkout pipeline-deepseek && git pull origin pipeline-deepseek
+# ให้ llama (Tiel:8090, vision:8093) รันอยู่ก่อน — ถ้ายัง รัน pipeline/mac/start.command
+docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
+# เปิด UI (token อยู่ใน log):
+docker compose -f docker-compose.yml -f docker-compose.mac.yml logs deepseek-harness | grep token
 ```
 
-`deploy.sh` ทำให้: ยก docker stack (`--profile full`), วาง `cordis.patch.yml` → `$DSH_HOME/profiles/web/`,
-วางสำเนา system prompt → `$DSH_HOME/`, แล้ว `npx @deepseek-ai/dsh web`
+หรือ **ดับเบิลคลิก `pipeline/mac/start.command`** — มันทำ llama → docker stack (รวม deepseek-harness)
+→ เปิด :3080 ให้พร้อม token อัตโนมัติ
 
-## สิ่งที่ต้องทำเองในหน้า harness (จุด verify)
+## เวอร์ชันต้อง pin ให้ตรง (บทเรียนสำคัญ)
 
-1. **เลือกโมเดล `cybermodel`** (= Tiel) ใน UI หลัง provider โหลด (ดู Settings → Models)
-2. **wire system prompt**: เอาเนื้อหา `$DSH_HOME/cyber-operator.system.md` ใส่เป็น system prompt/agent
-   instructions ของ harness (กลไกเป๊ะยัง verify — น่าจะอยู่ใน Settings หรือ prompt plugin)
-3. **เช็ก MCP** ว่า tool `mcp__hexstrike__*` / `mcp__rea__*` โผล่ไหม — ถ้าไม่โผล่ แก้ key ในบล็อก MCP
-   ของ `cordis.patch.yml` ให้ตรง dsh-mcp-client (แล้วไฟล์ hot-reload)
+deepseek-harness เป็น dev-preview และ **`dsh-mcp-client` pin peer deps แบบ exact** (ไม่ใช่ `^`)
+→ เวอร์ชัน plugin **ต้องเท่ากับ runtime เป๊ะ** `Dockerfile.deepseek-harness` ตั้ง:
 
-## Troubleshooting
-
-- **โมเดลตอบ error ทั้งที่ url/key ถูก** → `compat.supportsDeveloperRole: false` + `maxTokensField: max_tokens`
-  ใส่ไว้ให้แล้ว (llama.cpp มักต้องการ) ถ้ายังพัง ดู log ว่า field ไหนไม่รองรับ
-- **llama ไม่ขึ้น** → LiteLLM:4000 ตอบ error; รัน `pipeline/mac/start.command`
-- **REA ไม่มา** → ต้อง `--profile full` (deploy.sh ใส่ให้แล้ว) + rebuild ถ้าเพิ่ง pull
-
-## ต้อง clone deepseek-harness ไหม? — ไม่ต้อง (เป็น dependency)
-
-ตัว harness **ไม่ได้ถูก vendor เข้า repo นี้** (มันคือ codebase 22,000+ commit — เอาเข้ามา =
-บวม + drift ตามเขาไม่ทัน) มันเป็น **dependency** เหมือน docker/llama.cpp — เหมือน HarnessRouter
-เดิมก็เป็น app แยกที่ไม่ได้อยู่ใน repo คุณ **4 ไฟล์ในโฟลเดอร์นี้ = ชั้น config เชื่อมเท่านั้น**
-
-deploy.sh มี 2 โหมด:
-| โหมด | ได้ harness มายังไง | ใช้เมื่อ |
-|---|---|---|
-| **`npx` (ดีฟอลต์)** | `npx @deepseek-ai/dsh` ดึง package จาก npm | ปกติ — **ไม่ต้อง clone** |
-| **`source`** | `git clone` + `pnpm build` เอง (`DSH_MODE=source bash deploy.sh`) | อยาก bleeding-edge ของ dev-preview / แก้โค้ด harness เอง |
-
-```bash
-# ปกติ (npx, ไม่ clone):
-bash pipeline/deepseek-harness/deploy.sh
-# จาก source (clone + build):
-DSH_MODE=source bash pipeline/deepseek-harness/deploy.sh
 ```
-> dev-preview → package npm อาจตามโค้ด repo ไม่ทัน ถ้าเจอบั๊กที่ repo แก้แล้วแต่ npm ยังไม่อัป ใช้โหมด `source`
+ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เวอร์ชันนี้คู่กัน
+```
 
-## ทำไมไม่ copy ทั้ง pipeline เป็น repo ใหม่
-เลือก "branch แยก" → pipeline เต็มมากับ main อยู่แล้ว ชั้น deepseek แค่เสริมบน branch นี้
-→ **ไม่มี 2 สำเนา drift กัน** อยากได้อะไรใหม่จาก main ก็ `git merge origin/main` เข้า branch นี้ได้
+อยากอัป/ลดเวอร์ชัน: แก้ `DSH_VERSION` ที่เดียว (ทั้ง runtime + plugin ขยับพร้อมกัน) แล้ว rebuild
+> `latest` dist-tag ของ dsh-mcp-client ค้างที่ `0.0.1-rc.1` (เก่ามาก) — ห้ามลงแบบไม่ระบุเวอร์ชัน
+
+## กลไกที่ไขออกมาแล้ว (ทำไมก่อนหน้านี้ไม่ติด)
+
+- **`cordis.patch.yml` = patch ของที่มีอยู่ ไม่ใช่สร้างใหม่** → provider ต้องใช้ id **`llm-pi-ai`**
+  (entry provider plugin ที่มีอยู่) แล้วเติม provider ของเราใน `config.providers.*`
+  ใช้ id ใหม่ = ได้ warn `patch: entry ... not found` แล้วถูกข้าม
+- **`dsh-mcp-client` ไม่ใช่ bundle** → ต้อง `dsh plugin add` ติดตั้งก่อน (Dockerfile ทำให้ตอน build)
+  ยังไม่ติดตั้ง = entry `mcp-*` ก็ `not found` เช่นกัน
+- **`dsh web --host` รับ IP จริงเท่านั้น** (wildcard `0.0.0.0` ถูก reject) → `entrypoint.sh`
+  ดึง IP ของ container มา bind แล้ว Docker map `:3080` ออก host (+ `--trusted-host localhost:3080`)
+
+## ยังต้องทำต่อ (ก่อนใช้งานจริง)
+
+| เรื่อง | สถานะ |
+|---|---|
+| provider (Cyber-Tiel/Vision/NIM) โผล่ใน UI | ควรติดแล้ว — ยืนยันตอน build+run ครั้งแรก |
+| tool `mcp__hexstrike__*` / `mcp__rea__*` โผล่ + เรียกได้ | ต้องยืนยันจาก startup log หลัง build |
+| **wire system prompt** (`cyber-operator.system.md`) เข้า harness | ⚠️ **ยังไม่ได้ wire** — plugin `dsh-system-prompt` เป็น optional peer ต้องติดตั้ง+ใส่ entry เพิ่ม |
+| report assembler (ต้องการ python+pillow+/reporting mount) ใน container นี้ | ⚠️ ยังไม่ได้ย้ายมา (ตอนนี้อยู่ที่ hexstrike-server) |
+
+> ⚠️ **ความปลอดภัย:** จนกว่าจะ wire system prompt เสร็จ Tiel ใน deepseek-harness จะรัน
+> **โดยไม่มีกฎ guardrail** (local-only, redaction, ห้ามส่ง cloud ฯลฯ) — อย่าเพิ่งใช้วิเคราะห์
+> ตัวอย่างจริงจนกว่าจะเติม system prompt + ยืนยันว่างานแตะตัวอย่างไปทาง MCP/container เท่านั้น
+
+## ไฟล์ในชั้นนี้
+
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `Dockerfile.deepseek-harness` (ที่ `pipeline/`) | build image: node + pin dsh + ติดตั้ง mcp-client เข้า profile |
+| `cordis.patch.yml` | config: provider (patch `llm-pi-ai`) + MCP 2 server (service names) — mount เข้า container |
+| `profile.package.json` | profile web (bundles: dsh-base + dsh-web-app) — COPY เข้า image |
+| `entrypoint.sh` | bind IP ของ container + เปิด `:3080` |
+| service `deepseek-harness` ใน `docker-compose.yml` | ผูกทุกอย่างเข้า stack (profile full) |
+
+## ทางเลือก: รันบน host ด้วย `npx` (legacy)
+
+`deploy.sh` ยังเก็บวิธีรันบน host (`npx @deepseek-ai/dsh web`) ไว้ — เร็วสำหรับลองเล่น
+แต่ **ไม่แนะนำสำหรับงานจริง** เพราะ bash รันบน Mac (ไม่มี isolation) และต้องสลับ url เป็น localhost

@@ -147,6 +147,25 @@ fi
 echo "[3/3] เปิด HarnessRouter → http://localhost:3000"
 open "http://localhost:3000" 2>/dev/null || true
 
+# ── deepseek-harness UI (profile full) → http://localhost:3080 ───────────────
+#   bind IP ใน container → map ออก host; token พิมพ์ลง log ของ container
+#   ครั้งแรก build image นาน (npm install dsh + ติดตั้ง mcp-client) → รอ log พ่น token
+echo "      เปิด deepseek-harness → http://localhost:3080 (ดึง token จาก log…)"
+DSH_URL=""
+for _ in $(seq 1 45); do
+  DSH_URL="$(docker compose -f docker-compose.yml -f docker-compose.mac.yml logs deepseek-harness 2>/dev/null \
+    | grep -oE 'http://localhost:3080/\?token=[A-Za-z0-9_-]+' | tail -1)"
+  [ -n "$DSH_URL" ] && break
+  sleep 2
+done
+if [ -n "$DSH_URL" ]; then
+  echo "      ✓ deepseek-harness → $DSH_URL"
+  open "$DSH_URL" 2>/dev/null || true
+else
+  echo "      • ยังไม่เจอ token (ครั้งแรก build นานได้) — ดูเองที่:"
+  echo "        docker compose -f docker-compose.yml -f docker-compose.mac.yml logs -f deepseek-harness"
+fi
+
 echo ""
 echo "──────────────────────────────────────────────────────────────"
 echo "สรุป: โมเดล native + stack ใน docker"
@@ -155,7 +174,8 @@ echo "  • specialist          : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/m
 echo "  • summarizer          : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092}/v1/models"
 echo "  • vision (อ่านภาพ)     : http://localhost:${LLAMA_PORT_VISION:-8093}/v1/models"
 echo "  • observer dashboard  : http://localhost:${WATCH_PORT:-8005}"
-echo "  • console             : http://localhost:3000"
+echo "  • console (HarnessRouter): http://localhost:3000"
+echo "  • console (deepseek)   : http://localhost:3080  (token ใน: docker compose logs deepseek-harness)"
 echo ""
 echo "เรียก specialist เขียน exploit/PoC แบบ full-quality (direct path, ไม่ติด harness timeout):"
 echo "  pipeline/mac/ask-specialist.sh \"สิ่งที่อยากให้เขียน\" \"context...\""
