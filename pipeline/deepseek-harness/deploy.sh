@@ -28,14 +28,24 @@ fi
 echo "→ ยก docker stack (profile full) ..."
 ( cd "$PIPE" && docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d )
 
-# ── 3) วาง config ของ deepseek-harness ───────────────────────────────────────
+# ── 3) วาง config ของ deepseek-harness (NON-CLOBBER = "จำ" config เดิม) ──────
+#   ครั้งแรก: วางให้  |  ครั้งต่อไป: เก็บของเดิมไว้ (ไม่ทับ) → ที่แก้ผ่าน UI/มือไม่หาย
+#   อยากเอา config ล่าสุดจากรีโปมา "ทับ" (เช่นหลัง pull ที่แก้ config): DSH_APPLY_CONFIG=1 bash deploy.sh
 mkdir -p "$DSH_HOME/profiles/web"
-cp "$HERE/cordis.patch.yml" "$DSH_HOME/profiles/web/cordis.patch.yml"
-echo "✓ วาง cordis.patch.yml → $DSH_HOME/profiles/web/"
+TARGET="$DSH_HOME/profiles/web/cordis.patch.yml"
+if [ ! -f "$TARGET" ] || [ "${DSH_APPLY_CONFIG:-0}" = "1" ]; then
+  cp "$HERE/cordis.patch.yml" "$TARGET"
+  echo "✓ วาง cordis.patch.yml จากรีโป → $TARGET"
+else
+  echo "• เก็บ config เดิมไว้ ($TARGET) — เอาของรีโปมาทับ: DSH_APPLY_CONFIG=1 bash deploy.sh"
+fi
 
-# system prompt: วางสำเนาไว้ให้ wire เข้า harness (ดู README — กลไกโหลด prompt ยัง verify)
-cp "$PIPE/cyber-operator.system.md" "$DSH_HOME/cyber-operator.system.md"
-echo "✓ วาง cyber-operator.system.md → $DSH_HOME/ (ต้อง wire เป็น system prompt ใน DSH เอง — ดู README)"
+# system prompt: วางครั้งแรกให้ (ไม่ทับของเดิมเช่นกัน)
+PROMPT="$DSH_HOME/cyber-operator.system.md"
+if [ ! -f "$PROMPT" ] || [ "${DSH_APPLY_CONFIG:-0}" = "1" ]; then
+  cp "$PIPE/cyber-operator.system.md" "$PROMPT"
+  echo "✓ วาง cyber-operator.system.md → $DSH_HOME/ (wire เป็น system prompt ใน DSH เอง — ดู README)"
+fi
 
 # ── 4) launch harness (web UI :3080 — ไม่ชนกับ HarnessRouter :3000) ──────────
 #   2 โหมด:
