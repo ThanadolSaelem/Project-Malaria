@@ -4,9 +4,9 @@
 # วางไฟล์นี้ที่ $DSH_HOME/profiles/web/cordis.patch.yml (deploy.sh ทำให้)
 # cordis.patch เป็น "list ของ config patch ต่อ plugin": provider = plugin นึง, MCP = อีก plugin
 #
-# ✅ CONFIRMED (จาก docs/user/guide/providers.md ของ deepseek-harness):
-#    รูปแบบ provider custom OpenAI-compatible ด้านล่าง (baseURL/api/apiKeyEnv/models/compat)
-# ⚠️ NEEDS-VERIFY: โครง key ของบล็อก MCP (อิงเอกสาร dsh-mcp-client — เช็กเป๊ะอีกที)
+# ✅ VERIFIED (จาก providers.md + config-catalog ของ deepseek-harness):
+#    provider custom OpenAI-compatible + MCP (dsh-mcp-client) ครบ field required แล้ว
+#    (มี MCP พอดี 2 server: hexstrike + rea → toolCallTimeoutMs ต้องปรากฏ "2" บรรทัดเท่านั้น)
 # =============================================================================
 
 # ── (1) model provider → LiteLLM gateway บน host:4000 (Tiel / vision / nim) ──
