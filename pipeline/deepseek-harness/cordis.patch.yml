@@ -13,10 +13,11 @@
 # =============================================================================
 
 # ── (1) model provider → LiteLLM gateway บน host:4000 (Tiel / vision / nim) ──
-#   ⚠️ สำคัญ: ทุก entry ต้องมี `name:` = ชื่อ plugin ที่จะ instantiate
-#      (ถ้าขาด → Cordis ไม่รู้ว่าจะโหลด plugin ไหน → entry พัง → ทั้งไฟล์โหลดไม่ผ่าน
-#       = provider + MCP หายหมด ทั้งที่ MCP ถูก format แล้ว) — ยืนยันจาก entry ที่ UI สร้าง
-- id: llm-litellm-local
+#   ⚠️ สำคัญมาก: cordis.patch "แก้ entry ที่มีอยู่" (patch by id) ไม่ใช่ "สร้างใหม่"
+#      → id ต้องตรงกับ entry ที่ profile มีอยู่แล้ว ไม่งั้นได้ warn "patch: entry ... not found"
+#      provider plugin ที่มีอยู่ = id `llm-pi-ai` (ยืนยันจาก entry ที่ UI เขียนเอง)
+#      เราแค่ "เติม provider" เข้าไปใน entry นั้นผ่าน config.providers.*
+- id: llm-pi-ai
   name: "@deepseek-ai/dsh-llm-pi-ai"         # ← plugin ของ LLM provider (custom OpenAI-compatible)
   config:
     providers:
@@ -45,10 +46,11 @@
     model: cybermodel
 
 # ── (2) MCP tools → HexStrike router + REA ──────────────────────────────────
-#   ✅ ครบตาม config-catalog ของ @deepseek-ai/dsh-mcp-client (streamable-http):
+#   ‼️ ต้องติดตั้ง plugin ก่อน! dsh-mcp-client ไม่ใช่ bundle → ลง package เองก่อน ค่อยใส่ config:
+#        npx @deepseek-ai/dsh plugin --profile web add @deepseek-ai/dsh-mcp-client
+#      (ไม่ลงก่อน = ได้ warn "patch: entry ... not found" แล้ว entry ถูกข้าม)
+#   รูปแบบ: 1 entry ต่อ 1 server (ไม่ใช่ servers: map) · tool โผล่แบบ mcp__<serverName>__<toolName>
 #      required: serverName, transport, url, headers, toolCallTimeoutMs, failOnStartupError
-#      "1 entry ต่อ 1 server" (ไม่ใช่ servers: map). tool โผล่แบบ mcp__<serverName>__<toolName>
-#   ⚠️ เคยพลาด: ขาด headers + toolCallTimeoutMs (required) → schema ไม่ผ่าน → plugin ไม่โหลด
 #   ⚠️ url ต้องเป็น localhost (harness รันบน host) ไม่ใช่ชื่อ service ภายใน docker
 - id: mcp-hexstrike
   name: '@deepseek-ai/dsh-mcp-client'
