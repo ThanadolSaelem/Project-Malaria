@@ -26,9 +26,10 @@
           maxTokensField: max_tokens
 
 # ── (2) MCP tools → HexStrike router + REA ──────────────────────────────────
-#   ✅ โครงถูกต้องจาก README ของ @deepseek-ai/dsh-mcp-client:
-#      "1 entry ต่อ 1 server" — แต่ละ entry มี id (unique), name (= plugin), config (flat)
-#      ไม่ใช่ servers: map (อันเดิมผมเดาผิด). tool โผล่แบบ mcp__<serverName>__<toolName>
+#   ✅ ครบตาม config-catalog ของ @deepseek-ai/dsh-mcp-client (streamable-http):
+#      required: serverName, transport, url, headers, toolCallTimeoutMs, failOnStartupError
+#      "1 entry ต่อ 1 server" (ไม่ใช่ servers: map). tool โผล่แบบ mcp__<serverName>__<toolName>
+#   ⚠️ เคยพลาด: ขาด headers + toolCallTimeoutMs (required) → schema ไม่ผ่าน → plugin ไม่โหลด
 #   ⚠️ url ต้องเป็น localhost (harness รันบน host) ไม่ใช่ชื่อ service ภายใน docker
 - id: mcp-hexstrike
   name: '@deepseek-ai/dsh-mcp-client'
@@ -36,6 +37,8 @@
     serverName: hexstrike                    # → tool: mcp__hexstrike__* (search/describe/run)
     transport: streamable-http
     url: http://localhost:8001/mcp
+    headers: {}                              # required (ไม่มี auth สำหรับ local → ว่าง)
+    toolCallTimeoutMs: 300000                # required — timeout ต่อ 1 tool call (scan นานได้ 5 นาที)
     failOnStartupError: false                # ต่อไม่ติด = harness ยังขึ้น แต่ไม่มี tool (ดู log)
 
 - id: mcp-rea
@@ -44,6 +47,8 @@
     serverName: rea                          # → tool: mcp__rea__* (ต้องเปิด --profile full)
     transport: streamable-http
     url: http://localhost:8007/mcp
+    headers: {}                              # required
+    toolCallTimeoutMs: 300000                # required — RE/decompile ใช้เวลานาน → 5 นาที
     failOnStartupError: false
 #   หมายเหตุ: vision/specialist เราเรียกผ่าน bash heredoc → localhost:4000 (ไม่ใช่ MCP)
 #   deepseek-harness มี bash/command tool อยู่แล้ว → เรียกแบบเดิมได้ ไม่ต้องลง MCP
