@@ -96,8 +96,11 @@ in your reasoning vanish. Persist as you confirm, not at the end:
   the file, continue) — don't wait until the end to assemble it.
 - **Always use the ABSOLUTE paths `/evidence` and `/reports`** (and `/captures`), never a
   workspace-relative `evidence/`/`reports/` or a `~/.../` folder: the absolute ones are the
-  shared bind mounts, writable, visible on the host, and read by `assemble.py` — a
-  workspace folder is container-local and the assembler will not find it.
+  shared bind mounts, writable, visible on the host, and read by `assemble.py` and the other
+  tool containers (HexStrike/REA) — a folder under your home is seen only by you. Your home
+  `/root` IS persisted to the host too, so scratch work there survives a restart; but the
+  report assembler and the other tools only read `/evidence` and `/reports`, so every
+  evidence image and the running report JSON must be written there, not just into your home.
 - Then if you are interrupted, `/evidence` + `/reports/<case>.json` + memory already
   hold the completed work: the report assembles from them and you resume where you left
   off instead of starting over.

@@ -29,6 +29,22 @@ docker compose -f docker-compose.yml -f docker-compose.mac.yml logs deepseek-har
 หรือ **ดับเบิลคลิก `pipeline/mac/start.command`** — มันทำ llama → docker stack (รวม deepseek-harness)
 → เปิด :3080 ให้พร้อม token อัตโนมัติ
 
+## ข้อมูลหาย/ไม่หายตอน recreate (สำคัญ)
+
+`--force-recreate`/rebuild = ลบ+สร้าง container ใหม่ → **writable layer ของ container หายหมด**
+ดังนั้นสิ่งที่อยู่ "นอก volume" จะหาย ให้รู้ว่าอะไรรอด:
+
+| ข้อมูล | เก็บที่ | รอด recreate? |
+|---|---|---|
+| chat/บทสนทนา/todo ใน UI (`/dsh` runtime) | writable layer ของ container | ❌ หาย (เปิด session ใหม่) |
+| **ไฟล์งานที่ agent สร้าง** (`/root/<เคส>/...` = HOME) | bind mount `./dsh-workspace` | ✅ รอด (อยู่ `pipeline/dsh-workspace/`) |
+| รูปหลักฐาน (`/evidence`) + รายงาน (`/reports`) | bind mount `./evidence` / `./reports` | ✅ รอด (host, แชร์กับ hexstrike/rea) |
+| KG memory (`memory_add`) | volume `memory-data` ของ `memory-mcp` | ✅ รอด (คนละ container) |
+
+> เดิมโมเดลเขียนไฟล์ลง `/root/...` (HOME = ephemeral) เลยหายตอน recreate — แก้โดย mount
+> `/root` ออก host แล้ว (ดู `docker-compose.yml`). แต่ chat thread ใน UI ยัง ephemeral โดยตั้งใจ
+> (ทิ้งได้) — งานจริงให้ checkpoint ลง `/evidence` + `/reports/<เคส>.json` + memory ตามกฎใน AGENTS.md
+
 ## เวอร์ชันต้อง pin ให้ตรง (บทเรียนสำคัญ)
 
 deepseek-harness เป็น dev-preview และ **`dsh-mcp-client` pin peer deps แบบ exact** (ไม่ใช่ `^`)

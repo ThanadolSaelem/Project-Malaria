@@ -256,6 +256,11 @@ services:
       - ./reporting:/reporting:ro      # engine+template (assemble.py / build_report.py / template.docx)
       - ./reports:/reports             # output .docx + content.json (เขียนได้)
       - ./evidence:/evidence           # รูปหลักฐานที่ figure อ้างถึง (เขียนได้)
+      # home/workspace ของ agent → persist ออก host. โมเดลชอบเขียนไฟล์ลง /root/<project>/...
+      #   (HOME ของ container) ซึ่งเป็น ephemeral layer → เดิมหายเกลี้ยงตอน --force-recreate.
+      #   mount ออก host ตรงนี้ = ทุกไฟล์ที่มันสร้าง (แม้ไม่ได้ใช้ /evidence,/reports) รอด recreate
+      #   relative path → Docker auto-create, ใช้ได้ทั้ง Mac/Windows ไม่ต้อง setup มือ (reproducible)
+      - ./dsh-workspace:/root          # = pipeline/dsh-workspace/ บน host (gitignored)
     depends_on:
       - litellm
       - hexstrike-mcp
