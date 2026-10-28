@@ -61,6 +61,56 @@ def _score(query: str, entry: dict) -> int:
     return s
 
 
+# ── guards: กัน loop (เรียกซ้ำ) + กัน output ใหญ่จน context ระเบิด ───────────────
+import json as _json
+
+_RECENT: list = []
+_REPEAT_LIMIT = int(os.environ.get("ROUTER_REPEAT_LIMIT", "3"))
+_MAX_OUT = int(os.environ.get("ROUTER_MAX_OUTPUT_BYTES", "20000"))
+
+
+def _sig(name, arguments):
+    try:
+        return name + "|" + _json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False)
+    except Exception:
+        return name + "|" + repr(arguments)
+
+
+def _loop_check(name, arguments):
+    """คืนข้อความเตือนถ้า (tool,args) ซ้ำติดกัน >= limit, ไม่งั้น None."""
+    s = _sig(name, arguments)
+    _RECENT.append(s)
+    if len(_RECENT) > 12:
+        del _RECENT[0]
+    n = 0
+    for x in reversed(_RECENT):
+        if x == s:
+            n += 1
+        else:
+            break
+    if n >= _REPEAT_LIMIT:
+        return ("LOOP DETECTED: '%s' was called with identical arguments %d times in a row — the "
+                "result will not change. STOP repeating it: change the arguments/approach, move to "
+                "the next item in your plan, or if stuck, summarize what you have and switch to a "
+                "different vuln class." % (name, n))
+    return None
+
+
+def _cap(text):
+    """ตัด output ที่ยาวเกิน → กัน context โต + บอกให้ query แคบลง."""
+    if not isinstance(text, str):
+        return text
+    b = text.encode("utf-8", "replace")
+    if len(b) <= _MAX_OUT:
+        return text
+    head = b[: _MAX_OUT * 2 // 3].decode("utf-8", "replace")
+    tail = b[-_MAX_OUT // 3:].decode("utf-8", "replace")
+    return ("%s\n\n...[TRUNCATED: %d bytes total, kept ~%d. Do NOT pull the whole blob into context "
+            "— re-run with a narrow filter (grep/head/sed or a specific path), or save it to a file "
+            "in the tool container and extract only what you need.]...\n\n%s"
+            % (head, len(b), _MAX_OUT, tail))
+
+
 class CveBackend:
     """MCP client ต่อ cve-mcp-server (stdio) ค้างไว้ใน dedicated background task เดียว
     (ห้ามใช้ FastMCP lifespan กับ streamable-http — ทับ session_manager → Task group error)."""
@@ -125,7 +175,7 @@ class CveBackend:
         structured = getattr(res, "structuredContent", None)
         if structured is not None:
             out["structured"] = structured
-        out["content"] = "\n".join(parts)
+        out["content"] = _cap("\n".join(parts))
         return out
 
 
@@ -175,6 +225,9 @@ async def cve_describe_tool(name: str) -> dict:
 async def cve_run(name: str, arguments: dict | None = None) -> dict:
     """รัน CVE / vuln-intel tool ชื่อ name พร้อม arguments (dict ตาม schema จาก
     cve_describe_tool). เช่น cve_run("lookup_cve", {"cve_id": "CVE-2024-3400"})."""
+    loop = _loop_check(name, arguments or {})
+    if loop:
+        return {"tool": name, "loop_guard": loop}
     await _BACKEND.wait_ready()
     cat, names = _BACKEND.catalog, _BACKEND.names
     if name in _DENY:

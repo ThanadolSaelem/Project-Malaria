@@ -91,6 +91,56 @@ def _score(query: str, entry: dict) -> int:
     return s
 
 
+# ── guards: กัน loop (เรียกซ้ำ) + กัน output ใหญ่จน context ระเบิด ───────────────
+import json as _json
+
+_RECENT: list = []
+_REPEAT_LIMIT = int(os.environ.get("ROUTER_REPEAT_LIMIT", "3"))
+_MAX_OUT = int(os.environ.get("ROUTER_MAX_OUTPUT_BYTES", "20000"))
+
+
+def _sig(name, arguments):
+    try:
+        return name + "|" + _json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False)
+    except Exception:
+        return name + "|" + repr(arguments)
+
+
+def _loop_check(name, arguments):
+    """คืนข้อความเตือนถ้า (tool,args) ซ้ำติดกัน >= limit, ไม่งั้น None."""
+    s = _sig(name, arguments)
+    _RECENT.append(s)
+    if len(_RECENT) > 12:
+        del _RECENT[0]
+    n = 0
+    for x in reversed(_RECENT):
+        if x == s:
+            n += 1
+        else:
+            break
+    if n >= _REPEAT_LIMIT:
+        return ("LOOP DETECTED: '%s' was called with identical arguments %d times in a row — the "
+                "result will not change. STOP repeating it: change the arguments/approach, move to "
+                "the next item in your plan, or if stuck, summarize what you have and switch to a "
+                "different vuln class." % (name, n))
+    return None
+
+
+def _cap(text):
+    """ตัด output ที่ยาวเกิน → กัน context โต + บอกให้ query แคบลง."""
+    if not isinstance(text, str):
+        return text
+    b = text.encode("utf-8", "replace")
+    if len(b) <= _MAX_OUT:
+        return text
+    head = b[: _MAX_OUT * 2 // 3].decode("utf-8", "replace")
+    tail = b[-_MAX_OUT // 3:].decode("utf-8", "replace")
+    return ("%s\n\n...[TRUNCATED: %d bytes total, kept ~%d. Do NOT pull the whole blob into context "
+            "— re-run with a narrow filter (grep/head/sed or a specific path), or save it to a file "
+            "in the tool container and extract only what you need.]...\n\n%s"
+            % (head, len(b), _MAX_OUT, tail))
+
+
 def main() -> None:
     server = os.environ.get("HEXSTRIKE_SERVER", "http://127.0.0.1:8888")
     timeout = int(os.environ.get("HEXSTRIKE_TIMEOUT", "300"))
@@ -157,12 +207,24 @@ def main() -> None:
                                        "additional_args": "-T4 -F -Pn"})
         คืนผลลัพธ์ดิบจาก tool นั้น (output อาจยาว — ถ้างานใหญ่ให้แบ่งรันทีละน้อย)."""
         arguments = arguments or {}
+        loop = _loop_check(name, arguments)
+        if loop:
+            return {"tool": name, "loop_guard": loop}
         if name not in catalog:
             sugg = sorted(names, key=lambda n: _score(name, catalog[n]),
                           reverse=True)[:8]
             return {"error": f"ไม่พบ tool '{name}'", "did_you_mean": sugg}
         try:
             result = await tm.call_tool(name, arguments)
+            if isinstance(result, str):                # cap output ใหญ่ กัน context ระเบิด
+                result = _cap(result)
+            else:
+                try:
+                    _s = _json.dumps(result, ensure_ascii=False, default=str)
+                except Exception:
+                    _s = repr(result)
+                if len(_s.encode("utf-8", "replace")) > _MAX_OUT:
+                    result = _cap(_s)
             return {"tool": name, "result": result}
         except Exception as e:                        # คืน error สะอาด ไม่ให้ทั้ง turn ล้ม
             return {"tool": name, "error": f"{type(e).__name__}: {e}"}
