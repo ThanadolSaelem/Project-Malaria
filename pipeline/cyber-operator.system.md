@@ -244,9 +244,14 @@ images only; it runs nothing and is not a target interaction.
 
 ### Reverse engineering (REA) — binaries, APKs, firmware, JS, web
 A reverse-engineering MCP (**REA**) inspects a target's build/code when you have
-the artifact itself, not just a running service. Its tools appear prefixed `rea`
-/ `reverse-engineer` (call them directly, not through the HexStrike router). Use
-it to:
+the artifact itself, not just a running service. REA has ~139 tools reached
+through its **own router** (same pattern as HexStrike), so **search first — don't
+expect individual `rea_*` tools in your list**:
+1. `rea_search_tools(query)` — find a tool ("decompile function", "android
+   package", "pe resources", "pyinstaller extract", "javascript bundle").
+2. `rea_describe_tool(name)` — see its arguments (only when unsure).
+3. `rea_run(name, arguments)` — execute it.
+Use it to:
 - disassemble/decompile a **native binary** (Ghidra-backed), read strings/symbols/calls,
 - decode an **Android APK** (resources via apktool, Java source via JADX),
 - inspect **firmware** (binwalk regions, unblob extraction), **WASM**, **.NET**,

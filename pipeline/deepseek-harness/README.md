@@ -58,12 +58,15 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 |---|---|
 | provider (Cyber-Tiel/Vision/NIM) โผล่ใน UI | ✅ ใช้ได้ (Tiel ตอบผ่าน LiteLLM ใน container) |
 | tool `mcp__hexstrike__*` / `mcp__rea__*` | ✅ ติดแล้วด้วย `- insert:` (hexstrike log ยืนยัน ListTools 200) |
-| **wire system prompt** (`cyber-operator.system.md`) เข้า harness | ⚠️ **ยังไม่ได้ wire** — plugin `dsh-system-prompt` เป็น optional peer ต้องติดตั้ง+ใส่ entry เพิ่ม |
-| report assembler (ต้องการ python+pillow+/reporting mount) ใน container นี้ | ⚠️ ยังไม่ได้ย้ายมา (ตอนนี้อยู่ที่ hexstrike-server) |
+| REA 139 tool ล้น context ของ Tiel | ✅ แก้ด้วย REA router (3 meta-tool, ดู `rea_mcp_router.py`) |
+| **system prompt** (กฎ + workflow + identity) | ✅ wire แล้ว: `cyber-operator.system.md` → `/dsh/AGENTS.md` (dsh-agent-instructions โหลดทุก session) + persona = Cyber-Tiel |
+| report assembler (`assemble.py`) ใน deepseek container | ⚠️ ยังไม่ครบ — bash ของ Tiel อยู่ใน deepseek (node, ไม่มี python/pillow/`/reporting`). เนื้อหา (JSON+รูป) ทำได้ แต่ขั้น "ประกอบ .docx" ต้องรันที่ host/hexstrike-server ไปก่อน |
+| memory (`memory_*`) ที่ system prompt อ้างถึง | ⚠️ ยังไม่ได้ต่อใน deepseek (มีแค่ hexstrike+rea) — เพิ่ม insert ของ memory-mcp ได้ภายหลัง |
 
-> ⚠️ **ความปลอดภัย:** จนกว่าจะ wire system prompt เสร็จ Tiel ใน deepseek-harness จะรัน
-> **โดยไม่มีกฎ guardrail** (local-only, redaction, ห้ามส่ง cloud ฯลฯ) — อย่าเพิ่งใช้วิเคราะห์
-> ตัวอย่างจริงจนกว่าจะเติม system prompt + ยืนยันว่างานแตะตัวอย่างไปทาง MCP/container เท่านั้น
+> ✅ **ความปลอดภัย:** system prompt (กฎ guardrail: local-only, redaction, ห้ามส่ง cloud,
+> authorized scope) wire แล้วผ่าน `/dsh/AGENTS.md` — **หลัง deploy ให้ทดสอบยืนยัน**ว่า Tiel
+> ตอบเป็น Cyber-Tiel + รู้กฎ (ถาม "what are your rules?") ก่อนเอาไปแตะตัวอย่างจริง และงานที่
+> แตะตัวอย่างต้องไปทาง MCP (hexstrike/rea container) ไม่ใช่ bash ในตัว harness
 
 ## ไฟล์ในชั้นนี้
 

@@ -229,6 +229,8 @@ services:
       # config (patch) จาก repo แบบ :ro ที่ path แยก → entrypoint copy ไปที่ profile (เขียนได้)
       #   (ห้าม mount ทับ /dsh/profiles/web/cordis.patch.yml ตรง ๆ: UI เขียนทับไฟล์นั้นไม่ได้ → EBUSY)
       - ./deepseek-harness/cordis.patch.yml:/config/cordis.patch.yml:ro
+      # system prompt → entrypoint ตัด wrapper แล้ววางเป็น /dsh/AGENTS.md (agent-instructions โหลดเอง)
+      - ./cyber-operator.system.md:/config/cyber-operator.system.md:ro
     depends_on:
       - litellm
       - hexstrike-mcp
