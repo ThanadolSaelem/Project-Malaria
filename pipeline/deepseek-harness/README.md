@@ -43,11 +43,12 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 
 ## กลไกที่ไขออกมาแล้ว (ทำไมก่อนหน้านี้ไม่ติด)
 
-- **`cordis.patch.yml` = patch ของที่มีอยู่ ไม่ใช่สร้างใหม่** → provider ต้องใช้ id **`llm-pi-ai`**
-  (entry provider plugin ที่มีอยู่) แล้วเติม provider ของเราใน `config.providers.*`
-  ใช้ id ใหม่ = ได้ warn `patch: entry ... not found` แล้วถูกข้าม
-- **`dsh-mcp-client` ไม่ใช่ bundle** → ต้อง `dsh plugin add` ติดตั้งก่อน (Dockerfile ทำให้ตอน build)
-  ยังไม่ติดตั้ง = entry `mcp-*` ก็ `not found` เช่นกัน
+- **cordis.patch มี 2 แบบ (ต่างที่ key):** `- id: X` เดี่ยว = **patch row ที่มีอยู่** ·
+  `- insert: [...]` = **สร้าง row ใหม่** (ยืนยันจาก dsh-base/dsh-web-app ที่สร้าง row ทั้งหมดด้วย insert)
+  → provider = patch `llm-pi-ai` (มีอยู่แล้ว) · **MCP = `insert`** (row ใหม่) ‼️ จุดนี้คือตัวที่ทำให้ติด
+  ใช้ `- id:` เดี่ยวกับ id ที่ไม่มีอยู่ = `patch: entry ... not found` แล้วถูกข้าม
+- **`dsh-mcp-client` ไม่ใช่ bundle** → แค่ `dsh plugin add` ติดตั้งลง node_modules (Dockerfile ทำตอน build)
+  ก็พอ — `insert` หา plugin ด้วย `name` เจอเอง **ไม่ต้องทำเป็น bundle/wrapper**
 - **`dsh web --host` รับ IP จริงเท่านั้น** (wildcard `0.0.0.0` ถูก reject) → `entrypoint.sh`
   ดึง IP ของ container มา bind แล้ว Docker map `:3080` ออก host (+ `--trusted-host localhost:3080`)
 
@@ -55,8 +56,8 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 
 | เรื่อง | สถานะ |
 |---|---|
-| provider (Cyber-Tiel/Vision/NIM) โผล่ใน UI | ควรติดแล้ว — ยืนยันตอน build+run ครั้งแรก |
-| tool `mcp__hexstrike__*` / `mcp__rea__*` โผล่ + เรียกได้ | ต้องยืนยันจาก startup log หลัง build |
+| provider (Cyber-Tiel/Vision/NIM) โผล่ใน UI | ✅ ใช้ได้ (Tiel ตอบผ่าน LiteLLM ใน container) |
+| tool `mcp__hexstrike__*` / `mcp__rea__*` | ✅ ติดแล้วด้วย `- insert:` (hexstrike log ยืนยัน ListTools 200) |
 | **wire system prompt** (`cyber-operator.system.md`) เข้า harness | ⚠️ **ยังไม่ได้ wire** — plugin `dsh-system-prompt` เป็น optional peer ต้องติดตั้ง+ใส่ entry เพิ่ม |
 | report assembler (ต้องการ python+pillow+/reporting mount) ใน container นี้ | ⚠️ ยังไม่ได้ย้ายมา (ตอนนี้อยู่ที่ hexstrike-server) |
 
