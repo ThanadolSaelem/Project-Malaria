@@ -1,28 +1,26 @@
 # =============================================================================
 # deepseek-harness config layer → ชี้ stack เดิมของเรา (Tiel/LiteLLM + MCP tools)
 # -----------------------------------------------------------------------------
-# ‼️ เวอร์ชันนี้สำหรับ "รันใน container" (service deepseek-harness ใน docker-compose)
-#    harness อยู่ใน network เดียวกับ stack → ใช้ "ชื่อ service" ตรง ๆ:
-#       litellm:4000 · hexstrike-mcp:8001 · rea-mcp:8007   (ไม่ใช่ localhost อีกแล้ว)
-#    (ตอนรันบน host เท่านั้นที่ต้องใช้ localhost — ตอนนี้เราย้ายเข้า container แล้ว)
+# ‼️ เวอร์ชันนี้สำหรับ "รันใน container" → ใช้ชื่อ service: litellm/hexstrike-mcp/rea-mcp
+#    (entrypoint copy ไฟล์นี้ไป /dsh/profiles/web/ แบบเขียนได้ — ดู Dockerfile.deepseek-harness)
 #
-# mount ไฟล์นี้เข้า container ที่ /dsh/profiles/web/cordis.patch.yml (ดู docker-compose.yml)
-# cordis.patch = "list ของ patch ต่อ plugin" แต่ละ entry ต้องมี: id + name(plugin) + config
-#   ⚠️ มัน"แก้ entry ที่มีอยู่" (patch by id) — provider ใช้ id `llm-pi-ai` ที่มีอยู่แล้ว
-#   ⚠️ MCP: plugin dsh-mcp-client ถูกติดตั้งตอน build image แล้ว (ดู Dockerfile.deepseek-harness)
+# 🔑 บทเรียนใหญ่ — cordis.patch มี 2 แบบ (ต่างกันที่ key):
+#    • `- id: X` เดี่ยว ๆ  = PATCH row ที่ "มีอยู่แล้ว" (ถ้า id ไม่มีอยู่ → warn "entry not found" แล้วข้าม)
+#    • `- insert: [...]`   = CREATE row ใหม่ (ยืนยันจาก dsh-base/dsh-web-app ที่สร้าง row ทั้งหมดด้วย insert)
+#    → provider ใช้ PATCH (llm-pi-ai มีอยู่แล้วจาก bundle) · MCP ใช้ INSERT (เป็น row ใหม่)
+#    (plugin dsh-mcp-client แค่ถูก "ติดตั้ง" ใน node_modules พอ — ดู Dockerfile; insert หา name เจอเอง)
 # =============================================================================
 
-# ── (1) model provider → LiteLLM ใน network (service: litellm:4000) ──────────
-#   patch เข้า entry `llm-pi-ai` (provider plugin ที่มีอยู่) แล้วเติม provider ของเรา
+# ── (1) provider → LiteLLM (service litellm:4000) : PATCH entry llm-pi-ai ─────
 - id: llm-pi-ai
-  name: "@deepseek-ai/dsh-llm-pi-ai"         # ← plugin ของ LLM provider (custom OpenAI-compatible)
+  name: "@deepseek-ai/dsh-llm-pi-ai"
   config:
     providers:
       litellm-local:
         displayName: LiteLLM (local)
         apiKeyEnv: LITELLM_KEY              # compose ส่ง LITELLM_KEY=sk-local เข้า container
         api: openai-completions
-        baseURL: http://litellm:4000/v1     # ชื่อ service ใน docker network (ไม่ใช่ localhost)
+        baseURL: http://litellm:4000/v1     # ชื่อ service ใน docker network
         models:
           - id: cybermodel                  # Tiel (orchestrator) — งาน sensitive/หลักฐาน
             name: Cyber-Tiel
@@ -31,38 +29,38 @@
           - id: nim                          # GLM cloud — ⚠️ งาน non-sensitive เท่านั้น
             name: NIM (GLM cloud)
         compat:
-          supportsDeveloperRole: false       # llama.cpp มักต้องตั้ง (ถ้า request โดนปฏิเสธทั้งที่ url/key ถูก)
+          supportsDeveloperRole: false
           maxTokensField: max_tokens
 
-# ── (1b) ตั้ง provider/model ดีฟอลต์ของ agent = Tiel (cybermodel) ──────────────
+# ── (1b) default model ของ agent = Tiel : PATCH entry agent-default-model ─────
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"
   config:
-    provider: litellm-local                  # ต้องตรงกับ key ใน providers: ด้านบน
+    provider: litellm-local
     model: cybermodel
 
-# ── (2) MCP tools → HexStrike router + REA (service names ใน network) ────────
-#   plugin dsh-mcp-client ลงตอน build แล้ว → entry พวกนี้ instantiate ได้
-#   รูปแบบ: 1 entry ต่อ 1 server · tool โผล่แบบ mcp__<serverName>__<toolName>
-#   required: serverName, transport, url, headers, toolCallTimeoutMs, failOnStartupError
-- id: mcp-hexstrike
-  name: '@deepseek-ai/dsh-mcp-client'
-  config:
-    serverName: hexstrike                    # → tool: mcp__hexstrike__* (search/describe/run)
-    transport: streamable-http
-    url: http://hexstrike-mcp:8001/mcp       # service: hexstrike-mcp (MCP_PORT 8001)
-    headers: {}                              # required (ไม่มี auth สำหรับภายใน network → ว่าง)
-    toolCallTimeoutMs: 300000                # required — timeout ต่อ 1 tool call (scan นานได้ 5 นาที)
-    failOnStartupError: false                # ต่อไม่ติด = harness ยังขึ้น แต่ไม่มี tool (ดู log)
-
-- id: mcp-rea
-  name: '@deepseek-ai/dsh-mcp-client'
-  config:
-    serverName: rea                          # → tool: mcp__rea__* (service rea-mcp ต้องเปิด profile full)
-    transport: streamable-http
-    url: http://rea-mcp:8007/mcp             # service: rea-mcp
-    headers: {}                              # required
-    toolCallTimeoutMs: 300000                # required — RE/decompile ใช้เวลานาน → 5 นาที
-    failOnStartupError: false
-#   หมายเหตุ: งานวิเคราะห์ที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea)
-#   ที่แยกขาด เท่านั้น — ไม่ใช่ bash ในตัว harness เอง (กฎ: analyze local ใน container)
+# ── (2) MCP tools → HexStrike + REA : INSERT row ใหม่ (สร้าง instance ของ mcp-client) ─
+#   1 instance ต่อ 1 server · tool โผล่แบบ mcp__<serverName>__<toolName>
+#   url = ชื่อ service ใน network · field required: serverName/transport/url/headers/
+#         toolCallTimeoutMs/failOnStartupError
+- insert:
+    - id: mcp-hexstrike
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: hexstrike                # → tool: mcp__hexstrike__* (search/describe/run)
+        transport: streamable-http
+        url: http://hexstrike-mcp:8001/mcp
+        headers: {}
+        toolCallTimeoutMs: 300000            # scan นานได้ 5 นาที
+        failOnStartupError: false            # ต่อไม่ติด = harness ยังขึ้น (ไม่มี tool)
+    - id: mcp-rea
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: rea                      # → tool: mcp__rea__* (service rea-mcp, ต้องเปิด profile full)
+        transport: streamable-http
+        url: http://rea-mcp:8007/mcp
+        headers: {}
+        toolCallTimeoutMs: 300000            # RE/decompile ใช้เวลานาน
+        failOnStartupError: false
+#   หมายเหตุ: งานที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea ที่แยกขาด)
+#   เท่านั้น ไม่ใช่ bash ในตัว harness (กฎ: analyze local ใน container)

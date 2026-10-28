@@ -41,3 +41,17 @@ services:
     environment:
       # ต่อ server ที่อยู่ใน compose network เดียวกัน (ชื่อ service = DNS ภายใน)
       HEXSTRIKE_SERVER: http://hexstrike-server:8888
+
+  rea-mcp:
+    # tool-RAG router แทน `rea mcp` เต็ม (139 tools) → expose แค่ 3 meta-tools
+    # (rea_search_tools / rea_describe_tool / rea_run) ประหยัด context ~95%
+    # แต่เข้าถึงครบ 139 tool. endpoint เดิม /mcp:8007 ไม่เปลี่ยน (harness ไม่ต้องแก้)
+    # router = MCP proxy: spawn `rea mcp` (stdio) เองแล้วเสิร์ฟ http — แทน supergateway
+    # (ต้อง rebuild rea image ครั้งเดียว: Dockerfile เพิ่ม pip install mcp)
+    volumes:
+      - ./rea_mcp_router.py:/app/rea_mcp_router.py:ro
+    command: ["python3", "/app/rea_mcp_router.py"]
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8007
+      REA_MCP_CMD: "rea mcp"
