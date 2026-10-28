@@ -235,6 +235,7 @@ services:
       - litellm
       - hexstrike-mcp
       - rea-mcp
+      - memory-mcp
     restart: unless-stopped
 
 volumes:

@@ -75,5 +75,14 @@
         headers: {}
         toolCallTimeoutMs: 300000            # RE/decompile ใช้เวลานาน
         failOnStartupError: false
+    - id: mcp-memory
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: memory                   # → tool: mcp__memory__* (KG: add/relate/search/read/delete)
+        transport: streamable-http
+        url: http://memory-mcp:8002/mcp      # service: memory-mcp (รันโดยดีฟอลต์ ไม่ต้อง profile full)
+        headers: {}
+        toolCallTimeoutMs: 60000             # memory เร็ว — 60s พอ
+        failOnStartupError: false
 #   หมายเหตุ: งานที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea ที่แยกขาด)
 #   เท่านั้น ไม่ใช่ bash ในตัว harness (กฎ: analyze local ใน container)

@@ -61,7 +61,7 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 | REA 139 tool ล้น context ของ Tiel | ✅ แก้ด้วย REA router (3 meta-tool, ดู `rea_mcp_router.py`) |
 | **system prompt** (กฎ + workflow + identity) | ✅ wire แล้ว: `cyber-operator.system.md` → `/dsh/AGENTS.md` (dsh-agent-instructions โหลดทุก session) + persona = Cyber-Tiel |
 | report assembler (`assemble.py`) ใน deepseek container | ⚠️ ยังไม่ครบ — bash ของ Tiel อยู่ใน deepseek (node, ไม่มี python/pillow/`/reporting`). เนื้อหา (JSON+รูป) ทำได้ แต่ขั้น "ประกอบ .docx" ต้องรันที่ host/hexstrike-server ไปก่อน |
-| memory (`memory_*`) ที่ system prompt อ้างถึง | ⚠️ ยังไม่ได้ต่อใน deepseek (มีแค่ hexstrike+rea) — เพิ่ม insert ของ memory-mcp ได้ภายหลัง |
+| memory (`memory_*`) ที่ system prompt อ้างถึง | ✅ ต่อแล้ว: KG memory-mcp (`:8002`) ผ่าน insert `mcp-memory` → `mcp__memory__*` (add/relate/search/read/delete) |
 
 > ✅ **ความปลอดภัย:** system prompt (กฎ guardrail: local-only, redaction, ห้ามส่ง cloud,
 > authorized scope) wire แล้วผ่าน `/dsh/AGENTS.md` — **หลัง deploy ให้ทดสอบยืนยัน**ว่า Tiel
