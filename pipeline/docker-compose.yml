@@ -226,8 +226,9 @@ services:
     environment:
       LITELLM_KEY: ${LITELLM_KEY:-sk-local}
     volumes:
-      # config (patch) mount จาก repo → แก้ url/provider ได้โดยไม่ต้อง rebuild image
-      - ./deepseek-harness/cordis.patch.yml:/dsh/profiles/web/cordis.patch.yml:ro
+      # config (patch) จาก repo แบบ :ro ที่ path แยก → entrypoint copy ไปที่ profile (เขียนได้)
+      #   (ห้าม mount ทับ /dsh/profiles/web/cordis.patch.yml ตรง ๆ: UI เขียนทับไฟล์นั้นไม่ได้ → EBUSY)
+      - ./deepseek-harness/cordis.patch.yml:/config/cordis.patch.yml:ro
     depends_on:
       - litellm
       - hexstrike-mcp

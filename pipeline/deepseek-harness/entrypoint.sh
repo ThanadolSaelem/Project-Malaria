@@ -1,15 +1,24 @@
 #!/bin/sh
 # =============================================================================
 # entrypoint — รัน deepseek-harness web UI ใน container
-# -----------------------------------------------------------------------------
-# dsh web --host รับ "IP ของ interface จริง" เท่านั้น — wildcard (0.0.0.0/::) ถูก reject
-# ใน container จึงต้อง bind IP ของ container เอง (eth0) แล้ว Docker map :3080 ออก host
-# (ดึง IP ด้วย node เพราะ image ไม่มี hostname/ip command แน่นอน)
 # =============================================================================
 set -eu
 
-IP="$(node -e "const n=require('os').networkInterfaces();for(const k in n)for(const a of n[k])if(a.family==='IPv4'&&!a.internal){console.log(a.address);process.exit(0)}")"
+# ── config (patch): copy จาก /config (:ro mount จาก repo) → profile (เขียนได้) ──
+#   ทำไมต้อง copy ไม่ mount ตรง: UI persist settings (เช่น ack ของ Preview Notice,
+#   ui-settings-general) โดย "เขียนทับ" cordis.patch.yml. ถ้า mount ไฟล์เดี่ยวแบบ :ro
+#   จะเขียนไม่ได้ → EBUSY (rename ทับ bind-mount ของไฟล์ไม่ได้). copy เป็นไฟล์ปกติใน
+#   /dsh (RW layer) แทน → UI เซฟได้ และ config ยังมาจาก repo (reproducible)
+if [ -f /config/cordis.patch.yml ]; then
+  mkdir -p /dsh/profiles/web
+  cp /config/cordis.patch.yml /dsh/profiles/web/cordis.patch.yml
+  echo "entrypoint: วาง cordis.patch.yml จาก repo → /dsh/profiles/web (เขียนได้)"
+else
+  echo "entrypoint: ⚠️ ไม่พบ /config/cordis.patch.yml (ไม่ได้ mount?) — ใช้ของเดิมใน image ถ้ามี"
+fi
 
+# ── bind IP ของ container (dsh --host ไม่รับ wildcard 0.0.0.0) ──
+IP="$(node -e "const n=require('os').networkInterfaces();for(const k in n)for(const a of n[k])if(a.family==='IPv4'&&!a.internal){console.log(a.address);process.exit(0)}")"
 if [ -z "$IP" ]; then
   echo "entrypoint: หา IPv4 ของ container ไม่เจอ — ยกเลิก" >&2
   exit 1

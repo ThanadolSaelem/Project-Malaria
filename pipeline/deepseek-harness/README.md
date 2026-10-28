@@ -69,7 +69,7 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 | ไฟล์ | หน้าที่ |
 |---|---|
 | `Dockerfile.deepseek-harness` (ที่ `pipeline/`) | build image: node + pin dsh + ติดตั้ง mcp-client เข้า profile |
-| `cordis.patch.yml` | config: provider (patch `llm-pi-ai`) + MCP 2 server (service names) — mount เข้า container |
+| `cordis.patch.yml` | config: provider (patch `llm-pi-ai`) + MCP 2 server (service names). mount `:ro` ที่ `/config` แล้ว entrypoint copy ไป profile (เขียนได้ — UI ต้องเขียนทับไฟล์นี้เพื่อ save settings/ack) |
 | `profile.package.json` | profile web (bundles: dsh-base + dsh-web-app) — COPY เข้า image |
 | `entrypoint.sh` | bind IP ของ container + เปิด `:3080` |
 | service `deepseek-harness` ใน `docker-compose.yml` | ผูกทุกอย่างเข้า stack (profile full) |
