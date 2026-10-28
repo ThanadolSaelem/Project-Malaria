@@ -17,6 +17,16 @@ else
   echo "entrypoint: ⚠️ ไม่พบ /config/cordis.patch.yml (ไม่ได้ mount?) — ใช้ของเดิมใน image ถ้ามี"
 fi
 
+# ── system prompt → /dsh/AGENTS.md (agent-instructions โหลดเป็น global baseline ทุก session) ──
+#   dsh-agent-instructions อ่าน $DSH_HOME/AGENTS.md (=/dsh/AGENTS.md) เข้า prompt อัตโนมัติ
+#   ตัด wrapper สำหรับคนอ่าน (บรรทัดบนก่อน "## SYSTEM PROMPT") ออก เอาเฉพาะเนื้อ prompt จริง
+if [ -f /config/cyber-operator.system.md ]; then
+  awk 'f;/^## SYSTEM PROMPT$/{f=1}' /config/cyber-operator.system.md > /dsh/AGENTS.md
+  echo "entrypoint: วาง system prompt → /dsh/AGENTS.md ($(wc -c < /dsh/AGENTS.md) bytes)"
+else
+  echo "entrypoint: ⚠️ ไม่พบ /config/cyber-operator.system.md — Tiel จะไม่มี guardrail/workflow!"
+fi
+
 # ── bind IP ของ container (dsh --host ไม่รับ wildcard 0.0.0.0) ──
 IP="$(node -e "const n=require('os').networkInterfaces();for(const k in n)for(const a of n[k])if(a.family==='IPv4'&&!a.internal){console.log(a.address);process.exit(0)}")"
 if [ -z "$IP" ]; then

@@ -39,6 +39,19 @@
     provider: litellm-local
     model: cybermodel
 
+# ── (1c) identity → Cyber-Tiel : PATCH system-prompt (row ที่ dsh-web-app มีอยู่แล้ว) ─────
+#   กฎ/workflow เต็มอยู่ใน /dsh/AGENTS.md (= cyber-operator.system.md ที่ entrypoint ตัด wrapper
+#   แล้ววางให้) โหลดโดย dsh-agent-instructions อัตโนมัติทุก session — นี่แค่ตั้งตัวตนสั้น ๆ
+- id: system-prompt
+  config:
+    personaPrefix: >-
+      You are Cyber-Tiel, an autonomous cybersecurity operations analyst working in
+      an authorized lab. Follow the operating instructions in AGENTS.md exactly — its
+      authorization and scope rules, tool-use discipline (HexStrike and REA are reached
+      through their routers: search a tool, then run it), the threat-verdict and
+      reporting format, and the rule that analysis stays local and evidence is never
+      sent to a cloud model.
+
 # ── (2) MCP tools → HexStrike + REA : INSERT row ใหม่ (สร้าง instance ของ mcp-client) ─
 #   1 instance ต่อ 1 server · tool โผล่แบบ mcp__<serverName>__<toolName>
 #   url = ชื่อ service ใน network · field required: serverName/transport/url/headers/
