@@ -130,6 +130,12 @@ RUN (git clone --depth 1 https://github.com/zrax/pycdc /tmp/pycdc \
 RUN npm install -g rea-agents@6.4.0 supergateway \
     && rea --version && echo "✓ rea + supergateway"
 
+# ── ชั้น 8b: mcp SDK (Python) สำหรับ rea_mcp_router.py — tool-RAG (3 meta-tools) ──
+#   router = MCP proxy: server(3 tool: search/describe/run) ที่ภายในเป็น MCP client
+#   ต่อ `rea mcp` จริงอีกที → ลด 139 tool schema ที่กิน context ของ local llama
+#   (แนวเดียวกับ hexstrike_mcp_router.py; pin mcp<2 เพราะใช้ mcp.server.fastmcp.FastMCP)
+RUN pip3 install --no-cache-dir "mcp>=1.8,<2" && echo "✓ mcp SDK (rea router)"
+
 # ── env ให้ REA หา tool เจอ (readiness: rea doctor / rea inspect-*) ──────────
 ENV REA_APKTOOL_COMMAND=/usr/local/bin/apktool \
     REA_BINWALK_COMMAND=/usr/local/bin/binwalk \
