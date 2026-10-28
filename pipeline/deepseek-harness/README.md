@@ -62,6 +62,7 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 | **system prompt** (กฎ + workflow + identity) | ✅ wire แล้ว: `cyber-operator.system.md` → `/dsh/AGENTS.md` (dsh-agent-instructions โหลดทุก session; identity มาจากเนื้อ AGENTS.md เอง — ไม่ patch persona เพราะ profile patch ต้องมี `name`) |
 | report assembler (`assemble.py`) ใน deepseek container | ✅ ทำได้ในตัว — Dockerfile ลง python3+pillow, mount `/reporting`,`/reports`,`/evidence` → Tiel รัน `assemble.py` เองจบ (ต้อง rebuild deepseek image ครั้งเดียว) |
 | memory (`memory_*`) ที่ system prompt อ้างถึง | ✅ ต่อแล้ว: KG memory-mcp (`:8002`) ผ่าน insert `mcp-memory` → `mcp__memory__*` (add/relate/search/read/delete) |
+| CVE / vuln-intel (`cve_*`) | ✅ ต่อแล้ว: cve-mcp-server (`:8009`) + router 28→3 (`cve_search_tools/describe/run`) กรอง threat-intel ที่ส่ง IOC ออก (passive OSINT) — ต้องต่อเน็ต, key optional |
 
 > ✅ **ความปลอดภัย:** system prompt (กฎ guardrail: local-only, redaction, ห้ามส่ง cloud,
 > authorized scope) wire แล้วผ่าน `/dsh/AGENTS.md` — **หลัง deploy ให้ทดสอบยืนยัน**ว่า Tiel

@@ -192,6 +192,25 @@ services:
     mem_limit: 4g
     restart: unless-stopped
 
+  # ── ชั้นข้อมูลช่องโหว่ (CVE/vuln-intel, MCP over HTTP) — opt-in profile full ──
+  #   cve-mcp-server (third-party) ครอบด้วย router (28→3 tool) + กรอง threat-intel ออก
+  #   ต้องต่อเน็ตออก (NVD/EPSS/KEV/... สาธารณะ). ใส่ NVD_API_KEY/GITHUB_TOKEN ใน .env ได้ (optional)
+  cve-mcp:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.cve-mcp
+    volumes:
+      - ./cve_mcp_router.py:/app/cve_mcp_router.py:ro   # router mount → แก้ได้ไม่ต้อง rebuild
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8009
+      NVD_API_KEY: ${NVD_API_KEY:-}        # optional — เพิ่ม throughput ของ NVD
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}       # optional — เพิ่ม limit ค้น PoC/advisory บน GitHub
+    ports:
+      - "127.0.0.1:8009:8009"
+    restart: unless-stopped
+
   # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
   harnessrouter:
     image: harnessrouter/harnessrouter:latest
@@ -242,6 +261,7 @@ services:
       - hexstrike-mcp
       - rea-mcp
       - memory-mcp
+      - cve-mcp
     restart: unless-stopped
 
 volumes:

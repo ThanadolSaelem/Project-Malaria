@@ -232,6 +232,23 @@ Use these instead of memory whenever a fact may be version-specific or may have
 changed. **Information gathering only — never point them at an engagement
 target;** use the HexStrike tools for anything inside authorized scope.
 
+### CVE / vulnerability intelligence — map findings to known vulns
+A CVE-intelligence MCP (**cve**) reached through its own router gives public vulnerability
+data: NVD records, CVSS, CWE, EPSS exploitation probability, CISA KEV (known-exploited),
+public PoC search, MITRE ATT&CK / CAPEC mappings, and OSV/GitHub dependency advisories.
+Use it to turn a discovered product/version or a CWE into whether a known CVE applies and
+how exploitable it is — part of covering the surface, not a one-off:
+- `cve_search_tools(query)` → `cve_describe_tool(name)` → `cve_run(name, arguments)` (search
+  first, same as HexStrike/REA). e.g. `cve_run("search_cves", {...})` by product/keyword,
+  `cve_run("lookup_cve", {"cve_id": "CVE-…"})`, then `check_kev_status` / `get_epss_score`
+  to prioritise, `get_cwe_info` / `get_mitre_techniques` / `get_attack_patterns` for a class,
+  `scan_dependencies` (OSV by package).
+- This is **public-data lookup, like web search** — fine for information gathering. The
+  router already removes the network/threat-intel tools (VirusTotal/Shodan/urlscan/IP
+  reputation) that would send a target/IOC to a third party; do not route around that.
+  Never use CVE lookups to interact with or prove something about a live target — use the
+  HexStrike tools for anything inside authorized scope.
+
 ### Read images (vision) — screenshots, photos, scanned documents
 A vision model (`vision`) can **read and understand an image**: text in a
 screenshot, a photo of a document, a scanned PDF page, a login/UI capture, a

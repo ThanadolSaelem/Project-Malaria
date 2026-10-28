@@ -77,5 +77,14 @@
         headers: {}
         toolCallTimeoutMs: 60000             # memory เร็ว — 60s พอ
         failOnStartupError: false
+    - id: mcp-cve
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: cve                      # → tool: mcp__cve__* (router: cve_search_tools/describe/run)
+        transport: streamable-http
+        url: http://cve-mcp:8009/mcp         # service: cve-mcp (profile full) — vuln-intel สาธารณะ
+        headers: {}
+        toolCallTimeoutMs: 120000            # lookup ภายนอก (NVD throttle) อาจช้า → 2 นาที
+        failOnStartupError: false
 #   หมายเหตุ: งานที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea ที่แยกขาด)
 #   เท่านั้น ไม่ใช่ bash ในตัว harness (กฎ: analyze local ใน container)
