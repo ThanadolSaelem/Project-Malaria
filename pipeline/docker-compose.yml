@@ -231,6 +231,8 @@ services:
       - ./deepseek-harness/cordis.patch.yml:/config/cordis.patch.yml:ro
       # system prompt → entrypoint ตัด wrapper แล้ววางเป็น /dsh/AGENTS.md (agent-instructions โหลดเอง)
       - ./cyber-operator.system.md:/config/cyber-operator.system.md:ro
+      # mount entrypoint ด้วย → แก้ logic entrypoint ได้โดยไม่ต้อง rebuild image (แค่ recreate)
+      - ./deepseek-harness/entrypoint.sh:/app/entrypoint.sh:ro
     depends_on:
       - litellm
       - hexstrike-mcp
