@@ -86,5 +86,14 @@
         headers: {}
         toolCallTimeoutMs: 120000            # lookup ภายนอก (NVD throttle) อาจช้า → 2 นาที
         failOnStartupError: false
+    - id: mcp-search
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: search                   # → tool: mcp__search__web_search / fetch_url (SearXNG, ไม่ต้อง API key)
+        transport: streamable-http
+        url: http://search-mcp:8004/mcp      # service: search-mcp → searxng (self-hosted)
+        headers: {}
+        toolCallTimeoutMs: 60000
+        failOnStartupError: false
 #   หมายเหตุ: งานที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea ที่แยกขาด)
 #   เท่านั้น ไม่ใช่ bash ในตัว harness (กฎ: analyze local ใน container)

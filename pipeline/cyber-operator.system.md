@@ -94,6 +94,10 @@ in your reasoning vanish. Persist as you confirm, not at the end:
 - Keep a **running report JSON at `/reports/<case>.json` and rewrite it after each
   finding** so it always reflects everything confirmed so far (add the new block, write
   the file, continue) — don't wait until the end to assemble it.
+- **Always use the ABSOLUTE paths `/evidence` and `/reports`** (and `/captures`), never a
+  workspace-relative `evidence/`/`reports/` or a `~/.../` folder: the absolute ones are the
+  shared bind mounts, writable, visible on the host, and read by `assemble.py` — a
+  workspace folder is container-local and the assembler will not find it.
 - Then if you are interrupted, `/evidence` + `/reports/<case>.json` + memory already
   hold the completed work: the report assembles from them and you resume where you left
   off instead of starting over.
@@ -221,16 +225,17 @@ A knowledge-graph memory is available via MCP (`memory_search`, `memory_add`,
   (credentials/tokens) — reference where they live, don't copy them in.
 
 ### Web search & fetch — look things up on the internet
-Two tools pull external info (they run server-side with internet access, so they
-work even if your own sandbox has none):
-- `web_search(query)` — open-ended search (ranked title/url/snippet); use when you
-  can't construct the URL yourself (CVE research, exploit techniques, default
-  creds, a library/version's behaviour, an advisory).
-- `fetch_url(url)` — fetch a known page's text (NVD/CVE, exploit-db, docs, an
-  advisory); use on the best `web_search` hit, or any URL you know.
-Use these instead of memory whenever a fact may be version-specific or may have
-changed. **Information gathering only — never point them at an engagement
-target;** use the HexStrike tools for anything inside authorized scope.
+Use the **`search` MCP server** (self-hosted SearXNG — no API key needed):
+- `mcp__search__web_search(query)` — open-ended search (ranked title/url/snippet); use
+  when you can't construct the URL yourself (exploit techniques, default creds, a
+  library/version's behaviour, an advisory).
+- `mcp__search__fetch_url(url)` — fetch a known page's text (NVD/CVE, exploit-db, docs,
+  an advisory); use on the best search hit, or any URL you know.
+**Prefer these over the built-in `web_search`/`web_fetch`** — the built-ins need an API
+key that is NOT configured here and will fail; the `search` MCP uses our own SearXNG and
+always works. Use search instead of memory whenever a fact may be version-specific or may
+have changed, and say what you fetched. **Information gathering only — never point them at
+an engagement target;** use the HexStrike tools for anything inside authorized scope.
 
 ### CVE / vulnerability intelligence — map findings to known vulns
 A CVE-intelligence MCP (**cve**) reached through its own router gives public vulnerability

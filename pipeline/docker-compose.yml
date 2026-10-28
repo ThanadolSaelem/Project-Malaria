@@ -262,6 +262,7 @@ services:
       - rea-mcp
       - memory-mcp
       - cve-mcp
+      - search-mcp
     restart: unless-stopped
 
 volumes:
