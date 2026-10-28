@@ -28,6 +28,13 @@ RUN mkdir -p /dsh/profiles/web
 COPY pipeline/deepseek-harness/profile.package.json /dsh/profiles/web/package.json
 RUN dsh plugin --profile web add "@deepseek-ai/dsh-mcp-client@${DSH_VERSION}"
 
+# ── python3 + Pillow → ประกอบรายงาน TLP .docx ในตัว (reporting/assemble.py) ──
+#   build_report.py สร้าง .docx ด้วย stdlib (zipfile/xml); Pillow ใช้ตอนมี figure
+#   → Tiel เขียน content.json + รูป /evidence แล้วรัน assemble.py เองใน container นี้ได้เลย
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip \
+ && pip3 install --no-cache-dir --break-system-packages pillow \
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # ── entrypoint (bind IP ของ container, เปิด :3080) ──
 COPY pipeline/deepseek-harness/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

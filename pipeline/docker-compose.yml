@@ -233,6 +233,10 @@ services:
       - ./cyber-operator.system.md:/config/cyber-operator.system.md:ro
       # mount entrypoint ด้วย → แก้ logic entrypoint ได้โดยไม่ต้อง rebuild image (แค่ recreate)
       - ./deepseek-harness/entrypoint.sh:/app/entrypoint.sh:ro
+      # report pipeline → Tiel เขียน content.json + รูป แล้วรัน assemble.py เองในตัว (python3+pillow ใน image)
+      - ./reporting:/reporting:ro      # engine+template (assemble.py / build_report.py / template.docx)
+      - ./reports:/reports             # output .docx + content.json (เขียนได้)
+      - ./evidence:/evidence           # รูปหลักฐานที่ figure อ้างถึง (เขียนได้)
     depends_on:
       - litellm
       - hexstrike-mcp

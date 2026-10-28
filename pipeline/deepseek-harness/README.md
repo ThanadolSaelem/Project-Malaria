@@ -60,7 +60,7 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 | tool `mcp__hexstrike__*` / `mcp__rea__*` | ✅ ติดแล้วด้วย `- insert:` (hexstrike log ยืนยัน ListTools 200) |
 | REA 139 tool ล้น context ของ Tiel | ✅ แก้ด้วย REA router (3 meta-tool, ดู `rea_mcp_router.py`) |
 | **system prompt** (กฎ + workflow + identity) | ✅ wire แล้ว: `cyber-operator.system.md` → `/dsh/AGENTS.md` (dsh-agent-instructions โหลดทุก session; identity มาจากเนื้อ AGENTS.md เอง — ไม่ patch persona เพราะ profile patch ต้องมี `name`) |
-| report assembler (`assemble.py`) ใน deepseek container | ⚠️ ยังไม่ครบ — bash ของ Tiel อยู่ใน deepseek (node, ไม่มี python/pillow/`/reporting`). เนื้อหา (JSON+รูป) ทำได้ แต่ขั้น "ประกอบ .docx" ต้องรันที่ host/hexstrike-server ไปก่อน |
+| report assembler (`assemble.py`) ใน deepseek container | ✅ ทำได้ในตัว — Dockerfile ลง python3+pillow, mount `/reporting`,`/reports`,`/evidence` → Tiel รัน `assemble.py` เองจบ (ต้อง rebuild deepseek image ครั้งเดียว) |
 | memory (`memory_*`) ที่ system prompt อ้างถึง | ✅ ต่อแล้ว: KG memory-mcp (`:8002`) ผ่าน insert `mcp-memory` → `mcp__memory__*` (add/relate/search/read/delete) |
 
 > ✅ **ความปลอดภัย:** system prompt (กฎ guardrail: local-only, redaction, ห้ามส่ง cloud,
