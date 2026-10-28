@@ -6,6 +6,12 @@
 # stack ส่วนใหญ่ (LiteLLM/HexStrike/REA/llama) ใช้ร่วมกัน — ไฟล์นี้แค่ต่อ harness ใหม่เข้าไป
 #
 # ⚠️ deepseek-harness = developer preview → อาจต้องปรับ config ตอนรันจริง (ดู README)
+#
+# ‼️ LEGACY (รันบน host) — แนะนำให้ใช้ "วิธี container" แทน:
+#       docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
+#    (หรือดับเบิลคลิก pipeline/mac/start.command) → service deepseek-harness เปิด :3080
+#    วิธี container = bash ของ Tiel อยู่ใน container (isolation) + ไม่ต้องลง node/pnpm บน host
+#    ไฟล์นี้เก็บไว้สำหรับ "ลองเล่นเร็ว ๆ บน host" เท่านั้น (ดู README หัวข้อ legacy)
 # =============================================================================
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,8 +40,14 @@ echo "→ ยก docker stack (profile full) ..."
 mkdir -p "$DSH_HOME/profiles/web"
 TARGET="$DSH_HOME/profiles/web/cordis.patch.yml"
 if [ ! -f "$TARGET" ] || [ "${DSH_APPLY_CONFIG:-0}" = "1" ]; then
-  cp "$HERE/cordis.patch.yml" "$TARGET"
-  echo "✓ วาง cordis.patch.yml จากรีโป → $TARGET"
+  # config ในรีโปใช้ "ชื่อ service" (สำหรับรันใน container) — บน host ต้องแปลงเป็น localhost
+  sed -e 's#http://litellm:4000#http://localhost:4000#' \
+      -e 's#http://hexstrike-mcp:8001#http://localhost:8001#' \
+      -e 's#http://rea-mcp:8007#http://localhost:8007#' \
+      "$HERE/cordis.patch.yml" > "$TARGET"
+  echo "✓ วาง cordis.patch.yml (แปลง service→localhost สำหรับ host) → $TARGET"
+  echo "  ⚠️ host path: ต้องติดตั้ง MCP plugin เองก่อน (เวอร์ชันต้องตรง runtime):"
+  echo "     npx @deepseek-ai/dsh plugin --profile web add @deepseek-ai/dsh-mcp-client@0.2.1-rc.2"
 else
   echo "• เก็บ config เดิมไว้ ($TARGET) — เอาของรีโปมาทับ: DSH_APPLY_CONFIG=1 bash deploy.sh"
 fi

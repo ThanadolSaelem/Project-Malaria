@@ -1,0 +1,37 @@
+# =============================================================================
+# deepseek-harness (orchestrator) — รันใน container ขนาน harnessrouter
+# -----------------------------------------------------------------------------
+# ทำไมเข้า container: bash/command tool ของ Tiel จะรัน "ใน container" ไม่ใช่บน Mac
+#   → isolation (สำคัญกับงานมัลแวร์) + reproducible (host ไม่ต้องลง node/pnpm/npx)
+# โมเดล Tiel ยังอยู่บน host (llama.cpp Metal GPU); harness คุยผ่าน service litellm:4000
+#
+# เวอร์ชัน pin ให้ตรงกันทั้งคู่ (dsh-mcp-client pin peer แบบ exact = ต้องเท่า runtime):
+ARG DSH_VERSION=0.2.1-rc.2
+# =============================================================================
+FROM node:22-bookworm-slim
+ARG DSH_VERSION
+
+# pnpm (ตัวจัดการ plugin ของ dsh ใช้) — มากับ node ผ่าน corepack
+RUN corepack enable
+
+ENV DSH_HOME=/dsh
+WORKDIR /app
+
+# ── runtime dsh (ลง local ใน /app/node_modules → bundle resolution แน่นอน) ──
+RUN npm init -y >/dev/null 2>&1 \
+ && npm install "@deepseek-ai/dsh@${DSH_VERSION}"
+ENV PATH=/app/node_modules/.bin:$PATH
+
+# ── web profile + ติดตั้ง MCP client plugin (bundle-less → ต้อง add เอง) ──
+#   เวอร์ชัน mcp-client ต้อง = runtime เป๊ะ (peer pin แบบ exact)
+RUN mkdir -p /dsh/profiles/web
+COPY pipeline/deepseek-harness/profile.package.json /dsh/profiles/web/package.json
+RUN dsh plugin --profile web add "@deepseek-ai/dsh-mcp-client@${DSH_VERSION}"
+
+# ── entrypoint (bind IP ของ container, เปิด :3080) ──
+COPY pipeline/deepseek-harness/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+EXPOSE 3080
+# cordis.patch.yml = config (mount จาก repo ตอน run — แก้ได้โดยไม่ต้อง rebuild)
+ENTRYPOINT ["/app/entrypoint.sh"]

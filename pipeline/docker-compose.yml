@@ -211,6 +211,30 @@ services:
       - hexstrike-mcp
     restart: unless-stopped
 
+  # ── deepseek-harness (orchestrator ทางเลือก — ขนาน harnessrouter) ─────────
+  #   รันใน container → bash/command tool ของ Tiel อยู่ "ใน container" (isolation)
+  #   + reproducible (host ไม่ต้องลง node/pnpm/npx) — ต่างจาก npx บน host เดิม
+  #   คุยกับ stack ด้วยชื่อ service: litellm:4000 / hexstrike-mcp:8001 / rea-mcp:8007
+  #   UI: http://localhost:3080  (token อยู่ใน: docker compose logs deepseek-harness)
+  deepseek-harness:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.deepseek-harness
+    ports:
+      - "127.0.0.1:3080:3080"
+    environment:
+      LITELLM_KEY: ${LITELLM_KEY:-sk-local}
+    volumes:
+      # config (patch) จาก repo แบบ :ro ที่ path แยก → entrypoint copy ไปที่ profile (เขียนได้)
+      #   (ห้าม mount ทับ /dsh/profiles/web/cordis.patch.yml ตรง ๆ: UI เขียนทับไฟล์นั้นไม่ได้ → EBUSY)
+      - ./deepseek-harness/cordis.patch.yml:/config/cordis.patch.yml:ro
+    depends_on:
+      - litellm
+      - hexstrike-mcp
+      - rea-mcp
+    restart: unless-stopped
+
 volumes:
   harnessrouter-data:
   memory-data:

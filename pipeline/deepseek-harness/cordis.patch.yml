@@ -1,54 +1,68 @@
 # =============================================================================
 # deepseek-harness config layer → ชี้ stack เดิมของเรา (Tiel/LiteLLM + MCP tools)
 # -----------------------------------------------------------------------------
-# วางไฟล์นี้ที่ $DSH_HOME/profiles/web/cordis.patch.yml (deploy.sh ทำให้)
-# cordis.patch เป็น "list ของ config patch ต่อ plugin": provider = plugin นึง, MCP = อีก plugin
+# ‼️ เวอร์ชันนี้สำหรับ "รันใน container" (service deepseek-harness ใน docker-compose)
+#    harness อยู่ใน network เดียวกับ stack → ใช้ "ชื่อ service" ตรง ๆ:
+#       litellm:4000 · hexstrike-mcp:8001 · rea-mcp:8007   (ไม่ใช่ localhost อีกแล้ว)
+#    (ตอนรันบน host เท่านั้นที่ต้องใช้ localhost — ตอนนี้เราย้ายเข้า container แล้ว)
 #
-# ✅ CONFIRMED (จาก docs/user/guide/providers.md ของ deepseek-harness):
-#    รูปแบบ provider custom OpenAI-compatible ด้านล่าง (baseURL/api/apiKeyEnv/models/compat)
-# ⚠️ NEEDS-VERIFY: โครง key ของบล็อก MCP (อิงเอกสาร dsh-mcp-client — เช็กเป๊ะอีกที)
+# mount ไฟล์นี้เข้า container ที่ /dsh/profiles/web/cordis.patch.yml (ดู docker-compose.yml)
+# cordis.patch = "list ของ patch ต่อ plugin" แต่ละ entry ต้องมี: id + name(plugin) + config
+#   ⚠️ มัน"แก้ entry ที่มีอยู่" (patch by id) — provider ใช้ id `llm-pi-ai` ที่มีอยู่แล้ว
+#   ⚠️ MCP: plugin dsh-mcp-client ถูกติดตั้งตอน build image แล้ว (ดู Dockerfile.deepseek-harness)
 # =============================================================================
 
-# ── (1) model provider → LiteLLM gateway บน host:4000 (Tiel / vision / nim) ──
-- id: llm-litellm-local
+# ── (1) model provider → LiteLLM ใน network (service: litellm:4000) ──────────
+#   patch เข้า entry `llm-pi-ai` (provider plugin ที่มีอยู่) แล้วเติม provider ของเรา
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"         # ← plugin ของ LLM provider (custom OpenAI-compatible)
   config:
     providers:
       litellm-local:
-        apiKeyEnv: LITELLM_KEY              # ตั้ง env LITELLM_KEY=sk-local (llama ไม่เช็ค แต่ field ต้องมี)
+        displayName: LiteLLM (local)
+        apiKeyEnv: LITELLM_KEY              # compose ส่ง LITELLM_KEY=sk-local เข้า container
         api: openai-completions
-        baseURL: http://localhost:4000/v1   # = LiteLLM ที่ publish ออก host (127.0.0.1:4000)
+        baseURL: http://litellm:4000/v1     # ชื่อ service ใน docker network (ไม่ใช่ localhost)
         models:
           - id: cybermodel                  # Tiel (orchestrator) — งาน sensitive/หลักฐาน
+            name: Cyber-Tiel
           - id: vision                       # Qwen2.5-VL (อ่านภาพ)
-          - id: nim                           # GLM cloud — ⚠️ งาน non-sensitive เท่านั้น
+            name: Vision (Qwen2.5-VL)
+          - id: nim                          # GLM cloud — ⚠️ งาน non-sensitive เท่านั้น
+            name: NIM (GLM cloud)
         compat:
           supportsDeveloperRole: false       # llama.cpp มักต้องตั้ง (ถ้า request โดนปฏิเสธทั้งที่ url/key ถูก)
           maxTokensField: max_tokens
 
-# ── (2) MCP tools → HexStrike router + REA ──────────────────────────────────
-#   ✅ ครบตาม config-catalog ของ @deepseek-ai/dsh-mcp-client (streamable-http):
-#      required: serverName, transport, url, headers, toolCallTimeoutMs, failOnStartupError
-#      "1 entry ต่อ 1 server" (ไม่ใช่ servers: map). tool โผล่แบบ mcp__<serverName>__<toolName>
-#   ⚠️ เคยพลาด: ขาด headers + toolCallTimeoutMs (required) → schema ไม่ผ่าน → plugin ไม่โหลด
-#   ⚠️ url ต้องเป็น localhost (harness รันบน host) ไม่ใช่ชื่อ service ภายใน docker
+# ── (1b) ตั้ง provider/model ดีฟอลต์ของ agent = Tiel (cybermodel) ──────────────
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: litellm-local                  # ต้องตรงกับ key ใน providers: ด้านบน
+    model: cybermodel
+
+# ── (2) MCP tools → HexStrike router + REA (service names ใน network) ────────
+#   plugin dsh-mcp-client ลงตอน build แล้ว → entry พวกนี้ instantiate ได้
+#   รูปแบบ: 1 entry ต่อ 1 server · tool โผล่แบบ mcp__<serverName>__<toolName>
+#   required: serverName, transport, url, headers, toolCallTimeoutMs, failOnStartupError
 - id: mcp-hexstrike
   name: '@deepseek-ai/dsh-mcp-client'
   config:
     serverName: hexstrike                    # → tool: mcp__hexstrike__* (search/describe/run)
     transport: streamable-http
-    url: http://localhost:8001/mcp
-    headers: {}                              # required (ไม่มี auth สำหรับ local → ว่าง)
+    url: http://hexstrike-mcp:8001/mcp       # service: hexstrike-mcp (MCP_PORT 8001)
+    headers: {}                              # required (ไม่มี auth สำหรับภายใน network → ว่าง)
     toolCallTimeoutMs: 300000                # required — timeout ต่อ 1 tool call (scan นานได้ 5 นาที)
     failOnStartupError: false                # ต่อไม่ติด = harness ยังขึ้น แต่ไม่มี tool (ดู log)
 
 - id: mcp-rea
   name: '@deepseek-ai/dsh-mcp-client'
   config:
-    serverName: rea                          # → tool: mcp__rea__* (ต้องเปิด --profile full)
+    serverName: rea                          # → tool: mcp__rea__* (service rea-mcp ต้องเปิด profile full)
     transport: streamable-http
-    url: http://localhost:8007/mcp
+    url: http://rea-mcp:8007/mcp             # service: rea-mcp
     headers: {}                              # required
     toolCallTimeoutMs: 300000                # required — RE/decompile ใช้เวลานาน → 5 นาที
     failOnStartupError: false
-#   หมายเหตุ: vision/specialist เราเรียกผ่าน bash heredoc → localhost:4000 (ไม่ใช่ MCP)
-#   deepseek-harness มี bash/command tool อยู่แล้ว → เรียกแบบเดิมได้ ไม่ต้องลง MCP
+#   หมายเหตุ: งานวิเคราะห์ที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea)
+#   ที่แยกขาด เท่านั้น — ไม่ใช่ bash ในตัว harness เอง (กฎ: analyze local ใน container)
