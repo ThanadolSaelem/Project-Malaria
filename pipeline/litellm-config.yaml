@@ -69,9 +69,9 @@ model_list:
   # วิธีใช้: เลือกโมเดลชื่อ "nim" หรือ "nim-reasoning" ใน Console (เลือกเอง ไม่ auto)
   # ต้องใส่ NVIDIA_API_KEY ใน .env (จาก build.nvidia.com/settings/api-keys)
   # เปลี่ยนรุ่นได้: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models มาใส่ที่ `model:`
-  - model_name: nim                          # งานหนัก/โค้ด/reasoning (GLM-5.3 — ยืนยันจาก catalog)
+  - model_name: nim                          # งานหนัก/โค้ด/reasoning/vision (Nemotron-3.5 Super VL 120B — GLM-5.3 EOL)
     litellm_params:
-      model: nvidia_nim/z-ai/glm-5.3
+      model: nvidia_nim/nvidia/nemotron-3.5-super-vl-120b-a12b
       api_base: https://integrate.api.nvidia.com/v1
       api_key: os.environ/NVIDIA_API_KEY
   # อยากเพิ่มรุ่นอื่น: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models (โชว์ใน code sample)
