@@ -24,6 +24,7 @@ services:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     restart: unless-stopped
 
   # ── ชั้นเครื่องมือ: server ที่รันเครื่องมือจริง (opt-in ผ่าน profile "full") ──

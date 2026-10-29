@@ -28,6 +28,8 @@
             name: Vision (Qwen2.5-VL)
           - id: nim                          # Nemotron VL cloud — ⚠️ งาน non-sensitive เท่านั้น
             name: NIM (Nemotron VL cloud)
+          - id: or-glm                       # OpenRouter GLM-5.3 — ⚠️ cloud, งาน non-sensitive เท่านั้น
+            name: OpenRouter GLM-5.3 (cloud)
         compat:
           supportsDeveloperRole: false
           maxTokensField: max_tokens

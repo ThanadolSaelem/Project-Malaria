@@ -79,6 +79,18 @@ model_list:
   # ⚠️ catalog เปลี่ยนบ่อย — รุ่นเก่าถูก EOL แล้วจะได้ 410 Gone (เช่น llama-3.3-70b EOL ส.ค.2026)
   #   ถ้าเจอ 410 ให้ไปก็อป id รุ่นใหม่จาก build.nvidia.com มาแทน
 
+  # ---- OpenRouter — เกตเวย์รวมโมเดลคลาวด์หลายเจ้า (OpenAI-compatible) ----
+  # ⚠️ คลาวด์เหมือน nim: ข้อมูลออกนอกเครื่อง → ใช้เฉพาะงาน non-sensitive
+  #    ❌ ห้ามส่งเป้าหมาย/หลักฐาน/credential/APK/รายงาน TLP ขึ้นตัวนี้ — งานพวกนั้นใช้ cybermodel (local)
+  # ต้องใส่ OPENROUTER_API_KEY ใน .env (จาก openrouter.ai/settings/keys)
+  # ใช้แบบ sync chat (ไม่ใช่ Batch API) → Tiel เรียก tool/ตอบ real-time ได้
+  # เพิ่มรุ่น: ก๊อป model id จาก openrouter.ai/models (เช่น "z-ai/glm-5.3",
+  #   "deepseek/deepseek-chat", "qwen/qwen3-...") ใส่หลัง openrouter/ แล้วเพิ่ม entry แบบเดียวกัน
+  - model_name: or-glm                       # GLM-5.3 ผ่าน OpenRouter (NVIDIA EOL แล้ว แต่ OR ยังมี)
+    litellm_params:
+      model: openrouter/z-ai/glm-5.3
+      api_key: os.environ/OPENROUTER_API_KEY
+
   # ---- (ออปชัน) cloud fallback อื่นๆ — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
   # - model_name: big-brain-groq
   #   litellm_params:
