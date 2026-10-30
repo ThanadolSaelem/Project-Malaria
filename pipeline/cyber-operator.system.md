@@ -257,6 +257,61 @@ how exploitable it is — part of covering the surface, not a one-off:
   Never use CVE lookups to interact with or prove something about a live target — use the
   HexStrike tools for anything inside authorized scope.
 
+### php2shell exploit toolkit — CVE-2026-109618 / CVE-2026-109619
+A dedicated MCP (**php2shell**) wraps the php2shell-poc exploit toolkit (PHP session
+upload_progress RCE, CVSS 9.2, CISA KEV 2026-10-26). Affects PHP 5.4.0–8.5.11.
+Use it against targets in authorized scope only — confirm authorization first.
+
+**Five chains** (lab target `host.docker.internal:18056` = PHP 5.6.40 FPM):
+| Chain | Technique | Status | Lab applicable? |
+|-------|-----------|--------|-----------------|
+| A | session injection + LFI → RCE (pre-auth, all SAPI, needs LFI sink) | ✅ public exploit | Yes — needs LFI endpoint |
+| B | var_destroy UAF → /proc/self/mem handler overwrite (must run ON target PHP) | ✅ public exploit (PHP) | Yes — first get exec via A/C |
+| C | FPM handler mismatch → `__destruct` → RCE (pre-auth FPM, needs POP gadget) | ✅ public exploit | Yes — needs mismatch endpoints |
+| D | OOM corruption → stale EG() (pre-auth, mod_php ONLY) | verify only | **No** (lab is FPM) |
+| E | FPM session OOM → stale BG() → UAF (pre-auth FPM) | verify only (full exploit not public) | Yes — verify primitive |
+
+**Tools (called directly as `mcp__php2shell__<name>`):**
+
+*Scanner:*
+- `mcp__php2shell__scan_vulnerability(target, path, active, output_json)` — 4-tier passive scan
+  (version fingerprint, upload_progress reachability, session write, OOM diff). `active=True`
+  adds OOM probe (⚠️ may crash workers). Start every engagement with this.
+
+*Verification PoCs (non-destructive, no RCE):*
+- `mcp__php2shell__verify_session_injection(target, path, sid)` — confirm Chain A/B primitive
+  (session fixation + raw filename storage). Check session file at `/tmp/sessions/sess_<sid>`.
+- `mcp__php2shell__verify_handler_mismatch(target, write_path, read_path, sid)` — confirm Chain C
+  condition (php_serialize write / php read → mismatch). Needs two distinct `.user.ini` dirs.
+- `mcp__php2shell__verify_oom_trigger(host, port, path, strategy, num_headers)` — Chain D OOM
+  probe (⚠️ may crash workers). Lab target (FPM) will 502 — not applicable for Chain D RCE.
+- `mcp__php2shell__make_huge_session(target, sid, size_mb, container)` — create ~30MB session in
+  FPM container (via docker exec). **Run before verify_fpm_stale_state.** Needs docker socket.
+- `mcp__php2shell__verify_fpm_stale_state(target, session_path, upload_path, producer_sid, consumer_sid)` —
+  confirm Chain E condition (stale BG after OOM). Vulnerable = 'Session object destruction failed'
+  or 502. Full Chain E exploit is behind paywall.
+
+*RCE exploits (active — confirm authorization first):*
+- `mcp__php2shell__chain_a_session_lfi(target, inject_path, lfi_path, session_path, command, cleanup_on, attempts)` —
+  Chain A full RCE. Needs LFI sink (`?page=<path>` or similar). Try `session_path`: `/tmp/sessions`,
+  `/tmp`, `/var/lib/php/sessions`. Confirmed by `___START___<output>___END___`.
+- `mcp__php2shell__chain_b_get_payload()` — returns the PHP UAF source to upload and execute ON the
+  target. Offset calibrated for php:8.2.34-fpm. Needs initial exec from Chain A or C first.
+- `mcp__php2shell__chain_c_mismatch_rce(target, pollute_path, upload_path, trigger_path, command, gadget)` —
+  Chain C full RCE. Needs `pollute_path` calling `ini_set('session.serialize_handler','php_serialize')`
+  (Laravel/Symfony do this by default) and a POP-gadget class at `trigger_path`.
+  Check `/tmp/rce_proof.txt` on target after running.
+
+**Recommended workflow for the lab target:**
+1. `scan_vulnerability(active=False)` — fingerprint + upload_progress check.
+2. `verify_session_injection` — confirm the primitive.
+3. Enumerate for LFI sinks (via HexStrike dirb/wfuzz) → if found: `chain_a_session_lfi`.
+4. Check for two directories with different serialize_handler → if found: `chain_c_mismatch_rce`.
+5. Report Chain D as N/A (FPM lab). For Chain E: `make_huge_session` → `verify_fpm_stale_state`.
+
+Default target in the container: `http://host.docker.internal:18056` (same as `localhost:18056`
+on the Mac host). The php2shell tools are available when profile `full` is running.
+
 ### Read images (vision) — screenshots, photos, scanned documents
 A vision model (`vision`) can **read and understand an image**: text in a
 screenshot, a photo of a document, a scanned PDF page, a login/UI capture, a
