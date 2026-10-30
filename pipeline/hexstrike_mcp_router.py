@@ -160,6 +160,21 @@ def main() -> None:
     # สร้างตัวเต็ม (150 tools) ไว้ "ภายใน" เพื่อยืม tool manager — ไม่ได้เสิร์ฟมันออกไป
     full = setup_mcp_server(client)
     tm = _get_tool_manager(full)
+
+    # ── เสียบ php2shell toolkit เข้า catalog เดียวกัน (CVE-2026-109618/109619) ──
+    #   register ลง tool manager ของตัวเต็ม "ก่อน" build_catalog → โผล่ใน search/run
+    #   เลย: Tiel ใช้ hexstrike_search_tools("php2shell") → hexstrike_run("php2shell_*")
+    #   รันในคอนเทนเนอร์ router นี้เอง (ไม่ผ่าน hexstrike-server). ถ้าโหลดไม่ได้ก็ข้าม
+    #   (ไม่ให้ทั้ง router ล้ม) — hexstrike tools เดิมยังทำงานครบ
+    try:
+        import php2shell_tools
+        added = php2shell_tools.register(full)
+        print(f"[hexstrike-router] registered {added} php2shell tools "
+              f"(target={php2shell_tools.DEFAULT_TARGET})", file=sys.stderr)
+    except Exception as e:
+        print(f"[hexstrike-router] WARN: php2shell tools not loaded "
+              f"({type(e).__name__}: {e})", file=sys.stderr)
+
     catalog = build_catalog(tm)
     names = sorted(catalog)
     print(f"[hexstrike-router] indexed {len(names)} tools", file=sys.stderr)

@@ -68,10 +68,16 @@ services:
       - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
       - ./hexstrike_mcp_http.py:/app/pipeline/hexstrike_mcp_http.py:ro
       - ./hexstrike_mcp_router.py:/app/pipeline/hexstrike_mcp_router.py:ro   # tool-RAG (ใช้ผ่าน command override)
+      # php2shell toolkit (CVE-2026-109618/109619) — router import แล้ว register
+      # เข้า catalog → Tiel เรียกผ่าน hexstrike_run("php2shell_*"). mount ให้แก้สดได้
+      # (image ก็ COPY ไว้แล้ว ดู Dockerfile.hexstrike-mcp — mount แค่ทับให้ iterate ง่าย)
+      - ./php2shell_tools.py:/app/pipeline/php2shell_tools.py:ro
+      - ./php2shell-poc:/app/pipeline/php2shell-poc:ro
     environment:
       HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8001
+      PHP2SHELL_TARGET: http://host.docker.internal:18056   # lab target บน host Mac
     ports:
       - "127.0.0.1:8001:8001"
     extra_hosts:
@@ -197,24 +203,6 @@ services:
   #   ครอบ CVE-2026-109618/109619 (PHP2Shell) exploit toolkit 5 chain + scanner
   #   ⚠️ ออฟเฟนซีฟ — ใช้เฉพาะ lab เป้าหมายที่ได้รับอนุญาต (localhost:18056 เป็น lab เรา)
   #   Tools: scan_vulnerability, verify_*, make_huge_session, chain_a/b/c
-  php2shell-mcp:
-    profiles: ["full"]
-    build:
-      context: ..
-      dockerfile: pipeline/Dockerfile.php2shell-mcp
-    volumes:
-      # mount server script → แก้ logic ได้โดยไม่ต้อง rebuild (ใช้รูปแบบเดียวกับ MCP อื่น)
-      - ./php2shell_mcp_server.py:/app/php2shell_mcp_server.py:ro
-    environment:
-      MCP_HOST: 0.0.0.0
-      MCP_PORT: 8008
-      PHP2SHELL_TARGET: http://host.docker.internal:18056   # lab target บน host Mac
-    extra_hosts:
-      - "host.docker.internal:host-gateway"   # ให้ container ยิง host Mac ได้ (Linux)
-    ports:
-      - "127.0.0.1:8008:8008"
-    restart: unless-stopped
-
   # ── ชั้นข้อมูลช่องโหว่ (CVE/vuln-intel, MCP over HTTP) — opt-in profile full ──
   #   cve-mcp-server (third-party) ครอบด้วย router (28→3 tool) + กรอง threat-intel ออก
   #   ต้องต่อเน็ตออก (NVD/EPSS/KEV/... สาธารณะ). ใส่ NVD_API_KEY/GITHUB_TOKEN ใน .env ได้ (optional)
@@ -291,7 +279,6 @@ services:
       - memory-mcp
       - cve-mcp
       - search-mcp
-      - php2shell-mcp
     restart: unless-stopped
 
 volumes:

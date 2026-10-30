@@ -97,14 +97,8 @@
         headers: {}
         toolCallTimeoutMs: 60000
         failOnStartupError: false
-    - id: mcp-php2shell
-      name: "@deepseek-ai/dsh-mcp-client"
-      config:
-        serverName: php2shell                # → tool: mcp__php2shell__* (scan/verify/chain_a/b/c)
-        transport: streamable-http
-        url: http://php2shell-mcp:8008/mcp   # service: php2shell-mcp (profile full)
-        headers: {}
-        toolCallTimeoutMs: 180000            # chain A/C + verify E อาจใช้เวลาถึง 3 นาที
-        failOnStartupError: false            # ต่อไม่ติด = harness ยังขึ้น (ไม่มี tool)
+#   หมายเหตุ: php2shell (CVE-2026-109618/109619) ไม่ได้เป็น MCP แยกแล้ว — ย้ายไป register
+#   เข้า catalog ของ hexstrike router (ดู hexstrike_mcp_router.py) → Tiel เรียกผ่าน
+#   mcp__hexstrike__hexstrike_run("php2shell_*") ไม่ต้องมี entry ของตัวเองที่นี่
 #   หมายเหตุ: งานที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea ที่แยกขาด)
 #   เท่านั้น ไม่ใช่ bash ในตัว harness (กฎ: analyze local ใน container)

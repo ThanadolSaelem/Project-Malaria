@@ -10,9 +10,20 @@ WORKDIR /app
 # โค้ด vendor ของ hexstrike (hexstrike_mcp.py) และตัว wrapper ถูก mount เข้ามา
 # ตอน runtime ผ่าน docker-compose (ดู volumes) จึงไม่ต้อง COPY ที่นี่
 
+# php2shell toolkit (CVE-2026-109618/109619) — bake เข้า image เพื่อให้ hexstrike
+# router (hexstrike_mcp_router.py) import php2shell_tools แล้ว register เข้า catalog
+# ได้ (Tiel เรียกผ่าน hexstrike_run("php2shell_*")). สคริปต์เป็น python ล้วน +
+# chain_b อ่านเป็น text → ใช้ python3 ใน base image พอ ไม่ต้องลง php-cli
+# build context = project root (..) ดู docker-compose.yml
+COPY pipeline/php2shell_tools.py        /app/pipeline/php2shell_tools.py
+COPY pipeline/php2shell-poc/exploit/    /app/pipeline/php2shell-poc/exploit/
+COPY pipeline/php2shell-poc/poc/        /app/pipeline/php2shell-poc/poc/
+COPY pipeline/php2shell-poc/scanner/    /app/pipeline/php2shell-poc/scanner/
+
 ENV MCP_HOST=0.0.0.0 \
     MCP_PORT=8001 \
-    HEXSTRIKE_DIR=/app/hexstrike-ai-main
+    HEXSTRIKE_DIR=/app/hexstrike-ai-main \
+    PHP2SHELL_TARGET=http://host.docker.internal:18056
 
 EXPOSE 8001
 CMD ["python", "/app/pipeline/hexstrike_mcp_http.py"]
