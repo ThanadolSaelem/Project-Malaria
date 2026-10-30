@@ -15,6 +15,7 @@ and runs them with
 Scripts resolve relative to THIS file: <dir>/php2shell-poc/{exploit,poc,scanner}.
 Default target: env PHP2SHELL_TARGET (fallback http://host.docker.internal:18056).
 """
+import inspect
 import os
 import subprocess
 import sys
@@ -279,20 +280,48 @@ TOOLS = [
 ]
 
 
-def register(mcp) -> int:
-    """Add all php2shell tools onto a FastMCP instance. Returns the count added.
+DISPATCH = {fn.__name__: fn for fn in TOOLS}
 
-    Uses the FastMCP `.tool()` decorator (the API the hexstrike vendor uses) and
-    falls back to `.add_tool()` across mcp SDK versions. Each tool keeps its
-    function name (php2shell_*) and docstring as its MCP name/description, so the
-    hexstrike router indexes them into its searchable catalog automatically.
+_PY_JSON_TYPE = {int: "integer", bool: "boolean", float: "number", str: "string"}
+
+
+def json_schema(fn) -> dict:
+    """Build a minimal JSON schema (parameters) for a tool function from its
+    signature, so the hexstrike router's describe_tool can show arguments."""
+    props, required = {}, []
+    for name, p in inspect.signature(fn).parameters.items():
+        entry = {"type": _PY_JSON_TYPE.get(p.annotation, "string")}
+        if p.default is inspect.Parameter.empty:
+            required.append(name)
+        else:
+            entry["default"] = p.default
+        props[name] = entry
+    schema = {"type": "object", "properties": props}
+    if required:
+        schema["required"] = required
+    return schema
+
+
+def catalog_entries():
+    """Yield (name, description, parameters-schema, callable) for every tool.
+
+    The hexstrike router uses this to inject php2shell into its searchable
+    catalog and to dispatch calls directly — no dependency on FastMCP internals.
     """
+    for fn in TOOLS:
+        yield (fn.__name__, (fn.__doc__ or "").strip(), json_schema(fn), fn)
+
+
+def register(mcp) -> int:
+    """Optional: add all php2shell tools onto a FastMCP instance (for serving
+    php2shell as its own MCP). The hexstrike router does NOT use this — it uses
+    catalog_entries()/DISPATCH directly. Kept for reuse. Returns count added."""
     n = 0
     for fn in TOOLS:
         desc = (fn.__doc__ or "").strip()
         try:
-            mcp.tool(name=fn.__name__, description=desc)(fn)
-        except TypeError:
             mcp.add_tool(fn, name=fn.__name__, description=desc)
+        except TypeError:
+            mcp.tool(name=fn.__name__, description=desc)(fn)
         n += 1
     return n
