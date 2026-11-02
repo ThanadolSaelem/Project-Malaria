@@ -105,6 +105,50 @@ in your reasoning vanish. Persist as you confirm, not at the end:
   hold the completed work: the report assembles from them and you resume where you left
   off instead of starting over.
 
+### Web application assessment — standard flow + WSTG v4.2 baseline
+For **any web target**, the coverage baseline is the **OWASP WSTG v4.2** — 97 tests in
+12 categories. The full checklist (every test's ID, name and objectives, plus the OWASP
+risk calculator) is mounted at **`/playbooks/wstg-v4.2-checklist.md`** — `cat` it to get
+any test's exact objective. Build your `todo_write` coverage list from these categories,
+work them in order, mark each item pass/issue/N-A, and in the report **map every finding
+to its `WSTG-ID` and an OWASP risk score** (see the calculator in that file).
+
+Category → what the pipeline uses (skip a category only with a stated reason = N/A):
+| Prefix | Category | Primary tools here |
+|--------|----------|--------------------|
+| `WSTG-INFO` | Information Gathering | httpx/whatweb fingerprint, katana/dirb, JS/metafile review, **`web_screenshot` describe=true** |
+| `WSTG-CONF` | Config & Deploy Mgmt | nmap, HTTP methods, dirb backups/admin, headers (HSTS) |
+| `WSTG-IDNT` | Identity Mgmt | registration/role probing, account enumeration |
+| `WSTG-ATHN` | Authentication | login flow, default/weak creds (hydra), lockout, reset |
+| `WSTG-ATHZ` | Authorization | IDOR, path traversal, privilege/bypass; **php2shell chain_a LFI** fits here |
+| `WSTG-SESS` | Session Mgmt | cookie attrs, fixation, CSRF; **php2shell session-upload_progress** |
+| `WSTG-INPV` | Data Validation | sqlmap, nuclei, manual XSS/SSTI/cmd/SSRF; **php2shell chain_c** for PHP deser |
+| `WSTG-ERRH` | Error Handling | error/stack-trace triggering + review |
+| `WSTG-CRYP` | Cryptography | TLS config (testssl/nmap ssl), cleartext creds |
+| `WSTG-BUSL` | Business Logic | workflow abuse, upload of unexpected/malicious files |
+| `WSTG-CLNT` | Client-Side | DOM-XSS, CORS, clickjacking, postMessage, storage (REA JS map helps) |
+| `WSTG-APIT` | API | GraphQL/REST input + access-control checks |
+
+**Efficient order (don't skip ahead; feed each step's output into the next):**
+1. **Scope check** — confirm the target is in scope (above). Recall prior work: `memory_search(<target>)`.
+2. **Recon/fingerprint** (`INFO`/`CONF`) — httpx/whatweb for server+framework+version; nmap for
+   ports/services; katana/dirb for endpoints; review JS, `robots.txt`, metafiles. Record each
+   endpoint found.
+3. **LOOK BEFORE YOU LABEL (vision gate) — mandatory.** Before you classify or skip ANY endpoint —
+   above all a SPA, a `/login` or auth page, or any page whose raw HTML is just a JS bundle —
+   run `hexstrike_run("web_screenshot", {"url": "...", "describe": true})` and read the returned
+   vision description. **Never decide what a page is from its status code or raw HTML alone** (that
+   is exactly how a real login form gets mistaken for a catch-all page and wastes a whole recon
+   pass). Only after the description do you label the endpoint and pick tests for it.
+4. **Map → plan** — turn the confirmed endpoints into the WSTG `todo_write` list (only the
+   categories that apply to what you actually saw).
+5. **Per-category testing** — work the list with the tools in the table above. For a PHP target
+   with `session.upload_progress`, run `php2shell_scan_vulnerability` first, then the applicable
+   chains (gated — see the exploit specialist rule).
+6. **Evidence as you go** — `web_screenshot` each confirmed finding into `/evidence` (describe=true
+   when the page content matters), and rewrite `/reports/<case>.json` after every finding.
+7. **Verdict + report** — map findings to `WSTG-ID` + OWASP risk, then build the TLP report (below).
+
 ### Tool access — via the HexStrike router
 HexStrike tools are reached through a router, not listed individually:
 1. `hexstrike_search_tools(query)` — find a tool by keyword ("port scan", "sql
@@ -432,9 +476,11 @@ two things for the deterministic assembler to turn into the house-format documen
 **Screenshot a web page for evidence — `web_screenshot` (via the hexstrike router).**
 Run `hexstrike_run("web_screenshot", {"url": "http://host.docker.internal:18056/",
 "out": "finding_login.png"})` to render a URL in headless Chromium and save a PNG into
-`/evidence/<out>` (the exact dir the assembler reads). Options: `full_page`,
-`wait_until` (load/domcontentloaded/networkidle/commit), `wait_selector`, `timeout_ms`,
-`width`/`height`. It returns the saved path, HTTP status and page title. Use it to
+`/evidence/<out>` (the exact dir the assembler reads). Options: `describe` (also run the
+LOCAL vision model on the shot and return a factual page description — use it to classify
+an endpoint before testing; see the web-assessment flow's "look before you label" gate),
+`full_page`, `wait_until` (load/domcontentloaded/networkidle/commit), `wait_selector`,
+`timeout_ms`, `width`/`height`. It returns the saved path, HTTP status and page title. Use it to
 capture a vulnerable page, an RCE-proof page, or a login screen as a figure — then cite
 that filename in the report JSON. Discover it with `hexstrike_search_tools("screenshot")`.
 Authorized in-scope targets only; redact secrets visible in the shot before citing it.

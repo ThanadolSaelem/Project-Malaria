@@ -227,10 +227,16 @@ services:
       SHOT_HOST: 0.0.0.0
       SHOT_PORT: 9000
       OUT_DIR: /evidence
+      # describe=true → เรียก vision model (local) ผ่าน litellm อ่านหน้าให้ text model
+      LITELLM_BASE: http://litellm:4000/v1
+      LITELLM_KEY: ${LITELLM_KEY:-sk-local}
+      VISION_MODEL: vision
     extra_hosts:
       - "host.docker.internal:host-gateway"   # ยิง lab บน host ได้ (เหมือน router/server)
     ports:
       - "127.0.0.1:9000:9000"
+    depends_on:
+      - litellm                               # describe=true ต้องมี litellm (vision)
     restart: unless-stopped
 
   # ── ชั้นข้อมูลช่องโหว่ (CVE/vuln-intel, MCP over HTTP) — opt-in profile full ──
@@ -297,6 +303,8 @@ services:
       - ./reporting:/reporting:ro      # engine+template (assemble.py / build_report.py / template.docx)
       - ./reports:/reports             # output .docx + content.json (เขียนได้)
       - ./evidence:/evidence           # รูปหลักฐานที่ figure อ้างถึง (เขียนได้)
+      # playbooks: baseline การตรวจ (WSTG v4.2) → Tiel อ่าน objective/ID ของแต่ละ test ได้
+      - ./playbooks:/playbooks:ro      # /playbooks/wstg-v4.2-checklist.md (97 tests, 12 หมวด)
       # home/workspace ของ agent → persist ออก host. โมเดลชอบเขียนไฟล์ลง /root/<project>/...
       #   (HOME ของ container) ซึ่งเป็น ephemeral layer → เดิมหายเกลี้ยงตอน --force-recreate.
       #   mount ออก host ตรงนี้ = ทุกไฟล์ที่มันสร้าง (แม้ไม่ได้ใช้ /evidence,/reports) รอด recreate

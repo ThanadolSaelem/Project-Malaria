@@ -25,33 +25,43 @@ def web_screenshot(
     url: str,
     out: str = "",
     full_page: bool = True,
+    describe: bool = False,
     wait_until: str = "load",
     wait_selector: str = "",
     timeout_ms: int = 20000,
     width: int = 1280,
     height: int = 800,
 ) -> str:
-    """[EVIDENCE] Headless-Chromium screenshot of a URL, saved into /evidence.
+    """[EVIDENCE/RECON] Headless-Chromium screenshot of a URL, saved into /evidence.
 
     Renders `url` in headless Chromium (via the shot service) and writes a PNG to
     /evidence/<out> — the shared mount the TLP report assembler reads. Use it to
     capture visual evidence of a finding (a vulnerable page, an RCE proof page, a
     login screen). Authorized in-scope targets only.
 
+    LOOK BEFORE YOU LABEL: set describe=True to also have the LOCAL vision model
+    read the shot and return a factual description (page type, every form field /
+    button / link, version hints). ALWAYS use describe=True before you classify or
+    skip an endpoint — especially a SPA, a login/auth page, or any page whose raw
+    HTML is just a JS bundle. Never infer a page's purpose from its status code or
+    raw HTML alone. The vision model is local, so the image never leaves the stack.
+
     Args:
       url: page to capture (e.g. http://host.docker.internal:18056/).
       out: output filename under /evidence (sanitized, .png forced; default auto).
       full_page: capture the full scrollable page (True) or just the viewport.
+      describe: also return a local-vision description of the page (default False).
       wait_until: 'load' | 'domcontentloaded' | 'networkidle' | 'commit'.
       wait_selector: optional CSS selector to wait for before shooting.
       timeout_ms: navigation/selector timeout.
       width/height: viewport size.
 
-    Returns the saved path, HTTP status and page <title>, or an error line.
-    Redact secrets/tokens visible on the page before citing the image in a report.
+    Returns the saved path, HTTP status, page <title>, and (if describe) the vision
+    description — or an error line. Redact secrets/tokens visible on the page before
+    citing the image in a report.
     """
     payload = {
-        "url": url, "out": out, "full_page": full_page,
+        "url": url, "out": out, "full_page": full_page, "describe": describe,
         "wait_until": wait_until, "wait_selector": wait_selector,
         "timeout_ms": timeout_ms, "width": width, "height": height,
     }
@@ -60,16 +70,21 @@ def web_screenshot(
         SHOT_URL.rstrip("/") + "/screenshot", data=data,
         headers={"Content-Type": "application/json"}, method="POST",
     )
+    # describe adds a local vision call (slow) → allow more time
+    read_timeout = int(timeout_ms) / 1000 + (320 if describe else 30)
     try:
-        with urllib.request.urlopen(req, timeout=int(timeout_ms) / 1000 + 30) as r:
+        with urllib.request.urlopen(req, timeout=read_timeout) as r:
             res = json.loads(r.read())
     except Exception as e:
         return (f"ERROR: could not reach shot service at {SHOT_URL} "
                 f"({type(e).__name__}: {e}). Is the 'shot' container up (profile full)?")
     if not res.get("ok"):
         return f"screenshot FAILED: {res.get('error', 'unknown error')}"
-    return (f"saved {res['path']} (status={res.get('status')}, "
+    line = (f"saved {res['path']} (status={res.get('status')}, "
             f"title={res.get('title')!r}, {res.get('bytes')} bytes)")
+    if "description" in res:
+        line += f"\n--- vision description ---\n{res['description']}"
+    return line
 
 
 TOOLS = [web_screenshot]
