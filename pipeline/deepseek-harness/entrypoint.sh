@@ -37,6 +37,10 @@ fi
 echo "deepseek-harness: bind ${IP}:3080  →  เปิดจาก host ที่ http://localhost:3080"
 echo "deepseek-harness: token อยู่ใน log บรรทัดด้านล่าง (docker compose logs deepseek-harness)"
 
+# ── working dir ของ agent = /root (= bind mount ออก host) → ไฟล์ที่โมเดลสร้างแบบ
+#    relative/ใน home ตกลง pipeline/dsh-workspace/ บน host และรอด --force-recreate ──
+cd /root 2>/dev/null || true
+
 exec dsh web --no-open \
   --host "$IP" --port 3080 \
   --public-url "${DSH_PUBLIC_URL:-http://localhost:3080/}" \

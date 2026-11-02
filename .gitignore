@@ -28,3 +28,7 @@ pipeline/evidence/*
 # รายงานที่ประกอบแล้ว (.json/.docx ของเคส) — ไม่ commit เก็บแค่ README
 pipeline/reports/*
 !pipeline/reports/README.txt
+
+# home/workspace ของ deepseek-harness agent (ไฟล์งานเคส/อาจ sensitive) — ไม่ commit เก็บแค่ README
+pipeline/dsh-workspace/*
+!pipeline/dsh-workspace/README.txt

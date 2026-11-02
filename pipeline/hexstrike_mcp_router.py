@@ -91,6 +91,56 @@ def _score(query: str, entry: dict) -> int:
     return s
 
 
+# ── guards: กัน loop (เรียกซ้ำ) + กัน output ใหญ่จน context ระเบิด ───────────────
+import json as _json
+
+_RECENT: list = []
+_REPEAT_LIMIT = int(os.environ.get("ROUTER_REPEAT_LIMIT", "3"))
+_MAX_OUT = int(os.environ.get("ROUTER_MAX_OUTPUT_BYTES", "20000"))
+
+
+def _sig(name, arguments):
+    try:
+        return name + "|" + _json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False)
+    except Exception:
+        return name + "|" + repr(arguments)
+
+
+def _loop_check(name, arguments):
+    """คืนข้อความเตือนถ้า (tool,args) ซ้ำติดกัน >= limit, ไม่งั้น None."""
+    s = _sig(name, arguments)
+    _RECENT.append(s)
+    if len(_RECENT) > 12:
+        del _RECENT[0]
+    n = 0
+    for x in reversed(_RECENT):
+        if x == s:
+            n += 1
+        else:
+            break
+    if n >= _REPEAT_LIMIT:
+        return ("LOOP DETECTED: '%s' was called with identical arguments %d times in a row — the "
+                "result will not change. STOP repeating it: change the arguments/approach, move to "
+                "the next item in your plan, or if stuck, summarize what you have and switch to a "
+                "different vuln class." % (name, n))
+    return None
+
+
+def _cap(text):
+    """ตัด output ที่ยาวเกิน → กัน context โต + บอกให้ query แคบลง."""
+    if not isinstance(text, str):
+        return text
+    b = text.encode("utf-8", "replace")
+    if len(b) <= _MAX_OUT:
+        return text
+    head = b[: _MAX_OUT * 2 // 3].decode("utf-8", "replace")
+    tail = b[-_MAX_OUT // 3:].decode("utf-8", "replace")
+    return ("%s\n\n...[TRUNCATED: %d bytes total, kept ~%d. Do NOT pull the whole blob into context "
+            "— re-run with a narrow filter (grep/head/sed or a specific path), or save it to a file "
+            "in the tool container and extract only what you need.]...\n\n%s"
+            % (head, len(b), _MAX_OUT, tail))
+
+
 def main() -> None:
     server = os.environ.get("HEXSTRIKE_SERVER", "http://127.0.0.1:8888")
     timeout = int(os.environ.get("HEXSTRIKE_TIMEOUT", "300"))
@@ -111,8 +161,36 @@ def main() -> None:
     full = setup_mcp_server(client)
     tm = _get_tool_manager(full)
     catalog = build_catalog(tm)
+
+    # ── เสียบ tool pack ภายในเข้า catalog เดียวกัน (php2shell + shot) ──────────
+    #   ไม่พึ่ง FastMCP internals เลย: ยัด entry เข้า catalog (ให้ search/describe เห็น)
+    #   + เก็บ callable ไว้ใน LOCAL_DISPATCH ให้ hexstrike_run เรียกตรง (ดูด้านล่าง)
+    #   → Tiel ใช้ hexstrike_search_tools("php2shell"/"screenshot") → hexstrike_run(...)
+    #   แต่ละ pack ถ้าโหลดไม่ได้ก็ข้ามเฉพาะตัวมัน (hexstrike เดิม + pack อื่นยังครบ)
+    LOCAL_DISPATCH: dict = {}
+    for mod_name, note in (("php2shell_tools", "DEFAULT_TARGET"),
+                           ("shot_tools", "SHOT_URL")):
+        try:
+            mod = __import__(mod_name)
+            added = 0
+            for name, desc, params, fn in mod.catalog_entries():
+                catalog[name] = {
+                    "name": name,
+                    "description": desc,
+                    "brief": _first_line(desc),
+                    "parameters": params,
+                }
+                LOCAL_DISPATCH[name] = fn
+                added += 1
+            print(f"[hexstrike-router] injected {added} tools from {mod_name} "
+                  f"({note}={getattr(mod, note, '?')})", file=sys.stderr)
+        except Exception as e:
+            print(f"[hexstrike-router] WARN: {mod_name} not loaded "
+                  f"({type(e).__name__}: {e})", file=sys.stderr)
+
     names = sorted(catalog)
-    print(f"[hexstrike-router] indexed {len(names)} tools", file=sys.stderr)
+    print(f"[hexstrike-router] indexed {len(names)} tools "
+          f"({len(LOCAL_DISPATCH)} local)", file=sys.stderr)
 
     router = FastMCP("hexstrike-router")
 
@@ -157,12 +235,37 @@ def main() -> None:
                                        "additional_args": "-T4 -F -Pn"})
         คืนผลลัพธ์ดิบจาก tool นั้น (output อาจยาว — ถ้างานใหญ่ให้แบ่งรันทีละน้อย)."""
         arguments = arguments or {}
+        loop = _loop_check(name, arguments)
+        if loop:
+            return {"tool": name, "loop_guard": loop}
         if name not in catalog:
             sugg = sorted(names, key=lambda n: _score(name, catalog[n]),
                           reverse=True)[:8]
             return {"error": f"ไม่พบ tool '{name}'", "did_you_mean": sugg}
+        # local tool packs (php2shell/shot): เรียก callable ตรง (ไม่ได้อยู่ใน tm vendor)
+        if name in LOCAL_DISPATCH:
+            try:
+                result = LOCAL_DISPATCH[name](**arguments)
+                if isinstance(result, str):
+                    result = _cap(result)
+                return {"tool": name, "result": result}
+            except TypeError as e:
+                return {"tool": name,
+                        "error": f"bad arguments: {e}",
+                        "parameters": catalog[name]["parameters"]}
+            except Exception as e:
+                return {"tool": name, "error": f"{type(e).__name__}: {e}"}
         try:
             result = await tm.call_tool(name, arguments)
+            if isinstance(result, str):                # cap output ใหญ่ กัน context ระเบิด
+                result = _cap(result)
+            else:
+                try:
+                    _s = _json.dumps(result, ensure_ascii=False, default=str)
+                except Exception:
+                    _s = repr(result)
+                if len(_s.encode("utf-8", "replace")) > _MAX_OUT:
+                    result = _cap(_s)
             return {"tool": name, "result": result}
         except Exception as e:                        # คืน error สะอาด ไม่ให้ทั้ง turn ล้ม
             return {"tool": name, "error": f"{type(e).__name__}: {e}"}

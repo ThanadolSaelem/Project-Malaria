@@ -1,0 +1,23 @@
+# =============================================================================
+# shot — headless web screenshot/evidence service (Playwright + Chromium)
+# -----------------------------------------------------------------------------
+# แยก container ให้ browser หนักๆ อยู่นอก image ของ hexstrike-mcp (ที่ 4 service
+# ใช้ร่วมกัน). Playwright bundle Chromium ตรงเวอร์ชันให้ทั้ง arm64/amd64 → ใช้ได้
+# บน Apple Silicon ที่ Selenium+ChromeDriver เปราะ. เซฟ PNG ลง /evidence (bind mount)
+# router เรียกผ่าน HTTP (ดู shot_tools.py → tool web_screenshot)
+# =============================================================================
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir "playwright>=1.48,<2"
+# ลง chromium + OS deps ที่ headless chromium ต้องใช้ (fonts/libnss/...); --with-deps
+# เรียก apt ให้เอง → ไม่ต้องไล่ลง lib มือ
+RUN playwright install --with-deps chromium
+
+COPY pipeline/shot_server.py /app/shot_server.py
+
+ENV SHOT_HOST=0.0.0.0 \
+    SHOT_PORT=9000 \
+    OUT_DIR=/evidence
+
+EXPOSE 9000
+CMD ["python", "/app/shot_server.py"]

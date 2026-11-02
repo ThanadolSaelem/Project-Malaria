@@ -24,6 +24,7 @@ services:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     restart: unless-stopped
 
   # ── ชั้นเครื่องมือ: server ที่รันเครื่องมือจริง (opt-in ผ่าน profile "full") ──
@@ -53,6 +54,11 @@ services:
     cap_add:
       - NET_RAW
       - NET_ADMIN
+    # เครื่องมือ (httpx/nmap/nuclei/...) รันในนี้ ต้องยิง lab target บน host ได้ด้วย
+    # (host.docker.internal:18056). บน Mac Docker Desktop resolve ให้เอง แต่ "บน Linux
+    # ต้อง map ชัด" ไม่งั้นยิง lab ไม่โดน → ใส่ให้ reproduce ได้ทั้ง Mac/Linux
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8888:8888"
     restart: unless-stopped
@@ -67,10 +73,19 @@ services:
       - ../hexstrike-ai-main:/app/hexstrike-ai-main:ro
       - ./hexstrike_mcp_http.py:/app/pipeline/hexstrike_mcp_http.py:ro
       - ./hexstrike_mcp_router.py:/app/pipeline/hexstrike_mcp_router.py:ro   # tool-RAG (ใช้ผ่าน command override)
+      # php2shell toolkit (CVE-2026-109618/109619) — router import แล้ว register
+      # เข้า catalog → Tiel เรียกผ่าน hexstrike_run("php2shell_*"). mount ให้แก้สดได้
+      # (image ก็ COPY ไว้แล้ว ดู Dockerfile.hexstrike-mcp — mount แค่ทับให้ iterate ง่าย)
+      - ./php2shell_tools.py:/app/pipeline/php2shell_tools.py:ro
+      - ./php2shell-poc:/app/pipeline/php2shell-poc:ro
+      # shot: tool proxy (browser อยู่ service แยก) — mount ให้แก้สดได้
+      - ./shot_tools.py:/app/pipeline/shot_tools.py:ro
     environment:
       HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8001
+      PHP2SHELL_TARGET: http://host.docker.internal:18056   # lab target บน host Mac
+      SHOT_URL: http://shot:9000                            # web_screenshot → shot service
     ports:
       - "127.0.0.1:8001:8001"
     extra_hosts:
@@ -192,6 +207,57 @@ services:
     mem_limit: 4g
     restart: unless-stopped
 
+  # หมายเหตุ: php2shell toolkit (CVE-2026-109618/109619) ไม่ใช่ service แยกแล้ว —
+  # register เข้า catalog ของ hexstrike router (ดู hexstrike_mcp_router.py + php2shell_tools.py)
+  # → Tiel เรียกผ่าน hexstrike_run("php2shell_*")
+
+  # ── ชั้น screenshot/หลักฐานเว็บ (Playwright + Chromium) — opt-in profile full ──
+  #   browser อยู่ container นี้ (ไม่บวม image hexstrike-mcp). router มี tool บางๆ
+  #   web_screenshot ที่ POST มาที่ /screenshot → เซฟ PNG ลง /evidence ให้ assemble.py
+  #   Tiel เรียกผ่าน hexstrike_run("web_screenshot", {"url": "...", "out": "x.png"})
+  shot:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.shot
+    volumes:
+      - ./shot_server.py:/app/shot_server.py:ro   # แก้ logic ได้ไม่ต้อง rebuild
+      - ./evidence:/evidence                       # PNG หลักฐาน → host pipeline/evidence/
+    environment:
+      SHOT_HOST: 0.0.0.0
+      SHOT_PORT: 9000
+      OUT_DIR: /evidence
+      # describe=true → เรียก vision model (local) ผ่าน litellm อ่านหน้าให้ text model
+      LITELLM_BASE: http://litellm:4000/v1
+      LITELLM_KEY: ${LITELLM_KEY:-sk-local}
+      VISION_MODEL: vision
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # ยิง lab บน host ได้ (เหมือน router/server)
+    ports:
+      - "127.0.0.1:9000:9000"
+    depends_on:
+      - litellm                               # describe=true ต้องมี litellm (vision)
+    restart: unless-stopped
+
+  # ── ชั้นข้อมูลช่องโหว่ (CVE/vuln-intel, MCP over HTTP) — opt-in profile full ──
+  #   cve-mcp-server (third-party) ครอบด้วย router (28→3 tool) + กรอง threat-intel ออก
+  #   ต้องต่อเน็ตออก (NVD/EPSS/KEV/... สาธารณะ). ใส่ NVD_API_KEY/GITHUB_TOKEN ใน .env ได้ (optional)
+  cve-mcp:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.cve-mcp
+    volumes:
+      - ./cve_mcp_router.py:/app/cve_mcp_router.py:ro   # router mount → แก้ได้ไม่ต้อง rebuild
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8009
+      NVD_API_KEY: ${NVD_API_KEY:-}        # optional — เพิ่ม throughput ของ NVD
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}       # optional — เพิ่ม limit ค้น PoC/advisory บน GitHub
+    ports:
+      - "127.0.0.1:8009:8009"
+    restart: unless-stopped
+
   # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
   harnessrouter:
     image: harnessrouter/harnessrouter:latest
@@ -231,10 +297,26 @@ services:
       - ./deepseek-harness/cordis.patch.yml:/config/cordis.patch.yml:ro
       # system prompt → entrypoint ตัด wrapper แล้ววางเป็น /dsh/AGENTS.md (agent-instructions โหลดเอง)
       - ./cyber-operator.system.md:/config/cyber-operator.system.md:ro
+      # mount entrypoint ด้วย → แก้ logic entrypoint ได้โดยไม่ต้อง rebuild image (แค่ recreate)
+      - ./deepseek-harness/entrypoint.sh:/app/entrypoint.sh:ro
+      # report pipeline → Tiel เขียน content.json + รูป แล้วรัน assemble.py เองในตัว (python3+pillow ใน image)
+      - ./reporting:/reporting:ro      # engine+template (assemble.py / build_report.py / template.docx)
+      - ./reports:/reports             # output .docx + content.json (เขียนได้)
+      - ./evidence:/evidence           # รูปหลักฐานที่ figure อ้างถึง (เขียนได้)
+      # playbooks: baseline การตรวจ (WSTG v4.2) → Tiel อ่าน objective/ID ของแต่ละ test ได้
+      - ./playbooks:/playbooks:ro      # /playbooks/wstg-v4.2-checklist.md (97 tests, 12 หมวด)
+      # home/workspace ของ agent → persist ออก host. โมเดลชอบเขียนไฟล์ลง /root/<project>/...
+      #   (HOME ของ container) ซึ่งเป็น ephemeral layer → เดิมหายเกลี้ยงตอน --force-recreate.
+      #   mount ออก host ตรงนี้ = ทุกไฟล์ที่มันสร้าง (แม้ไม่ได้ใช้ /evidence,/reports) รอด recreate
+      #   relative path → Docker auto-create, ใช้ได้ทั้ง Mac/Windows ไม่ต้อง setup มือ (reproducible)
+      - ./dsh-workspace:/root          # = pipeline/dsh-workspace/ บน host (gitignored)
     depends_on:
       - litellm
       - hexstrike-mcp
       - rea-mcp
+      - memory-mcp
+      - cve-mcp
+      - search-mcp
     restart: unless-stopped
 
 volumes:

@@ -69,15 +69,27 @@ model_list:
   # วิธีใช้: เลือกโมเดลชื่อ "nim" หรือ "nim-reasoning" ใน Console (เลือกเอง ไม่ auto)
   # ต้องใส่ NVIDIA_API_KEY ใน .env (จาก build.nvidia.com/settings/api-keys)
   # เปลี่ยนรุ่นได้: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models มาใส่ที่ `model:`
-  - model_name: nim                          # งานหนัก/โค้ด/reasoning (GLM-5.3 — ยืนยันจาก catalog)
+  - model_name: nim                          # งานหนัก/โค้ด/reasoning/vision (Nemotron-3.5 Super VL 120B — GLM-5.3 EOL)
     litellm_params:
-      model: nvidia_nim/z-ai/glm-5.3
+      model: nvidia_nim/nvidia/nemotron-3.5-super-vl-120b-a12b
       api_base: https://integrate.api.nvidia.com/v1
       api_key: os.environ/NVIDIA_API_KEY
   # อยากเพิ่มรุ่นอื่น: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models (โชว์ใน code sample)
   #   แล้วเพิ่ม entry ใหม่แบบเดียวกัน (model: nvidia_nim/<id>)
   # ⚠️ catalog เปลี่ยนบ่อย — รุ่นเก่าถูก EOL แล้วจะได้ 410 Gone (เช่น llama-3.3-70b EOL ส.ค.2026)
   #   ถ้าเจอ 410 ให้ไปก็อป id รุ่นใหม่จาก build.nvidia.com มาแทน
+
+  # ---- OpenRouter — เกตเวย์รวมโมเดลคลาวด์หลายเจ้า (OpenAI-compatible) ----
+  # ⚠️ คลาวด์เหมือน nim: ข้อมูลออกนอกเครื่อง → ใช้เฉพาะงาน non-sensitive
+  #    ❌ ห้ามส่งเป้าหมาย/หลักฐาน/credential/APK/รายงาน TLP ขึ้นตัวนี้ — งานพวกนั้นใช้ cybermodel (local)
+  # ต้องใส่ OPENROUTER_API_KEY ใน .env (จาก openrouter.ai/settings/keys)
+  # ใช้แบบ sync chat (ไม่ใช่ Batch API) → Tiel เรียก tool/ตอบ real-time ได้
+  # เพิ่มรุ่น: ก๊อป model id จาก openrouter.ai/models (เช่น "z-ai/glm-5.3",
+  #   "deepseek/deepseek-chat", "qwen/qwen3-...") ใส่หลัง openrouter/ แล้วเพิ่ม entry แบบเดียวกัน
+  - model_name: or-glm                       # GLM-5.3 ผ่าน OpenRouter (NVIDIA EOL แล้ว แต่ OR ยังมี)
+    litellm_params:
+      model: openrouter/z-ai/glm-5.3
+      api_key: os.environ/OPENROUTER_API_KEY
 
   # ---- (ออปชัน) cloud fallback อื่นๆ — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
   # - model_name: big-brain-groq

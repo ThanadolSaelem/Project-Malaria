@@ -29,6 +29,22 @@ docker compose -f docker-compose.yml -f docker-compose.mac.yml logs deepseek-har
 หรือ **ดับเบิลคลิก `pipeline/mac/start.command`** — มันทำ llama → docker stack (รวม deepseek-harness)
 → เปิด :3080 ให้พร้อม token อัตโนมัติ
 
+## ข้อมูลหาย/ไม่หายตอน recreate (สำคัญ)
+
+`--force-recreate`/rebuild = ลบ+สร้าง container ใหม่ → **writable layer ของ container หายหมด**
+ดังนั้นสิ่งที่อยู่ "นอก volume" จะหาย ให้รู้ว่าอะไรรอด:
+
+| ข้อมูล | เก็บที่ | รอด recreate? |
+|---|---|---|
+| chat/บทสนทนา/todo ใน UI (`/dsh` runtime) | writable layer ของ container | ❌ หาย (เปิด session ใหม่) |
+| **ไฟล์งานที่ agent สร้าง** (`/root/<เคส>/...` = HOME) | bind mount `./dsh-workspace` | ✅ รอด (อยู่ `pipeline/dsh-workspace/`) |
+| รูปหลักฐาน (`/evidence`) + รายงาน (`/reports`) | bind mount `./evidence` / `./reports` | ✅ รอด (host, แชร์กับ hexstrike/rea) |
+| KG memory (`memory_add`) | volume `memory-data` ของ `memory-mcp` | ✅ รอด (คนละ container) |
+
+> เดิมโมเดลเขียนไฟล์ลง `/root/...` (HOME = ephemeral) เลยหายตอน recreate — แก้โดย mount
+> `/root` ออก host แล้ว (ดู `docker-compose.yml`). แต่ chat thread ใน UI ยัง ephemeral โดยตั้งใจ
+> (ทิ้งได้) — งานจริงให้ checkpoint ลง `/evidence` + `/reports/<เคส>.json` + memory ตามกฎใน AGENTS.md
+
 ## เวอร์ชันต้อง pin ให้ตรง (บทเรียนสำคัญ)
 
 deepseek-harness เป็น dev-preview และ **`dsh-mcp-client` pin peer deps แบบ exact** (ไม่ใช่ `^`)
@@ -59,9 +75,11 @@ ARG DSH_VERSION=0.2.1-rc.2      # runtime dsh + dsh-mcp-client ใช้เว�
 | provider (Cyber-Tiel/Vision/NIM) โผล่ใน UI | ✅ ใช้ได้ (Tiel ตอบผ่าน LiteLLM ใน container) |
 | tool `mcp__hexstrike__*` / `mcp__rea__*` | ✅ ติดแล้วด้วย `- insert:` (hexstrike log ยืนยัน ListTools 200) |
 | REA 139 tool ล้น context ของ Tiel | ✅ แก้ด้วย REA router (3 meta-tool, ดู `rea_mcp_router.py`) |
-| **system prompt** (กฎ + workflow + identity) | ✅ wire แล้ว: `cyber-operator.system.md` → `/dsh/AGENTS.md` (dsh-agent-instructions โหลดทุก session) + persona = Cyber-Tiel |
-| report assembler (`assemble.py`) ใน deepseek container | ⚠️ ยังไม่ครบ — bash ของ Tiel อยู่ใน deepseek (node, ไม่มี python/pillow/`/reporting`). เนื้อหา (JSON+รูป) ทำได้ แต่ขั้น "ประกอบ .docx" ต้องรันที่ host/hexstrike-server ไปก่อน |
-| memory (`memory_*`) ที่ system prompt อ้างถึง | ⚠️ ยังไม่ได้ต่อใน deepseek (มีแค่ hexstrike+rea) — เพิ่ม insert ของ memory-mcp ได้ภายหลัง |
+| **system prompt** (กฎ + workflow + identity) | ✅ wire แล้ว: `cyber-operator.system.md` → `/dsh/AGENTS.md` (dsh-agent-instructions โหลดทุก session; identity มาจากเนื้อ AGENTS.md เอง — ไม่ patch persona เพราะ profile patch ต้องมี `name`) |
+| report assembler (`assemble.py`) ใน deepseek container | ✅ ทำได้ในตัว — Dockerfile ลง python3+pillow, mount `/reporting`,`/reports`,`/evidence` → Tiel รัน `assemble.py` เองจบ (ต้อง rebuild deepseek image ครั้งเดียว) |
+| memory (`memory_*`) ที่ system prompt อ้างถึง | ✅ ต่อแล้ว: KG memory-mcp (`:8002`) ผ่าน insert `mcp-memory` → `mcp__memory__*` (add/relate/search/read/delete) |
+| CVE / vuln-intel (`cve_*`) | ✅ ต่อแล้ว: cve-mcp-server (`:8009`) + router 28→3 (`cve_search_tools/describe/run`) กรอง threat-intel ที่ส่ง IOC ออก (passive OSINT) — ต้องต่อเน็ต, key optional |
+| web search/fetch (`mcp__search__*`) | ✅ ต่อแล้ว: search-mcp (`:8004`) → SearXNG self-hosted (ไม่ต้อง API key) — แทน built-in `web_search` ที่ต้อง key |
 
 > ✅ **ความปลอดภัย:** system prompt (กฎ guardrail: local-only, redaction, ห้ามส่ง cloud,
 > authorized scope) wire แล้วผ่าน `/dsh/AGENTS.md` — **หลัง deploy ให้ทดสอบยืนยัน**ว่า Tiel

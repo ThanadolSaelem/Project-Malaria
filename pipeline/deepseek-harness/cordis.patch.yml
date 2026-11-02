@@ -26,8 +26,10 @@
             name: Cyber-Tiel
           - id: vision                       # Qwen2.5-VL (อ่านภาพ)
             name: Vision (Qwen2.5-VL)
-          - id: nim                          # GLM cloud — ⚠️ งาน non-sensitive เท่านั้น
-            name: NIM (GLM cloud)
+          - id: nim                          # Nemotron VL cloud — ⚠️ งาน non-sensitive เท่านั้น
+            name: NIM (Nemotron VL cloud)
+          - id: or-glm                       # OpenRouter GLM-5.3 — ⚠️ cloud, งาน non-sensitive เท่านั้น
+            name: OpenRouter GLM-5.3 (cloud)
         compat:
           supportsDeveloperRole: false
           maxTokensField: max_tokens
@@ -39,20 +41,13 @@
     provider: litellm-local
     model: cybermodel
 
-# ── (1c) identity → Cyber-Tiel : PATCH system-prompt (row ที่ dsh-web-app มีอยู่แล้ว) ─────
-#   กฎ/workflow เต็มอยู่ใน /dsh/AGENTS.md (= cyber-operator.system.md ที่ entrypoint ตัด wrapper
-#   แล้ววางให้) โหลดโดย dsh-agent-instructions อัตโนมัติทุก session — นี่แค่ตั้งตัวตนสั้น ๆ
-- id: system-prompt
-  config:
-    personaPrefix: >-
-      You are Cyber-Tiel, an autonomous cybersecurity operations analyst working in
-      an authorized lab. Follow the operating instructions in AGENTS.md exactly — its
-      authorization and scope rules, tool-use discipline (HexStrike and REA are reached
-      through their routers: search a tool, then run it), the threat-verdict and
-      reporting format, and the rule that analysis stays local and evidence is never
-      sent to a cloud model.
+# ── identity ─────────────────────────────────────────────────────────────────
+#   ไม่ patch system-prompt ที่นี่ (profile patch ต้องมี `name` ไม่งั้นทั้งไฟล์ล่ม
+#   = plugin หายหมด เหมือนบั๊ก llm-litellm-local ตอนแรก และเราไม่รู้ plugin name ของ
+#   row นี้) — ตัวตน "Cyber-Tiel" + กฎ/workflow มาจาก /dsh/AGENTS.md (dsh-agent-instructions
+#   โหลดทุก session) ซึ่งขึ้นต้นด้วยบท "security assessment operator" อยู่แล้ว เพียงพอ
 
-# ── (2) MCP tools → HexStrike + REA : INSERT row ใหม่ (สร้าง instance ของ mcp-client) ─
+# ── (2) MCP tools → HexStrike + REA + memory : INSERT row ใหม่ ────────────────────
 #   1 instance ต่อ 1 server · tool โผล่แบบ mcp__<serverName>__<toolName>
 #   url = ชื่อ service ใน network · field required: serverName/transport/url/headers/
 #         toolCallTimeoutMs/failOnStartupError
@@ -75,5 +70,35 @@
         headers: {}
         toolCallTimeoutMs: 300000            # RE/decompile ใช้เวลานาน
         failOnStartupError: false
+    - id: mcp-memory
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: memory                   # → tool: mcp__memory__* (KG: add/relate/search/read/delete)
+        transport: streamable-http
+        url: http://memory-mcp:8002/mcp      # service: memory-mcp (รันโดยดีฟอลต์ ไม่ต้อง profile full)
+        headers: {}
+        toolCallTimeoutMs: 60000             # memory เร็ว — 60s พอ
+        failOnStartupError: false
+    - id: mcp-cve
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: cve                      # → tool: mcp__cve__* (router: cve_search_tools/describe/run)
+        transport: streamable-http
+        url: http://cve-mcp:8009/mcp         # service: cve-mcp (profile full) — vuln-intel สาธารณะ
+        headers: {}
+        toolCallTimeoutMs: 120000            # lookup ภายนอก (NVD throttle) อาจช้า → 2 นาที
+        failOnStartupError: false
+    - id: mcp-search
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: search                   # → tool: mcp__search__web_search / fetch_url (SearXNG, ไม่ต้อง API key)
+        transport: streamable-http
+        url: http://search-mcp:8004/mcp      # service: search-mcp → searxng (self-hosted)
+        headers: {}
+        toolCallTimeoutMs: 60000
+        failOnStartupError: false
+#   หมายเหตุ: php2shell (CVE-2026-109618/109619) ไม่ได้เป็น MCP แยกแล้ว — ย้ายไป register
+#   เข้า catalog ของ hexstrike router (ดู hexstrike_mcp_router.py) → Tiel เรียกผ่าน
+#   mcp__hexstrike__hexstrike_run("php2shell_*") ไม่ต้องมี entry ของตัวเองที่นี่
 #   หมายเหตุ: งานที่แตะ "ตัวอย่างมัลแวร์" ให้ไปทาง MCP (→ container hexstrike/rea ที่แยกขาด)
 #   เท่านั้น ไม่ใช่ bash ในตัว harness (กฎ: analyze local ใน container)
