@@ -20,10 +20,14 @@ COPY pipeline/php2shell-poc/exploit/    /app/pipeline/php2shell-poc/exploit/
 COPY pipeline/php2shell-poc/poc/        /app/pipeline/php2shell-poc/poc/
 COPY pipeline/php2shell-poc/scanner/    /app/pipeline/php2shell-poc/scanner/
 
+# shot: tool บางๆ proxy ไป shot service (browser อยู่ container แยก ไม่บวม image นี้)
+COPY pipeline/shot_tools.py             /app/pipeline/shot_tools.py
+
 ENV MCP_HOST=0.0.0.0 \
     MCP_PORT=8001 \
     HEXSTRIKE_DIR=/app/hexstrike-ai-main \
-    PHP2SHELL_TARGET=http://host.docker.internal:18056
+    PHP2SHELL_TARGET=http://host.docker.internal:18056 \
+    SHOT_URL=http://shot:9000
 
 EXPOSE 8001
 CMD ["python", "/app/pipeline/hexstrike_mcp_http.py"]

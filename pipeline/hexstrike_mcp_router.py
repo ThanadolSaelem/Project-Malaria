@@ -162,31 +162,35 @@ def main() -> None:
     tm = _get_tool_manager(full)
     catalog = build_catalog(tm)
 
-    # ── เสียบ php2shell toolkit เข้า catalog เดียวกัน (CVE-2026-109618/109619) ──
+    # ── เสียบ tool pack ภายในเข้า catalog เดียวกัน (php2shell + shot) ──────────
     #   ไม่พึ่ง FastMCP internals เลย: ยัด entry เข้า catalog (ให้ search/describe เห็น)
-    #   + เก็บ callable ไว้ใน PHP2SHELL_DISPATCH ให้ hexstrike_run เรียกตรง (ดูด้านล่าง)
-    #   → Tiel ใช้ hexstrike_search_tools("php2shell") → hexstrike_run("php2shell_*")
-    #   รันในคอนเทนเนอร์ router นี้เอง. ถ้าโหลดไม่ได้ก็ข้าม (hexstrike เดิมยังครบ)
-    PHP2SHELL_DISPATCH: dict = {}
-    try:
-        import php2shell_tools
-        for name, desc, params, fn in php2shell_tools.catalog_entries():
-            catalog[name] = {
-                "name": name,
-                "description": desc,
-                "brief": _first_line(desc),
-                "parameters": params,
-            }
-            PHP2SHELL_DISPATCH[name] = fn
-        print(f"[hexstrike-router] injected {len(PHP2SHELL_DISPATCH)} php2shell tools "
-              f"(target={php2shell_tools.DEFAULT_TARGET})", file=sys.stderr)
-    except Exception as e:
-        print(f"[hexstrike-router] WARN: php2shell tools not loaded "
-              f"({type(e).__name__}: {e})", file=sys.stderr)
+    #   + เก็บ callable ไว้ใน LOCAL_DISPATCH ให้ hexstrike_run เรียกตรง (ดูด้านล่าง)
+    #   → Tiel ใช้ hexstrike_search_tools("php2shell"/"screenshot") → hexstrike_run(...)
+    #   แต่ละ pack ถ้าโหลดไม่ได้ก็ข้ามเฉพาะตัวมัน (hexstrike เดิม + pack อื่นยังครบ)
+    LOCAL_DISPATCH: dict = {}
+    for mod_name, note in (("php2shell_tools", "DEFAULT_TARGET"),
+                           ("shot_tools", "SHOT_URL")):
+        try:
+            mod = __import__(mod_name)
+            added = 0
+            for name, desc, params, fn in mod.catalog_entries():
+                catalog[name] = {
+                    "name": name,
+                    "description": desc,
+                    "brief": _first_line(desc),
+                    "parameters": params,
+                }
+                LOCAL_DISPATCH[name] = fn
+                added += 1
+            print(f"[hexstrike-router] injected {added} tools from {mod_name} "
+                  f"({note}={getattr(mod, note, '?')})", file=sys.stderr)
+        except Exception as e:
+            print(f"[hexstrike-router] WARN: {mod_name} not loaded "
+                  f"({type(e).__name__}: {e})", file=sys.stderr)
 
     names = sorted(catalog)
     print(f"[hexstrike-router] indexed {len(names)} tools "
-          f"({len(PHP2SHELL_DISPATCH)} php2shell)", file=sys.stderr)
+          f"({len(LOCAL_DISPATCH)} local)", file=sys.stderr)
 
     router = FastMCP("hexstrike-router")
 
@@ -238,10 +242,10 @@ def main() -> None:
             sugg = sorted(names, key=lambda n: _score(name, catalog[n]),
                           reverse=True)[:8]
             return {"error": f"ไม่พบ tool '{name}'", "did_you_mean": sugg}
-        # php2shell tools: เรียก callable ตรง (ไม่ได้อยู่ใน tm ของ hexstrike vendor)
-        if name in PHP2SHELL_DISPATCH:
+        # local tool packs (php2shell/shot): เรียก callable ตรง (ไม่ได้อยู่ใน tm vendor)
+        if name in LOCAL_DISPATCH:
             try:
-                result = PHP2SHELL_DISPATCH[name](**arguments)
+                result = LOCAL_DISPATCH[name](**arguments)
                 if isinstance(result, str):
                     result = _cap(result)
                 return {"tool": name, "result": result}

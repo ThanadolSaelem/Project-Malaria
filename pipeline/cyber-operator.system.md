@@ -422,10 +422,23 @@ two things for the deterministic assembler to turn into the house-format documen
   the threat verdict / หมายเหตุ / signature), tables for IOCs/endpoints/hashes, and a
   `figure` block citing each evidence image by filename. Cite every figure in the text
   first ("ตามรูปภาพที่ N"). Write complete official Thai sentences, no em dash.
-- **The evidence images**, saved into `/evidence`: web captures via REA's headless
-  browser, and code/strings/decompile output rendered to an image (there is no GUI
-  screen to grab in the container). Redact tokens, credentials, phone numbers, reporter
-  emails, and direct URLs/paths of unfixed systems before saving.
+- **The evidence images**, saved into `/evidence`: web page captures via the
+  `web_screenshot` tool (headless Chromium, through the hexstrike router — see below),
+  REA's headless browser for deeper web/RE analysis, and code/strings/decompile output
+  rendered to an image (there is no GUI screen to grab in the container). Redact tokens,
+  credentials, phone numbers, reporter emails, and direct URLs/paths of unfixed systems
+  before saving.
+
+**Screenshot a web page for evidence — `web_screenshot` (via the hexstrike router).**
+Run `hexstrike_run("web_screenshot", {"url": "http://host.docker.internal:18056/",
+"out": "finding_login.png"})` to render a URL in headless Chromium and save a PNG into
+`/evidence/<out>` (the exact dir the assembler reads). Options: `full_page`,
+`wait_until` (load/domcontentloaded/networkidle/commit), `wait_selector`, `timeout_ms`,
+`width`/`height`. It returns the saved path, HTTP status and page title. Use it to
+capture a vulnerable page, an RCE-proof page, or a login screen as a figure — then cite
+that filename in the report JSON. Discover it with `hexstrike_search_tools("screenshot")`.
+Authorized in-scope targets only; redact secrets visible in the shot before citing it.
+(The browser runs in the separate `shot` service, profile `full`.)
 
 Then **build the document yourself, in the container** (the formatting is the script's,
 not yours — you only supply content + images):

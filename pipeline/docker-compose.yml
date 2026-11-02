@@ -78,11 +78,14 @@ services:
       # (image ก็ COPY ไว้แล้ว ดู Dockerfile.hexstrike-mcp — mount แค่ทับให้ iterate ง่าย)
       - ./php2shell_tools.py:/app/pipeline/php2shell_tools.py:ro
       - ./php2shell-poc:/app/pipeline/php2shell-poc:ro
+      # shot: tool proxy (browser อยู่ service แยก) — mount ให้แก้สดได้
+      - ./shot_tools.py:/app/pipeline/shot_tools.py:ro
     environment:
       HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8001
       PHP2SHELL_TARGET: http://host.docker.internal:18056   # lab target บน host Mac
+      SHOT_URL: http://shot:9000                            # web_screenshot → shot service
     ports:
       - "127.0.0.1:8001:8001"
     extra_hosts:
@@ -204,10 +207,32 @@ services:
     mem_limit: 4g
     restart: unless-stopped
 
-  # ── php2shell exploit toolkit (MCP over HTTP) — opt-in profile full ─────────
-  #   ครอบ CVE-2026-109618/109619 (PHP2Shell) exploit toolkit 5 chain + scanner
-  #   ⚠️ ออฟเฟนซีฟ — ใช้เฉพาะ lab เป้าหมายที่ได้รับอนุญาต (localhost:18056 เป็น lab เรา)
-  #   Tools: scan_vulnerability, verify_*, make_huge_session, chain_a/b/c
+  # หมายเหตุ: php2shell toolkit (CVE-2026-109618/109619) ไม่ใช่ service แยกแล้ว —
+  # register เข้า catalog ของ hexstrike router (ดู hexstrike_mcp_router.py + php2shell_tools.py)
+  # → Tiel เรียกผ่าน hexstrike_run("php2shell_*")
+
+  # ── ชั้น screenshot/หลักฐานเว็บ (Playwright + Chromium) — opt-in profile full ──
+  #   browser อยู่ container นี้ (ไม่บวม image hexstrike-mcp). router มี tool บางๆ
+  #   web_screenshot ที่ POST มาที่ /screenshot → เซฟ PNG ลง /evidence ให้ assemble.py
+  #   Tiel เรียกผ่าน hexstrike_run("web_screenshot", {"url": "...", "out": "x.png"})
+  shot:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.shot
+    volumes:
+      - ./shot_server.py:/app/shot_server.py:ro   # แก้ logic ได้ไม่ต้อง rebuild
+      - ./evidence:/evidence                       # PNG หลักฐาน → host pipeline/evidence/
+    environment:
+      SHOT_HOST: 0.0.0.0
+      SHOT_PORT: 9000
+      OUT_DIR: /evidence
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # ยิง lab บน host ได้ (เหมือน router/server)
+    ports:
+      - "127.0.0.1:9000:9000"
+    restart: unless-stopped
+
   # ── ชั้นข้อมูลช่องโหว่ (CVE/vuln-intel, MCP over HTTP) — opt-in profile full ──
   #   cve-mcp-server (third-party) ครอบด้วย router (28→3 tool) + กรอง threat-intel ออก
   #   ต้องต่อเน็ตออก (NVD/EPSS/KEV/... สาธารณะ). ใส่ NVD_API_KEY/GITHUB_TOKEN ใน .env ได้ (optional)
