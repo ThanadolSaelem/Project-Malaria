@@ -54,6 +54,11 @@ services:
     cap_add:
       - NET_RAW
       - NET_ADMIN
+    # เครื่องมือ (httpx/nmap/nuclei/...) รันในนี้ ต้องยิง lab target บน host ได้ด้วย
+    # (host.docker.internal:18056). บน Mac Docker Desktop resolve ให้เอง แต่ "บน Linux
+    # ต้อง map ชัด" ไม่งั้นยิง lab ไม่โดน → ใส่ให้ reproduce ได้ทั้ง Mac/Linux
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8888:8888"
     restart: unless-stopped
