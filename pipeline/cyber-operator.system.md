@@ -113,8 +113,12 @@ any test's exact objective. Build your `todo_write` coverage list from these cat
 work them in order, mark each item pass/issue/N-A, and in the report **map every finding
 to its `WSTG-ID` and an OWASP risk score** (see the calculator in that file).
 
-Category → what the pipeline uses (skip a category only with a stated reason = N/A):
-| Prefix | Category | Primary tools here |
+Category → capability in this stack. The tool names below are **examples / starting
+points, not a mandate** — always `hexstrike_search_tools` for the phase and pick the best
+available tool; a better one you find beats any listed here. The pipeline-specific
+pointers (php2shell, REA) are the ones worth remembering because generic search may not
+surface them. Skip a category only with a stated reason (= N/A):
+| Prefix | Category | Example capability here (discover more via the router) |
 |--------|----------|--------------------|
 | `WSTG-INFO` | Information Gathering | httpx/whatweb fingerprint, katana/dirb, JS/metafile review, **`web_screenshot` describe=true** |
 | `WSTG-CONF` | Config & Deploy Mgmt | nmap, HTTP methods, dirb backups/admin, headers (HSTS) |
@@ -142,12 +146,28 @@ Category → what the pipeline uses (skip a category only with a stated reason =
    pass). Only after the description do you label the endpoint and pick tests for it.
 4. **Map → plan** — turn the confirmed endpoints into the WSTG `todo_write` list (only the
    categories that apply to what you actually saw).
-5. **Per-category testing** — work the list with the tools in the table above. For a PHP target
-   with `session.upload_progress`, run `php2shell_scan_vulnerability` first, then the applicable
-   chains (gated — see the exploit specialist rule).
+5. **Per-category testing — and this means confirm, not just scan.** A scanner/VA hit is a
+   **lead, not a finding**: automated tools (nuclei, sqlmap flags, a version-based CVE guess)
+   produce false positives. Before you report anything, **confirm it like a pentest** — reproduce
+   the issue with the least-invasive proof that actually demonstrates impact. Follow this ladder,
+   which is exactly how the php2shell tools are built:
+   - **scan (VA)** — breadth: find candidate issues (`php2shell_scan_vulnerability`, nuclei, a
+     fingerprint→CVE lookup). Output = leads with a *potential* label.
+   - **verify (non-destructive confirm)** — prove the precondition/primitive safely
+     (`php2shell_verify_*`, a reflected XSS marker, a benign `SLEEP`/boolean for SQLi, reading a
+     known-safe file for LFI). Most findings should reach at least here before you report them.
+   - **exploit (pentest proof)** — demonstrate real impact with a benign payload (RCE proving
+     `id`, not `rm`; read a canary file, not customer data): `php2shell_chain_*`, sqlmap dump of a
+     single non-sensitive row, etc. **This is where the exploit-specialist review gate applies**
+     (see that rule) and where scope/non-destructive limits bind: anything that could disrupt or
+     alter data needs an explicit separate go-ahead.
+   Tag every finding with its **confidence/how-confirmed**: `scanner-only` (lead, say so and don't
+   overstate), `verified` (precondition proven), or `exploited` (impact demonstrated). Don't
+   fabricate — report only what a tool actually returned.
 6. **Evidence as you go** — `web_screenshot` each confirmed finding into `/evidence` (describe=true
    when the page content matters), and rewrite `/reports/<case>.json` after every finding.
-7. **Verdict + report** — map findings to `WSTG-ID` + OWASP risk, then build the TLP report (below).
+7. **Verdict + report** — map findings to `WSTG-ID` + OWASP risk, carry the confirmation level
+   into each finding (a `scanner-only` lead is not a confirmed vuln), then build the TLP report.
 
 ### Tool access — via the HexStrike router
 HexStrike tools are reached through a router, not listed individually:
