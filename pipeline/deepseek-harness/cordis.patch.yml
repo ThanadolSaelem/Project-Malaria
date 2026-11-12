@@ -21,15 +21,33 @@
         apiKeyEnv: LITELLM_KEY              # compose ส่ง LITELLM_KEY=sk-local เข้า container
         api: openai-completions
         baseURL: http://litellm:4000/v1     # ชื่อ service ใน docker network
+        # ‼️ limit.output = เพดาน max_tokens ที่ harness ส่งต่อ request (ไม่ตั้ง = default
+        #    ~4096 → "output token limit reached" บ่อย). limit.context = ขนาด input ที่
+        #    harness ยอมก่อน compact. ⚠️ context ห้ามตั้งเกินของจริง: cloud ตั้งตามสเปครุ่น
+        #    ได้; "cybermodel/vision เป็น llama.cpp บน host" → context ต้อง ≤ --ctx-size ที่
+        #    สตาร์ท llama-server จริง (ตั้งเกิน = input ล้น ctx → พังกว่าเดิม). ค่า cybermodel/
+        #    vision ด้านล่างตั้งไว้ปลอดภัย (16k) — ถ้า llama ctx ใหญ่กว่านี้ค่อยขยับขึ้น
         models:
           - id: cybermodel                  # Tiel (orchestrator) — งาน sensitive/หลักฐาน
             name: Cyber-Tiel
+            limit:
+              context: 16384                # ≤ --ctx-size ของ llama-server :8090
+              output: 8192                  # ให้ตอบยาวพอต่อ 1 turn (เดิม default ~4096)
           - id: vision                       # Qwen2.5-VL (อ่านภาพ)
             name: Vision (Qwen2.5-VL)
+            limit:
+              context: 16384
+              output: 4096
           - id: nim                          # Nemotron VL cloud — ⚠️ งาน non-sensitive เท่านั้น
             name: NIM (Nemotron VL cloud)
+            limit:
+              context: 131072               # Nemotron-3.5 Super VL ~128k ctx
+              output: 8192                  # ปลอดภัยใต้ max completion ของ NIM (เกินอาจได้ 400)
           - id: or-glm                       # OpenRouter GLM-5.3 — ⚠️ cloud, งาน non-sensitive เท่านั้น
             name: OpenRouter GLM-5.3 (cloud)
+            limit:
+              context: 131072               # GLM-5.3 ~128k ctx
+              output: 8192
         compat:
           supportsDeveloperRole: false
           maxTokensField: max_tokens
