@@ -120,10 +120,10 @@ services:
       - "127.0.0.1:8002:8002"
     restart: unless-stopped
 
-  # ── ชั้นผู้ช่วยเขียน exploit (MCP over HTTP) ─────────────────────────────
-  # ให้ Tiel (orchestrator) delegate งานเขียน exploit/PoC/payload ไปโมเดล
-  # offensive เฉพาะทาง (ดีฟอลต์ BugTraceAI-CORE-Ultra-27B บน llama :8091) ผ่าน
-  # LiteLLM — expose ออกมาเป็น tool เดียว `ask_exploit_specialist`
+  # ── สะพานผู้เชี่ยวชาญแบบ stateless (MCP over HTTP) ─────────────────────────
+  # ask_exploit_specialist เป็นคำขอ single-turn ไปยัง local Cyber-Model (:8091).
+  # ask_coding_orchestrator ปิดไว้โดยดีฟอลต์ เพราะ Qwen Code เองใช้ Flint (:8090)
+  # และการเรียกกลับไปยัง slot เดียวกันแบบ synchronous อาจ deadlock.
   # reuse image เดียวกับ hexstrike-mcp (มี mcp SDK + requests อยู่แล้ว)
   specialist-mcp:
     build:
@@ -136,6 +136,7 @@ services:
       LITELLM_BASE: http://litellm:4000/v1   # เรียกผ่าน gateway ใน compose network
       SPECIALIST_MODEL: cyber-model          # alias ใน litellm-config.yaml (:8091)
       ORCHESTRATOR_MODEL: orchestrator       # alias ใน litellm-config.yaml (:8090)
+      ALLOW_ORCHESTRATOR_DELEGATION: "0"      # ป้องกัน self-delegation จาก Flint (:8090)
       CONTROL_PLANE_URL: http://host.docker.internal:8010
       SPECIALIST_TIMEOUT: 1200               # specialist เป็น reasoning 27B/35B ตอบช้า ให้ถึง 20 นาที
       MCP_HOST: 0.0.0.0
@@ -288,7 +289,7 @@ services:
       OPENAI_API_KEY: ${LITELLM_KEY:-sk-local}
       OPENAI_MODEL: flint
       QWEN_SERVER_TOKEN: ${QWEN_SERVER_TOKEN:-malaria-qwen-token}
-      QWEN_CODE_ENABLE_AGENT_TEAM: "1"
+      QWEN_CODE_ENABLE_AGENT_TEAM: "0"
       HOST_LAN_IP: ${HOST_LAN_IP:-}
     volumes:
       - ./qwen-code/settings.json:/config/settings.json:ro

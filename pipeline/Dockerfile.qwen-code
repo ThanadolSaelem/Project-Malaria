@@ -18,8 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && pip3 install --no-cache-dir --break-system-packages pillow \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Qwen Code CLI globally
-RUN npm install -g @qwen-code/qwen-code@latest
+# Pin the inspected native-agent/tool implementation for reproducible builds.
+RUN npm install -g @qwen-code/qwen-code@0.27.2
 
 WORKDIR /workspace
 

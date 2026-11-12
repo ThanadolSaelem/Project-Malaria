@@ -43,6 +43,12 @@
   "model": {
     "name": "flint"
   },
+  "context": {
+    "fileName": "AGENTS.md"
+  },
+  "agents": {
+    "defaultBackground": false
+  },
   "mcpServers": {
     "hexstrike": {
       "httpUrl": "http://hexstrike-mcp:8001/mcp",
@@ -78,7 +84,7 @@
     "approvalMode": "auto"
   },
   "experimental": {
-    "agentTeam": true
+    "agentTeam": false
   },
   "$version": 4
 }

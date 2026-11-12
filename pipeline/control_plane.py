@@ -278,6 +278,12 @@ def sync_qwen_settings(cfg: dict) -> str:
         "model": {
             "name": default_model
         },
+        "context": {
+            "fileName": "AGENTS.md"
+        },
+        "agents": {
+            "defaultBackground": False
+        },
         "mcpServers": mcp_servers,
         "security": {
             "auth": {
@@ -288,7 +294,7 @@ def sync_qwen_settings(cfg: dict) -> str:
             "approvalMode": "auto"
         },
         "experimental": {
-            "agentTeam": True
+            "agentTeam": False
         },
         "$version": 4
     }

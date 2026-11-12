@@ -23,20 +23,18 @@ if [ -f /config/settings.json ]; then
   echo "entrypoint: synced settings.json -> /root/.qwen/settings.json (full) and /workspace/.qwen/settings.json (no gated mcpServers)"
 fi
 
-# ── Install specialized subagents for Agent Team / Agent tool ─────────────────
+# ── Install project-scoped named subagents for the native agent tool ──────────
 if [ -d /config/agents ]; then
-  mkdir -p /root/.qwen/agents /workspace/.qwen/agents
-  cp -f /config/agents/*.md /root/.qwen/agents/ 2>/dev/null || true
+  mkdir -p /workspace/.qwen/agents
   cp -f /config/agents/*.md /workspace/.qwen/agents/ 2>/dev/null || true
-  echo "entrypoint: installed subagents -> /root/.qwen/agents and /workspace/.qwen/agents"
+  echo "entrypoint: installed project subagents -> /workspace/.qwen/agents"
 fi
 
 # ── Extract and inject baseline cyber-operator system prompt ─────────────────
 if [ -f /config/cyber-operator.system.md ]; then
-  awk 'f;/^## SYSTEM PROMPT$/{f=1}' /config/cyber-operator.system.md > /root/.qwen/AGENTS.md
-  cp /root/.qwen/AGENTS.md /workspace/AGENTS.md 2>/dev/null || true
-  cp /root/.qwen/AGENTS.md /root/AGENTS.md 2>/dev/null || true
-  echo "entrypoint: installed system instructions -> AGENTS.md ($(wc -c < /root/.qwen/AGENTS.md) bytes)"
+  awk 'BEGIN { f=0 } /^## SYSTEM PROMPT$/ { f=1; next } f { print }' \
+    /config/cyber-operator.system.md > /workspace/AGENTS.md
+  echo "entrypoint: extracted project instructions -> /workspace/AGENTS.md ($(wc -c < /workspace/AGENTS.md) bytes)"
 fi
 
 # ── Patch Qwen Code listLanCandidates() to use mounted Mac host IP live ──────
@@ -127,7 +125,7 @@ export OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://litellm:4000/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-${LITELLM_KEY:-sk-local}}"
 export OPENAI_MODEL="${OPENAI_MODEL:-flint}"
 export QWEN_SERVER_TOKEN="${QWEN_SERVER_TOKEN:-malaria-qwen-token}"
-export QWEN_CODE_ENABLE_AGENT_TEAM="${QWEN_CODE_ENABLE_AGENT_TEAM:-1}"
+export QWEN_CODE_ENABLE_AGENT_TEAM="${QWEN_CODE_ENABLE_AGENT_TEAM:-0}"
 
 LIVE_HOST_IP="${HOST_LAN_IP:-}"
 if [ -f /host-net/host-lan-ip.txt ]; then
