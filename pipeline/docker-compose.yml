@@ -25,6 +25,8 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY}
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # ── ชั้นเครื่องมือ: server ที่รันเครื่องมือจริง (opt-in ผ่าน profile "full") ──
@@ -80,6 +82,12 @@ services:
       - ./php2shell-poc:/app/pipeline/php2shell-poc:ro
       # shot: tool proxy (browser อยู่ service แยก) — mount ให้แก้สดได้
       - ./shot_tools.py:/app/pipeline/shot_tools.py:ro
+      - ./vflat_tools.py:/app/pipeline/vflat_tools.py:ro
+      - ./report_tools.py:/app/pipeline/report_tools.py:ro
+      - ./node-config.json:/app/pipeline/node-config.json:ro
+      - ./reporting:/reporting:ro
+      - ./reports:/reports
+      - ./evidence:/evidence
     environment:
       HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
       MCP_HOST: 0.0.0.0
@@ -126,12 +134,16 @@ services:
       - ./specialist_mcp_http.py:/app/pipeline/specialist_mcp_http.py:ro
     environment:
       LITELLM_BASE: http://litellm:4000/v1   # เรียกผ่าน gateway ใน compose network
-      SPECIALIST_MODEL: exploit-specialist   # alias ใน litellm-config.yaml
-      SPECIALIST_TIMEOUT: 1200               # specialist เป็น reasoning 27B ตอบช้า ให้ถึง 20 นาที
+      SPECIALIST_MODEL: cyber-model          # alias ใน litellm-config.yaml (:8091)
+      ORCHESTRATOR_MODEL: orchestrator       # alias ใน litellm-config.yaml (:8090)
+      CONTROL_PLANE_URL: http://host.docker.internal:8010
+      SPECIALIST_TIMEOUT: 1200               # specialist เป็น reasoning 27B/35B ตอบช้า ให้ถึง 20 นาที
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8003
     ports:
       - "127.0.0.1:8003:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - litellm
     restart: unless-stopped
@@ -249,6 +261,7 @@ services:
       dockerfile: pipeline/Dockerfile.cve-mcp
     volumes:
       - ./cve_mcp_router.py:/app/cve_mcp_router.py:ro   # router mount → แก้ได้ไม่ต้อง rebuild
+      - ./node-config.json:/app/node-config.json:ro
     environment:
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8009
@@ -258,67 +271,47 @@ services:
       - "127.0.0.1:8009:8009"
     restart: unless-stopped
 
-  # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
-  harnessrouter:
-    image: harnessrouter/harnessrouter:latest
-    ports:
-      - "127.0.0.1:3000:3000"
-    env_file:
-      - .env
-    environment:
-      # เชื่อ CA ภายในของ LLM cluster (Caddy ใช้ tls internal) เพื่อเรียก
-      # https://172.19.0.1:8443/v1 ได้โดยไม่ต้องปิดการตรวจ certificate
-      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/caddy-root.crt
-    volumes:
-      - harnessrouter-data:/data
-      - ./caddy-root.crt:/etc/ssl/certs/caddy-root.crt:ro
-    depends_on:
-      - litellm
-      - hexstrike-mcp
-    restart: unless-stopped
-
-  # ── deepseek-harness (orchestrator ทางเลือก — ขนาน harnessrouter) ─────────
-  #   รันใน container → bash/command tool ของ Tiel อยู่ "ใน container" (isolation)
-  #   + reproducible (host ไม่ต้องลง node/pnpm/npx) — ต่างจาก npx บน host เดิม
-  #   คุยกับ stack ด้วยชื่อ service: litellm:4000 / hexstrike-mcp:8001 / rea-mcp:8007
-  #   UI: http://localhost:3080  (token อยู่ใน: docker compose logs deepseek-harness)
-  deepseek-harness:
+  # ── qwen-code (Unified Orchestrator Harness & Web Studio) ───────────────
+  #   รันใน container เพื่อ isolation (คำสั่ง shell/python/tools ทำงานใน sandbox)
+  #   เชื่อมต่อ LiteLLM (:4000) และ MCP microservices (:8001-:8009)
+  #   Web Studio: http://localhost:3080 (token: malaria-qwen-token)
+  qwen-code:
     profiles: ["full"]
     build:
       context: ..
-      dockerfile: pipeline/Dockerfile.deepseek-harness
+      dockerfile: pipeline/Dockerfile.qwen-code
     ports:
-      - "127.0.0.1:3080:3080"
+      - "3080:3080"
     environment:
       LITELLM_KEY: ${LITELLM_KEY:-sk-local}
+      OPENAI_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_KEY:-sk-local}
+      OPENAI_MODEL: flint
+      QWEN_SERVER_TOKEN: ${QWEN_SERVER_TOKEN:-malaria-qwen-token}
+      QWEN_CODE_ENABLE_AGENT_TEAM: "1"
+      HOST_LAN_IP: ${HOST_LAN_IP:-}
     volumes:
-      # config (patch) จาก repo แบบ :ro ที่ path แยก → entrypoint copy ไปที่ profile (เขียนได้)
-      #   (ห้าม mount ทับ /dsh/profiles/web/cordis.patch.yml ตรง ๆ: UI เขียนทับไฟล์นั้นไม่ได้ → EBUSY)
-      - ./deepseek-harness/cordis.patch.yml:/config/cordis.patch.yml:ro
-      # system prompt → entrypoint ตัด wrapper แล้ววางเป็น /dsh/AGENTS.md (agent-instructions โหลดเอง)
+      - ./qwen-code/settings.json:/config/settings.json:ro
+      - ./qwen-code/agents:/config/agents:ro
       - ./cyber-operator.system.md:/config/cyber-operator.system.md:ro
-      # mount entrypoint ด้วย → แก้ logic entrypoint ได้โดยไม่ต้อง rebuild image (แค่ recreate)
-      - ./deepseek-harness/entrypoint.sh:/app/entrypoint.sh:ro
-      # report pipeline → Tiel เขียน content.json + รูป แล้วรัน assemble.py เองในตัว (python3+pillow ใน image)
-      - ./reporting:/reporting:ro      # engine+template (assemble.py / build_report.py / template.docx)
-      - ./reports:/reports             # output .docx + content.json (เขียนได้)
-      - ./evidence:/evidence           # รูปหลักฐานที่ figure อ้างถึง (เขียนได้)
-      # playbooks: baseline การตรวจ (WSTG v4.2) → Tiel อ่าน objective/ID ของแต่ละ test ได้
-      - ./playbooks:/playbooks:ro      # /playbooks/wstg-v4.2-checklist.md (97 tests, 12 หมวด)
-      # home/workspace ของ agent → persist ออก host. โมเดลชอบเขียนไฟล์ลง /root/<project>/...
-      #   (HOME ของ container) ซึ่งเป็น ephemeral layer → เดิมหายเกลี้ยงตอน --force-recreate.
-      #   mount ออก host ตรงนี้ = ทุกไฟล์ที่มันสร้าง (แม้ไม่ได้ใช้ /evidence,/reports) รอด recreate
-      #   relative path → Docker auto-create, ใช้ได้ทั้ง Mac/Windows ไม่ต้อง setup มือ (reproducible)
-      - ./dsh-workspace:/root          # = pipeline/dsh-workspace/ บน host (gitignored)
+      - ./qwen-code/entrypoint.sh:/app/entrypoint.sh:ro
+      - ./qwen-code/runtime:/host-net:ro
+      - ./reporting:/reporting:ro
+      - ./reports:/reports
+      - ./evidence:/evidence
+      - ./playbooks:/playbooks:ro
+      - ./dsh-workspace:/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - litellm
       - hexstrike-mcp
       - rea-mcp
       - memory-mcp
+      - specialist-mcp
       - cve-mcp
       - search-mcp
     restart: unless-stopped
 
 volumes:
-  harnessrouter-data:
   memory-data:

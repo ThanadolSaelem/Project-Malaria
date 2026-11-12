@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json.schemastore.org/qwen-settings.json",
+  "modelProviders": {
+    "openai": [
+      {
+        "id": "flint",
+        "name": "Orchestrator (Coding & Synthesis)",
+        "baseUrl": "http://litellm:4000/v1",
+        "envKey": "OPENAI_API_KEY"
+      },
+      {
+        "id": "cyber-model",
+        "name": "Cyber-Model (Cyber Security)",
+        "baseUrl": "http://litellm:4000/v1",
+        "envKey": "OPENAI_API_KEY"
+      },
+      {
+        "id": "summarizer",
+        "name": "Qwen2.5-3B (Observer Summarizer)",
+        "baseUrl": "http://litellm:4000/v1",
+        "envKey": "OPENAI_API_KEY"
+      },
+      {
+        "id": "vision",
+        "name": "Vision (Qwen2.5-VL)",
+        "baseUrl": "http://litellm:4000/v1",
+        "envKey": "OPENAI_API_KEY"
+      },
+      {
+        "id": "nim",
+        "name": "NIM (Nemotron VL Cloud)",
+        "baseUrl": "http://litellm:4000/v1",
+        "envKey": "OPENAI_API_KEY"
+      },
+      {
+        "id": "or-glm",
+        "name": "OpenRouter GLM-5.3 (Cloud)",
+        "baseUrl": "http://litellm:4000/v1",
+        "envKey": "OPENAI_API_KEY"
+      }
+    ]
+  },
+  "model": {
+    "name": "flint"
+  },
+  "mcpServers": {
+    "hexstrike": {
+      "httpUrl": "http://hexstrike-mcp:8001/mcp",
+      "trust": true
+    },
+    "rea": {
+      "httpUrl": "http://rea-mcp:8007/mcp",
+      "trust": true
+    },
+    "memory": {
+      "httpUrl": "http://memory-mcp:8002/mcp",
+      "trust": true
+    },
+    "cve": {
+      "httpUrl": "http://cve-mcp:8009/mcp",
+      "trust": true
+    },
+    "search": {
+      "httpUrl": "http://search-mcp:8004/mcp",
+      "trust": true
+    },
+    "specialist": {
+      "httpUrl": "http://specialist-mcp:8003/mcp",
+      "trust": true
+    }
+  },
+  "security": {
+    "auth": {
+      "selectedType": "openai"
+    }
+  },
+  "tools": {
+    "approvalMode": "auto"
+  },
+  "experimental": {
+    "agentTeam": true
+  },
+  "$version": 4
+}

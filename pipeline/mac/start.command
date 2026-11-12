@@ -5,8 +5,8 @@
 # ลำดับที่ทำ:
 #   1) เช็ค/สตาร์ท llama.cpp (โมเดล) แบบ native บน :8090  ← ต้อง native เพราะ GPU
 #   2) docker compose up ทั้ง stack (litellm + hexstrike-server arm64 +
-#      hexstrike-mcp + harnessrouter) ด้วย override ของ Mac
-#   3) เปิดหน้า HarnessRouter ให้ (http://localhost:3000)
+#      hexstrike-mcp + qwen-code) ด้วย override ของ Mac
+#   3) เปิดหน้า Qwen Code Studio ให้ (http://localhost:3080)
 #
 # ตั้งค่าคำสั่ง llama.cpp ของคุณได้ที่ pipeline/mac/llama.env (ดู llama.env.example)
 # ถ้าไม่ตั้ง สคริปต์จะแค่เช็คว่าพอร์ต 8090 มีคนฟังอยู่แล้วหรือยัง แล้วบอกวิธีสตาร์ท
@@ -30,7 +30,7 @@ echo "════════════════════════�
 start_llama() {
   local port="$1" cmd="$2" label="$3" logf="$4"
   if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
-    echo "      ✓ ${label} ตอบอยู่แล้วบน :${port} — ข้าม"; return
+    echo "      [OK] ${label} ตอบอยู่แล้วบน :${port} — ข้าม"; return
   fi
   if [ -z "$cmd" ]; then
     echo "      • ${label}: ไม่มีคำสั่งใน llama.env (ข้าม) — ถ้าต้องใช้ ตั้ง LLAMA_CMD ให้ครบ"
@@ -44,9 +44,9 @@ start_llama() {
     sleep 1
   done
   if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
-    echo "      ✓ ${label} พร้อม"
+    echo "      [OK] ${label} พร้อม"
   else
-    echo "      ⚠️  ${label} ยังไม่ตอบใน 90 วิ — เช็ค logs/${logf} (โมเดลใหญ่ prefill นานได้)"
+    echo "      [WARN] ${label} ยังไม่ตอบใน 90 วิ — เช็ค logs/${logf} (โมเดลใหญ่ prefill นานได้)"
   fi
 }
 
@@ -58,37 +58,37 @@ verify_sha256() {
     return 0
   fi
   if [ ! -f "$file" ]; then
-    echo "      ✗ ${label}: ไม่พบไฟล์โมเดล — $file"
+    echo "      [FAIL] ${label}: ไม่พบไฟล์โมเดล — $file"
     return 1
   fi
   echo "      กำลังเช็ก SHA256 ของ ${label} (ไฟล์ใหญ่ อาจใช้เวลาสักครู่)…"
   local got
   got="$(shasum -a 256 "$file" 2>/dev/null | awk '{print $1}')"
   if [ "$got" = "$expected" ]; then
-    echo "      ✓ ${label}: SHA256 ตรงกับที่ประกาศไว้"
+    echo "      [OK] ${label}: SHA256 ตรงกับที่ประกาศไว้"
     return 0
   fi
-  echo "      ✗ ${label}: SHA256 ไม่ตรง!"
+  echo "      [FAIL] ${label}: SHA256 ไม่ตรง!"
   echo "          expected = $expected"
   echo "          got      = ${got:-<อ่านไฟล์ไม่ได้>}"
   return 1
 }
 
 # ── 1) โมเดล: llama.cpp native (orchestrator :8090 + specialist :8091) ───────
-echo "[1/3] โมเดล llama.cpp (native — ต้องใช้ Metal GPU)…"
+echo "[1/3] โมเดล llama.cpp (native — Metal GPU | Profile=${ORCHESTRATOR_PROFILE:-orchestrator}, KV=${LLAMA_KV_TYPE:-q8_0}, Threads=${LLAMA_THREADS:-6}/${LLAMA_THREADS_BATCH:-8}, Ctx=${LLAMA_CTX_MAIN:-65536})…"
 if [ ! -f "$HERE/llama.env" ]; then
-  echo "      ⚠️  ไม่มี pipeline/mac/llama.env — คัดลอกจาก example แล้วแก้ path gguf:"
-  echo "          cp pipeline/mac/llama.env.example pipeline/mac/llama.env"
+  echo "      [WARN] ไม่มี pipeline/mac/llama.env — คัดลอกจาก example แล้วแก้ path gguf:"
+  echo "             cp pipeline/mac/llama.env.example pipeline/mac/llama.env"
   echo "      (จะ start container ต่อ แต่ task โมเดลจะยังไม่ทำงานจนกว่า llama.cpp จะขึ้น)"
 fi
-start_llama "${LLAMA_PORT}" "${LLAMA_CMD:-}" "orchestrator (Tiel-35B)" "llama.log"
+start_llama "${LLAMA_PORT}" "${LLAMA_CMD:-}" "orchestrator (${ORCHESTRATOR_PROFILE:-orchestrator})" "llama.log"
 
 # ── specialist (:8091) — hardening: เช็ก SHA256 → ขังไม่ให้ออกเน็ต → สตาร์ท ──
 SPEC_CMD="${LLAMA_CMD_SPECIALIST:-}"
 if [ -n "$SPEC_CMD" ]; then
   # (3) ไฟล์ต้องผ่าน SHA256 ก่อน ไม่งั้นไม่สตาร์ท (กันไฟล์ถูกแก้/โหลดผิดตัว)
   if ! verify_sha256 "${SPECIALIST_MODEL_FILE:-}" "${SPECIALIST_MODEL_SHA256:-}" "specialist model"; then
-    echo "      ⚠️  ข้ามการสตาร์ท specialist — ไฟล์ไม่ผ่านการตรวจ (ตั้ง SHA256 ให้ตรง หรือโหลดใหม่จาก repo ทางการ)"
+    echo "      [WARN] ข้ามการสตาร์ท specialist — ไฟล์ไม่ผ่านการตรวจ (ตั้ง SHA256 ให้ตรง หรือโหลดใหม่จาก repo ทางการ)"
     SPEC_CMD=""
   fi
 fi
@@ -101,12 +101,12 @@ if [ -n "$SPEC_CMD" ] && [ "${SPECIALIST_SANDBOX:-1}" = "1" ]; then
     echo "      • specialist: ข้าม sandbox (ไม่พบ sandbox-exec หรือ profile) — พึ่ง SHA256 + review output แทน"
   fi
 fi
-start_llama "${LLAMA_PORT_SPECIALIST}" "$SPEC_CMD" "specialist (exploit model)" "llama-specialist.log"
+start_llama "${LLAMA_PORT_SPECIALIST}" "$SPEC_CMD" "cyber-model (exploit model)" "llama-specialist.log"
 
 # ── summarizer (:8092) — โมเดลเล็กสำหรับ observer dashboard (SHA เช็กถ้าตั้ง, ไม่ sandbox) ──
 SUM_CMD="${LLAMA_CMD_SUMMARIZER:-}"
 if [ -n "$SUM_CMD" ] && ! verify_sha256 "${SUMMARIZER_MODEL_FILE:-}" "${SUMMARIZER_MODEL_SHA256:-}" "summarizer model"; then
-  echo "      ⚠️  ข้ามการสตาร์ท summarizer — ไฟล์ไม่ผ่านการตรวจ"
+  echo "      [WARN] ข้ามการสตาร์ท summarizer — ไฟล์ไม่ผ่านการตรวจ"
   SUM_CMD=""
 fi
 start_llama "${LLAMA_PORT_SUMMARIZER:-8092}" "$SUM_CMD" "summarizer (Qwen2.5-3B)" "llama-summarizer.log"
@@ -114,22 +114,24 @@ start_llama "${LLAMA_PORT_SUMMARIZER:-8092}" "$SUM_CMD" "summarizer (Qwen2.5-3B)
 # ── vision (:8093) — โมเดลอ่านภาพ (ต้องมี mmproj); SHA เช็กถ้าตั้ง, ไม่ sandbox ──
 VIS_CMD="${LLAMA_CMD_VISION:-}"
 if [ -n "$VIS_CMD" ] && ! verify_sha256 "${VISION_MODEL_FILE:-}" "${VISION_MODEL_SHA256:-}" "vision model"; then
-  echo "      ⚠️  ข้ามการสตาร์ท vision — ไฟล์ไม่ผ่านการตรวจ"
+  echo "      [WARN] ข้ามการสตาร์ท vision — ไฟล์ไม่ผ่านการตรวจ"
   VIS_CMD=""
 fi
 if [ -n "$VIS_CMD" ] && [ ! -f "${VISION_MMPROJ_FILE:-}" ]; then
-  echo "      ⚠️  ข้ามการสตาร์ท vision — ไม่พบไฟล์ mmproj (${VISION_MMPROJ_FILE:-<ไม่ได้ตั้ง>}) ซึ่งจำเป็นสำหรับอ่านภาพ"
+  echo "      [WARN] ข้ามการสตาร์ท vision — ไม่พบไฟล์ mmproj (${VISION_MMPROJ_FILE:-<ไม่ได้ตั้ง>}) ซึ่งจำเป็นสำหรับอ่านภาพ"
   VIS_CMD=""
 fi
 start_llama "${LLAMA_PORT_VISION:-8093}" "$VIS_CMD" "vision (Qwen2.5-VL-7B)" "llama-vision.log"
 
 # ── 2) container ทั้ง stack ──────────────────────────────────────────────────
-echo "[2/3] docker compose up (litellm + hexstrike-server arm64 + hexstrike-mcp + harnessrouter)…"
+echo "[2/3] docker compose up (litellm + hexstrike-server arm64 + hexstrike-mcp + qwen-code)…"
 cd "$PIPELINE" || { echo "เข้า $PIPELINE ไม่ได้"; exit 1; }
 if [ ! -f .env ]; then
   echo "      (ไม่มี .env — ก็อปจาก .env.example ให้ก่อน)"
   cp .env.example .env 2>/dev/null || true
 fi
+export HOST_LAN_IP="$("$HERE/mobile-link.sh" --ip-only 2>/dev/null || true)"
+"$HERE/mobile-link.sh" --start-watcher 2>/dev/null || true
 docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
 
 # ── observer dashboard (สรุปงาน Tiel EN+TH + alert) — รัน background ถ้ามี summarizer ──
@@ -143,39 +145,23 @@ if [ -f "$HERE/summarize-watch.py" ] && command -v python3 >/dev/null 2>&1; then
   open "http://localhost:${WATCH_PORT:-8005}" 2>/dev/null || true
 fi
 
-# ── 3) เปิดหน้า console ───────────────────────────────────────────────────────
-echo "[3/3] เปิด HarnessRouter → http://localhost:3000"
-open "http://localhost:3000" 2>/dev/null || true
-
-# ── deepseek-harness UI (profile full) → http://localhost:3080 ───────────────
-#   bind IP ใน container → map ออก host; token พิมพ์ลง log ของ container
-#   ครั้งแรก build image นาน (npm install dsh + ติดตั้ง mcp-client) → รอ log พ่น token
-echo "      เปิด deepseek-harness → http://localhost:3080 (ดึง token จาก log…)"
-DSH_URL=""
-for _ in $(seq 1 45); do
-  DSH_URL="$(docker compose -f docker-compose.yml -f docker-compose.mac.yml logs deepseek-harness 2>/dev/null \
-    | grep -oE 'http://localhost:3080/\?token=[A-Za-z0-9_-]+' | tail -1)"
-  [ -n "$DSH_URL" ] && break
-  sleep 2
-done
-if [ -n "$DSH_URL" ]; then
-  echo "      ✓ deepseek-harness → $DSH_URL"
-  open "$DSH_URL" 2>/dev/null || true
-else
-  echo "      • ยังไม่เจอ token (ครั้งแรก build นานได้) — ดูเองที่:"
-  echo "        docker compose -f docker-compose.yml -f docker-compose.mac.yml logs -f deepseek-harness"
-fi
+# ── 3) เปิดหน้า Qwen Code Studio ───────────────────────────────────────────────
+echo "[3/3] เปิด Qwen Code Studio → http://localhost:3080/?token=malaria-qwen-token"
+QWEN_URL="http://localhost:3080/?token=malaria-qwen-token"
+open "$QWEN_URL" 2>/dev/null || true
 
 echo ""
 echo "──────────────────────────────────────────────────────────────"
 echo "สรุป: โมเดล native + stack ใน docker"
-echo "  • orchestrator (Tiel) : http://localhost:${LLAMA_PORT}/v1/models"
-echo "  • specialist          : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/models"
+echo "  • Orchestrator        : http://localhost:${LLAMA_PORT}/v1/models"
+echo "  • Cyber-Model         : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/models"
 echo "  • summarizer          : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092}/v1/models"
 echo "  • vision (อ่านภาพ)     : http://localhost:${LLAMA_PORT_VISION:-8093}/v1/models"
 echo "  • observer dashboard  : http://localhost:${WATCH_PORT:-8005}"
-echo "  • console (HarnessRouter): http://localhost:3000"
-echo "  • console (deepseek)   : http://localhost:3080  (token ใน: docker compose logs deepseek-harness)"
+echo "  • Qwen Code Studio    : http://localhost:3080/?token=malaria-qwen-token"
+if [ -n "${HOST_LAN_IP:-}" ]; then
+  echo "  • เข้าจากมือถือ (LAN)   : http://${HOST_LAN_IP}:3080/?token=malaria-qwen-token"
+fi
 echo ""
 echo "เรียก specialist เขียน exploit/PoC แบบ full-quality (direct path, ไม่ติด harness timeout):"
 echo "  pipeline/mac/ask-specialist.sh \"สิ่งที่อยากให้เขียน\" \"context...\""

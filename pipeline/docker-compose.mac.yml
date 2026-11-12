@@ -50,6 +50,7 @@ services:
     # (ต้อง rebuild rea image ครั้งเดียว: Dockerfile เพิ่ม pip install mcp)
     volumes:
       - ./rea_mcp_router.py:/app/rea_mcp_router.py:ro
+      - ./node-config.json:/app/node-config.json:ro
     command: ["python3", "/app/rea_mcp_router.py"]
     environment:
       MCP_HOST: 0.0.0.0

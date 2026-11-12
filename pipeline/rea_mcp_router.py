@@ -26,6 +26,8 @@ rea-agents node) → router นี้เป็น "MCP proxy" = เป็น **M
 
 env: REA_MCP_CMD (ค่าเริ่ม "rea mcp") · MCP_HOST/MCP_PORT (0.0.0.0:8007) · REA_SEARCH_LIMIT (15)
 """
+from __future__ import annotations
+
 import os
 import re
 import sys
@@ -69,6 +71,20 @@ _RECENT: list = []
 _REPEAT_LIMIT = int(os.environ.get("ROUTER_REPEAT_LIMIT", "3"))
 _MAX_OUT = int(os.environ.get("ROUTER_MAX_OUTPUT_BYTES", "20000"))
 
+NODE_CONFIG_PATH = os.environ.get(
+    "NODE_CONFIG_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "node-config.json"),
+)
+
+
+def _load_rea_node_cfg() -> dict:
+    try:
+        with open(NODE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        return (data.get("mcp_servers") or {}).get("rea") or {}
+    except Exception:
+        return {}
+
 
 def _sig(name, arguments):
     try:
@@ -79,6 +95,10 @@ def _sig(name, arguments):
 
 def _loop_check(name, arguments):
     """คืนข้อความเตือนถ้า (tool,args) ซ้ำติดกัน >= limit, ไม่งั้น None."""
+    cfg = _load_rea_node_cfg()
+    limit = int(cfg.get("repeat_limit", _REPEAT_LIMIT))
+    if limit <= 0:
+        return None
     s = _sig(name, arguments)
     _RECENT.append(s)
     if len(_RECENT) > 12:
@@ -89,7 +109,7 @@ def _loop_check(name, arguments):
             n += 1
         else:
             break
-    if n >= _REPEAT_LIMIT:
+    if n >= limit:
         return ("LOOP DETECTED: '%s' was called with identical arguments %d times in a row — the "
                 "result will not change. STOP repeating it: change the arguments/approach, move to "
                 "the next item in your plan, or if stuck, summarize what you have and switch to a "
@@ -101,15 +121,17 @@ def _cap(text):
     """ตัด output ที่ยาวเกิน → กัน context โต + บอกให้ query แคบลง."""
     if not isinstance(text, str):
         return text
+    cfg = _load_rea_node_cfg()
+    max_out = int(cfg.get("max_output_bytes", _MAX_OUT))
     b = text.encode("utf-8", "replace")
-    if len(b) <= _MAX_OUT:
+    if len(b) <= max_out:
         return text
-    head = b[: _MAX_OUT * 2 // 3].decode("utf-8", "replace")
-    tail = b[-_MAX_OUT // 3:].decode("utf-8", "replace")
+    head = b[: max_out * 2 // 3].decode("utf-8", "replace")
+    tail = b[-max_out // 3:].decode("utf-8", "replace")
     return ("%s\n\n...[TRUNCATED: %d bytes total, kept ~%d. Do NOT pull the whole blob into context "
             "— re-run with a narrow filter (grep/head/sed or a specific path), or save it to a file "
             "in the tool container and extract only what you need.]...\n\n%s"
-            % (head, len(b), _MAX_OUT, tail))
+            % (head, len(b), max_out, tail))
 
 
 class ReaBackend:
@@ -192,11 +214,15 @@ async def rea_search_tools(query: str) -> dict:
     rea_run. query เป็นคำค้นภาษาอังกฤษ เช่น "decompile function", "android package",
     "pe resources", "pyinstaller extract", "javascript bundle", "evidence bundle"."""
     await _BACKEND.wait_ready()
-    cat, names = _BACKEND.catalog, _BACKEND.names
+    cfg = _load_rea_node_cfg()
+    max_res = int(cfg.get("search_limit", _MAX_RESULTS))
+    disabled = set(cfg.get("disabled_tools") or [])
+    cat = _BACKEND.catalog
+    names = [n for n in _BACKEND.names if n not in disabled]
     ranked = sorted(names, key=lambda n: _score(query, cat[n]), reverse=True)
-    hits = [n for n in ranked if _score(query, cat[n]) > 0][:_MAX_RESULTS]
+    hits = [n for n in ranked if _score(query, cat[n]) > 0][:max_res]
     if not hits:
-        hits = ranked[:_MAX_RESULTS]
+        hits = ranked[:max_res]
     return {
         "query": query,
         "count": len(hits),
@@ -210,11 +236,14 @@ async def rea_describe_tool(name: str) -> dict:
     """คืน schema เต็ม (พารามิเตอร์ทั้งหมดที่ tool รับ) ของ REA tool ชื่อ name.
     เรียกก่อน rea_run เมื่อไม่แน่ใจว่า tool ต้องส่ง argument อะไรบ้าง."""
     await _BACKEND.wait_ready()
-    cat, names = _BACKEND.catalog, _BACKEND.names
-    entry = cat.get(name)
-    if not entry:
+    cfg = _load_rea_node_cfg()
+    disabled = set(cfg.get("disabled_tools") or [])
+    cat = _BACKEND.catalog
+    names = [n for n in _BACKEND.names if n not in disabled]
+    if name in disabled or name not in cat:
         sugg = sorted(names, key=lambda n: _score(name, cat[n]), reverse=True)[:8]
-        return {"error": "ไม่พบ tool '%s'" % name, "did_you_mean": sugg}
+        return {"error": "ไม่พบ tool '%s' (หรือถูกปิดใน Node Config)" % name, "did_you_mean": sugg}
+    entry = cat[name]
     return {"name": name, "description": entry["description"], "parameters": entry["parameters"]}
 
 
@@ -226,10 +255,13 @@ async def rea_run(name: str, arguments: dict | None = None) -> dict:
     if loop:
         return {"tool": name, "loop_guard": loop}
     await _BACKEND.wait_ready()
-    cat, names = _BACKEND.catalog, _BACKEND.names
-    if name not in cat:
+    cfg = _load_rea_node_cfg()
+    disabled = set(cfg.get("disabled_tools") or [])
+    cat = _BACKEND.catalog
+    names = [n for n in _BACKEND.names if n not in disabled]
+    if name in disabled or name not in cat:
         sugg = sorted(names, key=lambda n: _score(name, cat[n]), reverse=True)[:8]
-        return {"error": "ไม่พบ tool '%s'" % name, "did_you_mean": sugg}
+        return {"error": "ไม่พบ tool '%s' (หรือถูกปิดใน Node Config)" % name, "did_you_mean": sugg}
     try:
         res = await _BACKEND.call(name, arguments or {})
         return {"tool": name, "result": res}

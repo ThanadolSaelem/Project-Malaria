@@ -1,26 +1,50 @@
 # =============================================================================
-# LiteLLM — LOCAL-FIRST (Mac / Apple Silicon)
-# -----------------------------------------------------------------------------
-# harness (ผ่าน HarnessRouter) ยิงชื่อโมเดลมา → LiteLLM ส่งต่อไป llama.cpp ที่รัน
-# native บน host :8090 (เสิร์ฟโมเดลชื่อ "cybermodel" — ยืนยันจาก /v1/models)
-#
-# สำคัญ: "ชื่อ 3 ชั้นต้องตรงกัน"
-#   1) ชื่อที่ integration ใน HarnessRouter ส่งออกมา (model_id)  ← OpenCode ส่ง "cybermodel"
-#   2) model_name ในไฟล์นี้ (ต้องมีชื่อนั้น ไม่งั้น LiteLLM หาไม่เจอแล้วเดาไป OpenAI
-#      → error "Invalid model name ... for your key")
-#   3) ชื่อโมเดลที่ llama.cpp เสิร์ฟจริง = target `model: openai/<ชื่อ>` ← "cybermodel"
-#
-# เผื่อไว้ให้ทุกชื่อที่เคยตั้ง (cybermodel / big-brain / local-cybertiel) ชี้ llama
-# ตัวเดียวกันหมด จะเลือกชื่อไหนใน integration ก็ติด
+# LiteLLM — AUTO-SYNCED BY PROJECT-MALARIA n8n BACKEND BRIDGE
 # =============================================================================
 
 model_list:
-  # ---- llama.cpp local (host :8090, เสิร์ฟ "cybermodel") — ทุก alias ชี้ที่เดียว ----
+  # ---- Orchestrator (Coding :8090) ----
+  - model_name: orchestrator
+    litellm_params:
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
+
+  - model_name: flint
+    litellm_params:
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
+
+  - model_name: qwen2.5-coder-32b
+    litellm_params:
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
+
+  - model_name: qwen2.5-coder-14b
+    litellm_params:
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
+
+  - model_name: qwen2.5-coder
+    litellm_params:
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
+
+  - model_name: gpt-oss-120b
+    litellm_params:
+      model: openai/cybermodel
+      api_base: http://host.docker.internal:8090/v1
+      api_key: "sk-local"
+
   - model_name: cybermodel
     litellm_params:
-      model: openai/cybermodel            # ต้องตรงกับ id ใน curl :8090/v1/models
+      model: openai/cybermodel
       api_base: http://host.docker.internal:8090/v1
-      api_key: "sk-local"                 # llama รัน loopback ไม่เช็ค key แต่ต้องมีค่า
+      api_key: "sk-local"
 
   - model_name: big-brain
     litellm_params:
@@ -28,89 +52,64 @@ model_list:
       api_base: http://host.docker.internal:8090/v1
       api_key: "sk-local"
 
-  - model_name: local-cybertiel           # เผื่อ integration เก่าที่ตั้งชื่อนี้
+  - model_name: local-cybertiel
     litellm_params:
       model: openai/cybermodel
       api_base: http://host.docker.internal:8090/v1
       api_key: "sk-local"
 
-  # ---- exploit specialist (llama.cpp ตัวที่ 2, host :8091) ----
-  # โมเดล offensive เฉพาะทาง (ดีฟอลต์ BugTraceAI-CORE-Ultra-27B) ที่ Tiel เรียกผ่าน
-  # MCP tool `ask_exploit_specialist` เพื่อเขียน exploit/PoC/payload
-  # สลับโมเดลได้ด้วยการเปลี่ยน llama-server ที่เสิร์ฟ :8091 + --alias ให้ตรงชื่อนี้
-  - model_name: exploit-specialist
+  # ---- Cyber-Model (Cyber Security Specialist :8091) ----
+  - model_name: cyber-model
     litellm_params:
-      model: openai/exploit-specialist     # ต้องตรงกับ id ใน curl :8091/v1/models
+      model: openai/exploit-specialist
       api_base: http://host.docker.internal:8091/v1
       api_key: "sk-local"
 
-  # ---- summarizer (llama.cpp ตัวที่ 3, host :8092) ----
-  # โมเดลเล็ก (ดีฟอลต์ Qwen2.5-3B-Instruct) สำหรับ observer dashboard —
-  # สรุปงานของ Tiel เป็น EN+TH แบบ parallel (ไม่กวน orchestrator/specialist)
+  - model_name: cyber-tiel
+    litellm_params:
+      model: openai/exploit-specialist
+      api_base: http://host.docker.internal:8091/v1
+      api_key: "sk-local"
+
+  - model_name: exploit-specialist
+    litellm_params:
+      model: openai/exploit-specialist
+      api_base: http://host.docker.internal:8091/v1
+      api_key: "sk-local"
+
+  # ---- Qwen2.5-3B (Observer Summarizer) ----
   - model_name: summarizer
     litellm_params:
-      model: openai/summarizer             # ต้องตรงกับ id ใน curl :8092/v1/models
+      model: openai/summarizer
       api_base: http://host.docker.internal:8092/v1
       api_key: "sk-local"
 
-  # ---- vision (llama.cpp ตัวที่ 4, host :8093) ----
-  # โมเดล multimodal (ดีฟอลต์ Qwen2.5-VL-7B) ที่ "อ่านภาพได้" — รับ messages ที่มี
-  # image_url (data URL base64) ส่งเข้ามา แล้วตอบข้อความ. เรียกผ่าน ask-vision.sh
-  # ต้องสตาร์ท llama-server :8093 ด้วย --mmproj (ดู llama.env) ไม่งั้นอ่านภาพไม่ได้
+  # ---- Qwen2.5-VL-7B (Vision & OCR) ----
   - model_name: vision
     litellm_params:
-      model: openai/vision                 # ต้องตรงกับ id ใน curl :8093/v1/models
+      model: openai/vision
       api_base: http://host.docker.internal:8093/v1
       api_key: "sk-local"
 
-  # ---- NIM cloud — "โมเดลหนัก" สำหรับงานที่ข้อมูลเปิดเผย public ได้ ----
-  # ⚠️ ข้อมูลที่ส่งไป "ออกนอกเครื่อง" → ขึ้น NVIDIA cloud. ใช้เฉพาะงานที่ไม่ sensitive
-  #    ❌ ห้ามส่งข้อมูลเป้าหมาย/หลักฐานสืบสวน/credential/APK ขึ้นตัวนี้ — งานพวกนั้นใช้ local
-  # วิธีใช้: เลือกโมเดลชื่อ "nim" หรือ "nim-reasoning" ใน Console (เลือกเอง ไม่ auto)
-  # ต้องใส่ NVIDIA_API_KEY ใน .env (จาก build.nvidia.com/settings/api-keys)
-  # เปลี่ยนรุ่นได้: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models มาใส่ที่ `model:`
-  - model_name: nim                          # งานหนัก/โค้ด/reasoning/vision (Nemotron-3.5 Super VL 120B — GLM-5.3 EOL)
+  # ---- NVIDIA NIM (Nemotron VL 120B Cloud) ----
+  - model_name: nim
     litellm_params:
       model: nvidia_nim/nvidia/nemotron-3.5-super-vl-120b-a12b
       api_base: https://integrate.api.nvidia.com/v1
       api_key: os.environ/NVIDIA_API_KEY
-  # อยากเพิ่มรุ่นอื่น: ก็อป model id เป๊ะๆ จากหน้า build.nvidia.com/models (โชว์ใน code sample)
-  #   แล้วเพิ่ม entry ใหม่แบบเดียวกัน (model: nvidia_nim/<id>)
-  # ⚠️ catalog เปลี่ยนบ่อย — รุ่นเก่าถูก EOL แล้วจะได้ 410 Gone (เช่น llama-3.3-70b EOL ส.ค.2026)
-  #   ถ้าเจอ 410 ให้ไปก็อป id รุ่นใหม่จาก build.nvidia.com มาแทน
 
-  # ---- OpenRouter — เกตเวย์รวมโมเดลคลาวด์หลายเจ้า (OpenAI-compatible) ----
-  # ⚠️ คลาวด์เหมือน nim: ข้อมูลออกนอกเครื่อง → ใช้เฉพาะงาน non-sensitive
-  #    ❌ ห้ามส่งเป้าหมาย/หลักฐาน/credential/APK/รายงาน TLP ขึ้นตัวนี้ — งานพวกนั้นใช้ cybermodel (local)
-  # ต้องใส่ OPENROUTER_API_KEY ใน .env (จาก openrouter.ai/settings/keys)
-  # ใช้แบบ sync chat (ไม่ใช่ Batch API) → Tiel เรียก tool/ตอบ real-time ได้
-  # เพิ่มรุ่น: ก๊อป model id จาก openrouter.ai/models (เช่น "z-ai/glm-5.3",
-  #   "deepseek/deepseek-chat", "qwen/qwen3-...") ใส่หลัง openrouter/ แล้วเพิ่ม entry แบบเดียวกัน
-  - model_name: or-glm                       # GLM-5.3 ผ่าน OpenRouter (NVIDIA EOL แล้ว แต่ OR ยังมี)
+  # ---- OpenRouter (GLM-5.3 Cloud) ----
+  - model_name: or-glm
     litellm_params:
       model: openrouter/z-ai/glm-5.3
       api_key: os.environ/OPENROUTER_API_KEY
 
-  # ---- (ออปชัน) cloud fallback อื่นๆ — ต้องใส่ key ใน .env ก่อนถึงใช้ได้ ----
-  # - model_name: big-brain-groq
-  #   litellm_params:
-  #     model: groq/openai/gpt-oss-120b
-  #     api_key: os.environ/GROQ_API_KEY
-
 general_settings:
-  # litellm (main-stable) เวอร์ชันใหม่ปฏิเสธ boot ถ้าไม่มี master key
-  # pipeline นี้ litellm bind 127.0.0.1 + อยู่ใน compose network ภายในเท่านั้น
-  # (ไม่เปิดออกนอกเครื่อง) จึงอนุญาตให้ไม่มี master key ได้สำหรับ local
-  # ⚠️ ถ้าจะเปิด litellm ให้เครื่อง/คนอื่นเข้าถึง → ลบบรรทัดนี้ แล้วตั้ง
-  #    LITELLM_MASTER_KEY=sk-... ใน .env + ให้ caller ส่ง key นั้นมาแทน
   dangerously_permit_weak_or_unset_master_key: true
 
 litellm_settings:
-  drop_params: true                        # ตัด param ที่ปลายทางไม่รองรับทิ้ง แทน error
+  drop_params: true
 
 router_settings:
-  timeout: 1200                            # local + specialist (reasoning 27B) ตอบช้า ให้ถึง 20 นาที
-  num_retries: 1                           # สายยาว อย่า retry ซ้ำหลายรอบ (1 พอ)
-  # NIM/Groq ล่ม → fallback (เปิดเมื่อ uncomment entry ด้านบน + ใส่ key)
-  # fallbacks:
-  #   - big-brain: ["big-brain-groq"]
+  timeout: 1200
+  num_retries: 1

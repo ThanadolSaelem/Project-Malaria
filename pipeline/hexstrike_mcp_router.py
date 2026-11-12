@@ -21,6 +21,8 @@ env (เหมือน hexstrike_mcp_http.py):
     MCP_HOST / MCP_PORT host:port ที่จะ bind (ค่าเริ่ม 0.0.0.0:8001)
     HEXSTRIKE_SEARCH_LIMIT  จำนวนผลลัพธ์สูงสุดของ search (ค่าเริ่ม 15)
 """
+from __future__ import annotations
+
 import os
 import re
 import sys
@@ -98,6 +100,21 @@ _RECENT: list = []
 _REPEAT_LIMIT = int(os.environ.get("ROUTER_REPEAT_LIMIT", "3"))
 _MAX_OUT = int(os.environ.get("ROUTER_MAX_OUTPUT_BYTES", "20000"))
 
+NODE_CONFIG_PATH = os.environ.get(
+    "NODE_CONFIG_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "node-config.json"),
+)
+
+
+def _load_hexstrike_node_cfg() -> dict:
+    """อ่านค่า config สดจาก node-config.json (hot-reload โดยไม่ต้อง restart container)."""
+    try:
+        with open(NODE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        return (data.get("mcp_servers") or {}).get("hexstrike") or {}
+    except Exception:
+        return {}
+
 
 def _sig(name, arguments):
     try:
@@ -108,6 +125,10 @@ def _sig(name, arguments):
 
 def _loop_check(name, arguments):
     """คืนข้อความเตือนถ้า (tool,args) ซ้ำติดกัน >= limit, ไม่งั้น None."""
+    cfg = _load_hexstrike_node_cfg()
+    limit = int(cfg.get("repeat_limit", _REPEAT_LIMIT))
+    if limit <= 0:
+        return None
     s = _sig(name, arguments)
     _RECENT.append(s)
     if len(_RECENT) > 12:
@@ -118,7 +139,7 @@ def _loop_check(name, arguments):
             n += 1
         else:
             break
-    if n >= _REPEAT_LIMIT:
+    if n >= limit:
         return ("LOOP DETECTED: '%s' was called with identical arguments %d times in a row — the "
                 "result will not change. STOP repeating it: change the arguments/approach, move to "
                 "the next item in your plan, or if stuck, summarize what you have and switch to a "
@@ -130,15 +151,25 @@ def _cap(text):
     """ตัด output ที่ยาวเกิน → กัน context โต + บอกให้ query แคบลง."""
     if not isinstance(text, str):
         return text
+    cfg = _load_hexstrike_node_cfg()
+    max_out = int(cfg.get("max_output_bytes", _MAX_OUT))
     b = text.encode("utf-8", "replace")
-    if len(b) <= _MAX_OUT:
+    if len(b) <= max_out:
         return text
-    head = b[: _MAX_OUT * 2 // 3].decode("utf-8", "replace")
-    tail = b[-_MAX_OUT // 3:].decode("utf-8", "replace")
+    head = b[: max_out * 2 // 3].decode("utf-8", "replace")
+    tail = b[-max_out // 3:].decode("utf-8", "replace")
     return ("%s\n\n...[TRUNCATED: %d bytes total, kept ~%d. Do NOT pull the whole blob into context "
             "— re-run with a narrow filter (grep/head/sed or a specific path), or save it to a file "
             "in the tool container and extract only what you need.]...\n\n%s"
-            % (head, len(b), _MAX_OUT, tail))
+            % (head, len(b), max_out, tail))
+
+
+PLUGIN_PACKS = (
+    ("php2shell", "php2shell_tools", "DEFAULT_TARGET"),
+    ("shot", "shot_tools", "SHOT_URL"),
+    ("vflat", "vflat_tools", "VFLAT_URL"),
+    ("reporting", "report_tools", "REPORTS_DIR"),
+)
 
 
 def main() -> None:
@@ -146,7 +177,9 @@ def main() -> None:
     timeout = int(os.environ.get("HEXSTRIKE_TIMEOUT", "300"))
     host = os.environ.get("MCP_HOST", "0.0.0.0")
     port = int(os.environ.get("MCP_PORT", "8001"))
-    max_results = int(os.environ.get("HEXSTRIKE_SEARCH_LIMIT", "15"))
+    default_max_results = int(os.environ.get("HEXSTRIKE_SEARCH_LIMIT", "15"))
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
     client = HexStrikeClient(server, timeout)
     health = client.check_health()
@@ -162,16 +195,18 @@ def main() -> None:
     tm = _get_tool_manager(full)
     catalog = build_catalog(tm)
 
-    # ── เสียบ tool pack ภายในเข้า catalog เดียวกัน (php2shell + shot) ──────────
+    # ── เสียบ tool pack ภายในเข้า catalog เดียวกัน (php2shell + shot + vflat + reporting) ──
     #   ไม่พึ่ง FastMCP internals เลย: ยัด entry เข้า catalog (ให้ search/describe เห็น)
     #   + เก็บ callable ไว้ใน LOCAL_DISPATCH ให้ hexstrike_run เรียกตรง (ดูด้านล่าง)
     #   → Tiel ใช้ hexstrike_search_tools("php2shell"/"screenshot") → hexstrike_run(...)
     #   แต่ละ pack ถ้าโหลดไม่ได้ก็ข้ามเฉพาะตัวมัน (hexstrike เดิม + pack อื่นยังครบ)
     LOCAL_DISPATCH: dict = {}
-    for mod_name, note in (("php2shell_tools", "DEFAULT_TARGET"),
-                           ("shot_tools", "SHOT_URL")):
+    TOOL_TO_PLUGIN: dict = {}
+    LOADED_MODULES: dict = {}
+    for plugin_key, mod_name, note in PLUGIN_PACKS:
         try:
             mod = __import__(mod_name)
+            LOADED_MODULES[plugin_key] = mod
             added = 0
             for name, desc, params, fn in mod.catalog_entries():
                 catalog[name] = {
@@ -179,96 +214,133 @@ def main() -> None:
                     "description": desc,
                     "brief": _first_line(desc),
                     "parameters": params,
+                    "plugin": plugin_key,
                 }
                 LOCAL_DISPATCH[name] = fn
+                TOOL_TO_PLUGIN[name] = plugin_key
                 added += 1
             print(f"[hexstrike-router] injected {added} tools from {mod_name} "
-                  f"({note}={getattr(mod, note, '?')})", file=sys.stderr)
+                  f"(plugin={plugin_key}, {note}={getattr(mod, note, '?')})", file=sys.stderr)
         except Exception as e:
             print(f"[hexstrike-router] WARN: {mod_name} not loaded "
                   f"({type(e).__name__}: {e})", file=sys.stderr)
 
-    names = sorted(catalog)
-    print(f"[hexstrike-router] indexed {len(names)} tools "
-          f"({len(LOCAL_DISPATCH)} local)", file=sys.stderr)
+    all_names = sorted(catalog)
+    print(f"[hexstrike-router] indexed {len(all_names)} tools "
+          f"({len(LOCAL_DISPATCH)} local plugins)", file=sys.stderr)
 
-    router = FastMCP("hexstrike-router")
+    def _active_names() -> list[str]:
+        """คืนรายชื่อ tool ที่เปิดใช้งานอยู่ตาม node-config.json (กรอง plugin ที่ถูกถอดออกสดๆ)."""
+        cfg = _load_hexstrike_node_cfg()
+        plugins_cfg = cfg.get("plugins") or {}
+        disabled = set(cfg.get("disabled_tools") or [])
+        active = []
+        for n in all_names:
+            if n in disabled:
+                continue
+            pkey = TOOL_TO_PLUGIN.get(n)
+            if pkey and not plugins_cfg.get(pkey, True):
+                continue
+            active.append(n)
+        return active
 
-    @router.tool()
-    async def hexstrike_search_tools(query: str) -> dict:
-        """ค้นหา HexStrike security tool ที่ตรงกับงาน — คืนชื่อ + คำอธิบายสั้น (ยังไม่โหลด
-        schema เต็ม เพื่อประหยัด context). ใช้ "ก่อนเสมอ" เพื่อหา tool ที่ต้องการ แล้วค่อย
-        เรียก hexstrike_run. query เป็นคำค้นภาษาอังกฤษ เช่น "port scan", "sql injection",
-        "subdomain enumeration", "directory brute force", "web vulnerability nuclei"."""
-        ranked = sorted(names, key=lambda n: _score(query, catalog[n]), reverse=True)
-        hits = [n for n in ranked if _score(query, catalog[n]) > 0][:max_results]
-        if not hits:                                  # ไม่ match เลย → คืนตัวแรกๆ กันมือเปล่า
-            hits = ranked[:max_results]
-        return {
-            "query": query,
-            "count": len(hits),
-            "tools": [{"name": n, "description": catalog[n]["brief"]} for n in hits],
-            "next": "ถ้าไม่แน่ใจ args เรียก hexstrike_describe_tool(name) ก่อน แล้ว "
-                    "hexstrike_run(name, arguments) เพื่อรันจริง",
-        }
+    init_cfg = _load_hexstrike_node_cfg()
+    use_tool_rag = bool(init_cfg.get("tool_rag", True))
 
-    @router.tool()
-    async def hexstrike_describe_tool(name: str) -> dict:
-        """คืน schema เต็ม (พารามิเตอร์ทั้งหมดที่ tool รับ) ของ HexStrike tool ชื่อ name.
-        เรียกก่อน hexstrike_run เมื่อไม่แน่ใจว่า tool ต้องส่ง argument อะไรบ้าง."""
-        entry = catalog.get(name)
-        if not entry:
-            sugg = sorted(names, key=lambda n: _score(name, catalog[n]),
-                          reverse=True)[:8]
-            return {"error": f"ไม่พบ tool '{name}'", "did_you_mean": sugg}
-        return {
-            "name": name,
-            "description": entry["description"],
-            "parameters": entry["parameters"],
-        }
+    if not use_tool_rag:
+        # โหมด Full Tools (ปิด Tool-RAG ผ่าน Node Control Plane): เสิร์ฟตัวเต็ม + plugin ที่เปิดอยู่
+        plugins_cfg = init_cfg.get("plugins") or {}
+        for pkey, mod in LOADED_MODULES.items():
+            if plugins_cfg.get(pkey, True) and hasattr(mod, "register"):
+                mod.register(full)
+        router = full
+        mode_desc = f"FULL MODE ({len(_active_names())} tools exposed directly)"
+    else:
+        router = FastMCP("hexstrike-router")
+        mode_desc = f"TOOL-RAG MODE (3 meta-tools, {len(_active_names())} tools active)"
 
-    @router.tool()
-    async def hexstrike_run(name: str, arguments: dict | None = None) -> dict:
-        """รัน HexStrike tool ชื่อ name พร้อม arguments (dict ตาม schema จาก
-        hexstrike_describe_tool). ตัวอย่าง:
-          hexstrike_run("nmap_scan", {"target": "example.com",
-                                       "additional_args": "-T4 -F -Pn"})
-        คืนผลลัพธ์ดิบจาก tool นั้น (output อาจยาว — ถ้างานใหญ่ให้แบ่งรันทีละน้อย)."""
-        arguments = arguments or {}
-        loop = _loop_check(name, arguments)
-        if loop:
-            return {"tool": name, "loop_guard": loop}
-        if name not in catalog:
-            sugg = sorted(names, key=lambda n: _score(name, catalog[n]),
-                          reverse=True)[:8]
-            return {"error": f"ไม่พบ tool '{name}'", "did_you_mean": sugg}
-        # local tool packs (php2shell/shot): เรียก callable ตรง (ไม่ได้อยู่ใน tm vendor)
-        if name in LOCAL_DISPATCH:
-            try:
-                result = LOCAL_DISPATCH[name](**arguments)
-                if isinstance(result, str):
-                    result = _cap(result)
-                return {"tool": name, "result": result}
-            except TypeError as e:
-                return {"tool": name,
-                        "error": f"bad arguments: {e}",
-                        "parameters": catalog[name]["parameters"]}
-            except Exception as e:
-                return {"tool": name, "error": f"{type(e).__name__}: {e}"}
-        try:
-            result = await tm.call_tool(name, arguments)
-            if isinstance(result, str):                # cap output ใหญ่ กัน context ระเบิด
-                result = _cap(result)
-            else:
+        @router.tool()
+        async def hexstrike_search_tools(query: str) -> dict:
+            """ค้นหา HexStrike security tool ที่ตรงกับงาน — คืนชื่อ + คำอธิบายสั้น (ยังไม่โหลด
+            schema เต็ม เพื่อประหยัด context). ใช้ "ก่อนเสมอ" เพื่อหา tool ที่ต้องการ แล้วค่อย
+            เรียก hexstrike_run. query เป็นคำค้นภาษาอังกฤษ เช่น "port scan", "sql injection",
+            "subdomain enumeration", "directory brute force", "web vulnerability nuclei"."""
+            cfg = _load_hexstrike_node_cfg()
+            max_results = int(cfg.get("search_limit", default_max_results))
+            names = _active_names()
+            ranked = sorted(names, key=lambda n: _score(query, catalog[n]), reverse=True)
+            hits = [n for n in ranked if _score(query, catalog[n]) > 0][:max_results]
+            if not hits:                                  # ไม่ match เลย → คืนตัวแรกๆ กันมือเปล่า
+                hits = ranked[:max_results]
+            return {
+                "query": query,
+                "count": len(hits),
+                "tools": [{"name": n, "description": catalog[n]["brief"]} for n in hits],
+                "next": "ถ้าไม่แน่ใจ args เรียก hexstrike_describe_tool(name) ก่อน แล้ว "
+                        "hexstrike_run(name, arguments) เพื่อรันจริง",
+            }
+
+        @router.tool()
+        async def hexstrike_describe_tool(name: str) -> dict:
+            """คืน schema เต็ม (พารามิเตอร์ทั้งหมดที่ tool รับ) ของ HexStrike tool ชื่อ name.
+            เรียกก่อน hexstrike_run เมื่อไม่แน่ใจว่า tool ต้องส่ง argument อะไรบ้าง."""
+            names = _active_names()
+            if name not in names:
+                sugg = sorted(names, key=lambda n: _score(name, catalog[n]),
+                              reverse=True)[:8]
+                return {"error": f"ไม่พบ tool '{name}' (หรือ plugin ถูกปิดไว้ใน Node Config)", "did_you_mean": sugg}
+            entry = catalog[name]
+            return {
+                "name": name,
+                "description": entry["description"],
+                "parameters": entry["parameters"],
+            }
+
+        @router.tool()
+        async def hexstrike_run(name: str, arguments: dict | None = None) -> dict:
+            """รัน HexStrike tool ชื่อ name พร้อม arguments (dict ตาม schema จาก
+            hexstrike_describe_tool). ตัวอย่าง:
+              hexstrike_run("nmap_scan", {"target": "example.com",
+                                           "additional_args": "-T4 -F -Pn"})
+            คืนผลลัพธ์ดิบจาก tool นั้น (output อาจยาว — ถ้างานใหญ่ให้แบ่งรันทีละน้อย)."""
+            arguments = arguments or {}
+            loop = _loop_check(name, arguments)
+            if loop:
+                return {"tool": name, "loop_guard": loop}
+            names = _active_names()
+            if name not in names:
+                sugg = sorted(names, key=lambda n: _score(name, catalog[n]),
+                              reverse=True)[:8]
+                return {"error": f"ไม่พบ tool '{name}' (หรือ plugin ถูกปิดไว้ใน Node Config)", "did_you_mean": sugg}
+            # local tool packs (php2shell/shot/vflat/reporting): เรียก callable ตรง (ไม่ได้อยู่ใน tm vendor)
+            if name in LOCAL_DISPATCH:
                 try:
-                    _s = _json.dumps(result, ensure_ascii=False, default=str)
-                except Exception:
-                    _s = repr(result)
-                if len(_s.encode("utf-8", "replace")) > _MAX_OUT:
-                    result = _cap(_s)
-            return {"tool": name, "result": result}
-        except Exception as e:                        # คืน error สะอาด ไม่ให้ทั้ง turn ล้ม
-            return {"tool": name, "error": f"{type(e).__name__}: {e}"}
+                    result = LOCAL_DISPATCH[name](**arguments)
+                    if isinstance(result, str):
+                        result = _cap(result)
+                    return {"tool": name, "result": result}
+                except TypeError as e:
+                    return {"tool": name,
+                            "error": f"bad arguments: {e}",
+                            "parameters": catalog[name]["parameters"]}
+                except Exception as e:
+                    return {"tool": name, "error": f"{type(e).__name__}: {e}"}
+            try:
+                result = await tm.call_tool(name, arguments)
+                if isinstance(result, str):                # cap output ใหญ่ กัน context ระเบิด
+                    result = _cap(result)
+                else:
+                    try:
+                        _s = _json.dumps(result, ensure_ascii=False, default=str)
+                    except Exception:
+                        _s = repr(result)
+                    cfg = _load_hexstrike_node_cfg()
+                    max_out = int(cfg.get("max_output_bytes", _MAX_OUT))
+                    if len(_s.encode("utf-8", "replace")) > max_out:
+                        result = _cap(_s)
+                return {"tool": name, "result": result}
+            except Exception as e:                        # คืน error สะอาด ไม่ให้ทั้ง turn ล้ม
+                return {"tool": name, "error": f"{type(e).__name__}: {e}"}
 
     # host/port + ปิด DNS-rebinding protection (เหมือน hexstrike_mcp_http.py — ดูเหตุผลที่นั่น)
     try:
@@ -286,8 +358,7 @@ def main() -> None:
         print(f"[hexstrike-router] WARN: ตั้ง transport_security ไม่ได้ ({e})",
               file=sys.stderr)
 
-    print(f"[hexstrike-router] serving at http://{host}:{port}/mcp "
-          f"— 3 meta-tools, {len(names)} tools indexed", file=sys.stderr)
+    print(f"[hexstrike-router] serving at http://{host}:{port}/mcp — {mode_desc}", file=sys.stderr)
     router.run(transport="streamable-http")
 
 

@@ -22,6 +22,9 @@ COPY pipeline/php2shell-poc/scanner/    /app/pipeline/php2shell-poc/scanner/
 
 # shot: tool บางๆ proxy ไป shot service (browser อยู่ container แยก ไม่บวม image นี้)
 COPY pipeline/shot_tools.py             /app/pipeline/shot_tools.py
+COPY pipeline/vflat_tools.py            /app/pipeline/vflat_tools.py
+COPY pipeline/report_tools.py           /app/pipeline/report_tools.py
+COPY pipeline/node-config.json          /app/pipeline/node-config.json
 
 ENV MCP_HOST=0.0.0.0 \
     MCP_PORT=8001 \

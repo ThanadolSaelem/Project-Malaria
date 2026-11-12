@@ -124,17 +124,26 @@ def scan_alerts(logs):
 
 
 def loop():
+    last_signature = None
     while True:
         try:
             logs, mem = gather_context()
-            en, th = call_summarizer(logs, mem)
+            sig = (logs.strip(), mem.strip())
             new_alerts = scan_alerts(logs)
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with _LOCK:
-                STATE["updated"], STATE["en"], STATE["th"], STATE["online"] = now, en, th, True
-                STATE["timeline"] = ([{"time": now, "en": en}] + STATE["timeline"])[:30]
-                if new_alerts:
-                    STATE["alerts"] = (new_alerts + STATE["alerts"])[:50]
+            if sig != last_signature:
+                en, th = call_summarizer(logs, mem)
+                last_signature = sig
+                with _LOCK:
+                    STATE["updated"], STATE["en"], STATE["th"], STATE["online"] = now, en, th, True
+                    STATE["timeline"] = ([{"time": now, "en": en}] + STATE["timeline"])[:30]
+                    if new_alerts:
+                        STATE["alerts"] = (new_alerts + STATE["alerts"])[:50]
+            else:
+                with _LOCK:
+                    STATE["online"] = True
+                    if new_alerts:
+                        STATE["alerts"] = (new_alerts + STATE["alerts"])[:50]
         except Exception as e:
             with _LOCK:
                 STATE["online"] = False
