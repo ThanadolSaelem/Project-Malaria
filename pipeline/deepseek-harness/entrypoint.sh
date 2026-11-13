@@ -14,7 +14,7 @@ if [ -f /config/cordis.patch.yml ]; then
   cp /config/cordis.patch.yml /dsh/profiles/web/cordis.patch.yml
   echo "entrypoint: วาง cordis.patch.yml จาก repo → /dsh/profiles/web (เขียนได้)"
 else
-  echo "entrypoint: ⚠️ ไม่พบ /config/cordis.patch.yml (ไม่ได้ mount?) — ใช้ของเดิมใน image ถ้ามี"
+  echo "entrypoint: [WARN] ไม่พบ /config/cordis.patch.yml (ไม่ได้ mount?) — ใช้ของเดิมใน image ถ้ามี"
 fi
 
 # ── system prompt → /dsh/AGENTS.md (agent-instructions โหลดเป็น global baseline ทุก session) ──
@@ -22,9 +22,10 @@ fi
 #   ตัด wrapper สำหรับคนอ่าน (บรรทัดบนก่อน "## SYSTEM PROMPT") ออก เอาเฉพาะเนื้อ prompt จริง
 if [ -f /config/cyber-operator.system.md ]; then
   awk 'f;/^## SYSTEM PROMPT$/{f=1}' /config/cyber-operator.system.md > /dsh/AGENTS.md
-  echo "entrypoint: วาง system prompt → /dsh/AGENTS.md ($(wc -c < /dsh/AGENTS.md) bytes)"
+  cp /dsh/AGENTS.md /root/AGENTS.md 2>/dev/null || true
+  echo "entrypoint: วาง system prompt → /dsh/AGENTS.md และ /root/AGENTS.md ($(wc -c < /dsh/AGENTS.md) bytes)"
 else
-  echo "entrypoint: ⚠️ ไม่พบ /config/cyber-operator.system.md — Tiel จะไม่มี guardrail/workflow!"
+  echo "entrypoint: [WARN] ไม่พบ /config/cyber-operator.system.md — Tiel จะไม่มี guardrail/workflow!"
 fi
 
 # ── bind IP ของ container (dsh --host ไม่รับ wildcard 0.0.0.0) ──

@@ -1,148 +1,295 @@
 # =============================================================================
-# HexStrike server — arm64-NATIVE + เครื่องมือครบชุด (สำหรับ Apple Silicon / Mac)
+# HexStrike Server Container (Apple Silicon / linux/arm64 - Kali Rolling Full)
 # -----------------------------------------------------------------------------
-# ต่างจาก Dockerfile.hexstrike-server (Kali/amd64) ตรงที่ตัวนี้เป็น debian arm64
-# แท้ → รัน NATIVE บน M-series ไม่ emulate และลงเครื่องมือให้ "ครบ" ที่สุดเท่าที่
-# ทำได้บน arm64:
-#   - apt:   nmap masscan dirb wfuzz sqlmap hydra john dnsenum dnsrecon whois
-#            jq openssl dnsutils(dig) netcat aircrack-ng hashcat tshark tcpdump ฯลฯ
-#   - pcap:  tshark/tcpdump (CLI) + scapy/dpkt/pyshark (python) วิเคราะห์ไฟล์ .cap/.pcap
-#            ที่ /captures ได้ (bind mount เดียวกับ handshake)
-#   - wordlist: rockyou.txt (แตกจาก SecLists) ที่ /usr/share/wordlists ($WORDLIST)
-#            สำหรับแครก WPA handshake / hash — วางไฟล์ .cap ที่ /captures (bind mount)
-#   - Go:    nuclei httpx subfinder naabu katana dnsx gobuster ffuf dalfox gau
-#            waybackurls hakrawler anew qsreplace amass
-#   - Rust:  feroxbuster (binary สำเร็จรูป)
-#   - clone: whatweb (ruby) + nikto (perl)
-#   - pip:   wafw00f + theHarvester (OSINT)
-#   - data:  nuclei templates + SecLists wordlists
+# Native Kali Rolling (linux/arm64) image with maximum Linux ARM64 security
+# tool coverage across Network, Web, Password, Binary/RE, Exploitation, Cloud,
+# Container, Forensics, Steganography, OSINT, Wireless, and Browser automation.
 #
-# ออกแบบให้ "ทนพลาด": ตัวที่โหลด/บิลด์ไม่สำเร็จจะข้าม (|| echo skip) ไม่ล้มทั้ง
-# build — hexstrike จะรายงาน tool ที่ขาดว่า unavailable เฉยๆ
-#
-# ⚠️ build นานขึ้นมาก (Go compile หลายตัว) และ image ใหญ่ขึ้น (SecLists ~1GB+)
-#    ไม่อยากได้ SecLists:  --build-arg INSTALL_SECLISTS=false
+# Build / recreate on Mac:
+#   docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build hexstrike-server
 # =============================================================================
-FROM debian:bookworm-slim
-
-ENV DEBIAN_FRONTEND=noninteractive \
-    PIP_BREAK_SYSTEM_PACKAGES=1 \
-    HEXSTRIKE_PORT=8888
+FROM kalilinux/kali-rolling
 
 ARG INSTALL_SECLISTS=true
-ARG GO_VERSION=1.23.4
 
-# ── ชั้น 1: build toolchain + ภาษา/ไลบรารีที่เครื่องมือต้องใช้ (ต้องมีจริง) ────
-#   ruby/perl+libnet-ssleay → whatweb/nikto ; libpcap-dev → naabu ; cargo → rust
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-venv python3-dev \
-      build-essential libffi-dev libssl-dev pkg-config cargo rustc \
-      curl wget git ca-certificates unzip libpcap-dev \
-      ruby perl libnet-ssleay-perl \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── ชั้น 2: security tools จาก apt — ลงทีละตัว ตัวที่ debian ไม่มี ข้ามไป ──────
-RUN apt-get update && for t in \
-      nmap masscan dnsutils dnsenum dnsrecon whois \
-      jq openssl \
-      dirb wfuzz sqlmap hydra john netcat-traditional \
-      aircrack-ng hashcat \
-      tshark tcpdump \
-      chromium chromium-driver ; do \
-      apt-get install -y --no-install-recommends "$t" \
-        && echo "  [apt] ✓ $t" \
-        || echo "  [apt] ⚠ ข้าม $t" ; \
-    done ; rm -rf /var/lib/apt/lists/*
-
-# ── ชั้น 3: Go toolchain (official arm64) — debian golang เก่าไปสำหรับ PD tools ──
-RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-arm64.tar.gz" -o /tmp/go.tgz \
-    && tar -C /usr/local -xzf /tmp/go.tgz && rm /tmp/go.tgz \
-    && /usr/local/go/bin/go version
-ENV PATH="/usr/local/go/bin:/usr/local/bin:${PATH}" \
-    GOBIN=/usr/local/bin \
-    GOFLAGS=-buildvcs=false
-
-# ── ชั้น 4: Go-based tools (ProjectDiscovery + gobuster) — ทนพลาดทีละตัว ──────
-#   PD httpx ตัวนี้รองรับ -l (แก้ปัญหา "No such option '-l'" ของ httpx ตัวเดิม)
-RUN set -x; \
-    go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest       || echo "⚠ skip nuclei"; \
-    go install github.com/projectdiscovery/httpx/cmd/httpx@latest            || echo "⚠ skip httpx"; \
-    go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || echo "⚠ skip subfinder"; \
-    go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest         || echo "⚠ skip naabu"; \
-    go install github.com/projectdiscovery/katana/cmd/katana@latest          || echo "⚠ skip katana"; \
-    go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest              || echo "⚠ skip dnsx"; \
-    go install github.com/OJ/gobuster/v3@latest                              || echo "⚠ skip gobuster"; \
-    go install github.com/ffuf/ffuf/v2@latest                                || echo "⚠ skip ffuf"; \
-    go install github.com/hahwul/dalfox/v2@latest                            || echo "⚠ skip dalfox"; \
-    go install github.com/lc/gau/v2/cmd/gau@latest                           || echo "⚠ skip gau"; \
-    go install github.com/tomnomnom/waybackurls@latest                       || echo "⚠ skip waybackurls"; \
-    go install github.com/hakluke/hakrawler@latest                           || echo "⚠ skip hakrawler"; \
-    go install github.com/tomnomnom/anew@latest                              || echo "⚠ skip anew"; \
-    go install github.com/tomnomnom/qsreplace@latest                         || echo "⚠ skip qsreplace"; \
-    go install github.com/owasp-amass/amass/v4/...@master                    || echo "⚠ skip amass"; \
-    go clean -cache -modcache 2>/dev/null || true
-
-# ── ชั้น 5: feroxbuster (ตัวติดตั้งทางการ auto-detect arch → binary arm64) ────
-RUN curl -fsSL https://raw.githubusercontent.com/epi052/feroxbuster/main/install-nix.sh \
-      | bash -s /usr/local/bin \
-    && /usr/local/bin/feroxbuster --version || echo "⚠ skip feroxbuster"
-
-# ── ชั้น 6: whatweb (ruby) + nikto (perl) จาก git ───────────────────────────
-RUN git clone --depth 1 https://github.com/urbanadventurer/WhatWeb /opt/whatweb \
-      && ln -sf /opt/whatweb/whatweb /usr/local/bin/whatweb \
-      && echo "✓ whatweb" || echo "⚠ skip whatweb"
-RUN git clone --depth 1 https://github.com/sullo/nikto /opt/nikto \
-      && ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
-      && echo "✓ nikto" || echo "⚠ skip nikto"
-
-# ── ชั้น 7: data — nuclei templates + SecLists wordlists ────────────────────
-RUN (command -v nuclei >/dev/null && nuclei -update-templates -silent) \
-      && echo "✓ nuclei templates" \
-      || echo "⚠ nuclei templates จะโหลดตอนรันครั้งแรกแทน"
-RUN if [ "$INSTALL_SECLISTS" = "true" ]; then \
-      git clone --depth 1 https://github.com/danielmiessler/SecLists /usr/share/seclists \
-        && echo "✓ SecLists -> /usr/share/seclists" \
-        || echo "⚠ skip SecLists (clone พลาด)"; \
-    else echo "skip SecLists (INSTALL_SECLISTS=$INSTALL_SECLISTS)"; fi
-
-# ── ชั้น 7b: wordlist สำหรับ aircrack-ng / hashcat / hydra ───────────────────
-#   แตก rockyou.txt (~14M คำ) จาก SecLists มาวางที่ path มาตรฐาน /usr/share/wordlists
-#   เพื่อให้คำสั่งแครกสั้นลง:  aircrack-ng -w $WORDLIST -b <BSSID> /captures/hs.cap
-#   ถ้า INSTALL_SECLISTS=false (ไม่มี rockyou) ให้เอา wordlist ไปวางเองที่โฟลเดอร์นี้
-RUN mkdir -p /usr/share/wordlists \
-    && ROCK=/usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt.tar.gz; \
-    if [ -f "$ROCK" ]; then \
-      tar -xzf "$ROCK" -C /usr/share/wordlists/ \
-        && echo "✓ rockyou.txt -> /usr/share/wordlists/rockyou.txt"; \
-    elif [ -f /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt ]; then \
-      cp /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt /usr/share/wordlists/ \
-        && echo "✓ rockyou.txt (plain) -> /usr/share/wordlists/"; \
-    else \
-      echo "⚠ ไม่พบ rockyou ใน SecLists — ใส่ wordlist เองที่ /usr/share/wordlists (bind-mount ได้)"; \
-    fi
-
-# ── ชั้น 8: python deps ของ hexstrike_server.py (venv แยก ไม่แตะ system python) ─
-WORKDIR /app
-COPY hexstrike-ai-main/requirements.txt /app/requirements.txt
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:${PATH}"
-# ตัด angr/pwntools (อยู่ใน f-string ที่ server เขียนเป็นไฟล์ให้ผู้ใช้ ไม่ใช่ import
-# จริง — ตัดได้ไม่กระทบ endpoint, เป็น dep tree หนัก/เปราะสุดโดยเฉพาะบน arm64)
-RUN grep -viE '^(angr|pwntools)([><=~ ]|$)' /app/requirements.txt > /app/requirements.container.txt \
-    && pip install --no-cache-dir -r /app/requirements.container.txt
-# เครื่องมือ OSINT/recon แบบ python (ทนพลาด — ตัวไหนลงไม่ได้ข้าม ไม่ล้ม build)
-RUN pip install --no-cache-dir wafw00f    || echo "⚠ skip wafw00f"
-RUN pip install --no-cache-dir theHarvester || echo "⚠ skip theHarvester"
-# วิเคราะห์ pcap/แพ็กเก็ตด้วย python (scapy/dpkt) + pyshark (ครอบ tshark)
-RUN pip install --no-cache-dir scapy dpkt pyshark || echo "⚠ skip pcap libs"
-# Pillow: ให้ assemble.py ใส่รูปหลักฐานลงรายงาน TLP ได้ (ดู pipeline/reporting/)
-RUN pip install --no-cache-dir pillow || echo "⚠ skip pillow"
-
-# โค้ด server ถูก mount เข้ามาตอน runtime (ดู docker-compose.mac.yml) จึงไม่ COPY
-ENV CHROME_BIN=/usr/bin/chromium \
+ENV DEBIAN_FRONTEND=noninteractive \
+    GIT_TERMINAL_PROMPT=0 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    UV_TOOL_DIR=/opt/uv-tools \
+    UV_TOOL_BIN_DIR=/usr/local/bin \
+    VIRTUAL_ENV=/opt/venv \
+    HEXSTRIKE_PORT=8888 \
+    CHROME_BIN=/usr/bin/chromium \
     CHROMEDRIVER_PATH=/usr/bin/chromedriver \
     SECLISTS_PATH=/usr/share/seclists \
-    WORDLIST=/usr/share/wordlists/rockyou.txt
+    WORDLIST=/usr/share/wordlists/rockyou.txt \
+    PATH="/opt/venv/bin:/usr/local/bin:/usr/sbin:/sbin:/usr/bin:/bin"
+
+# -- Layer 1: APT resilience + noninteractive debconf + base build toolchain --
+RUN set -eux; \
+    printf '%s\n' \
+      'Acquire::Retries "5";' \
+      'Acquire::http::Pipeline-Depth "0";' \
+      'Acquire::ForceIPv4 "true";' \
+      > /etc/apt/apt.conf.d/99kali; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends debconf-utils; \
+    printf '%s\n' \
+      'wireshark-common wireshark-common/install-setuid boolean false' \
+      'kismet kismet/install-setuid boolean false' \
+      'kismet kismet/install-user string root' \
+      'tzdata tzdata/Areas select Etc' \
+      'tzdata tzdata/Zones/Etc select UTC' \
+    | debconf-set-selections; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl wget git gnupg unzip xz-utils tar gzip jq \
+      build-essential cmake pkg-config autoconf automake \
+      libssl-dev libffi-dev libxml2-dev libxslt1-dev liblzma-dev \
+      libpcap-dev zlib1g-dev \
+      procps iproute2 net-tools lsof tmux \
+    || (apt-get update -qq && apt-get install -y --no-install-recommends --fix-missing \
+      ca-certificates curl wget git gnupg unzip xz-utils tar gzip jq \
+      build-essential cmake pkg-config autoconf automake \
+      libssl-dev libffi-dev libxml2-dev libxslt1-dev liblzma-dev \
+      libpcap-dev zlib1g-dev \
+      procps iproute2 net-tools lsof tmux); \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# -- Layer 2: uv + standalone Python 3.12 + /opt/venv for hexstrike_server ----
+# Kali Rolling ships Python 3.14 by default, which breaks older security deps
+# (angr, pwntools, mitmproxy). Using uv with Python 3.12 keeps /opt/venv stable
+# while leaving /usr/bin/python3 untouched for Kali apt-packaged Python tools.
+WORKDIR /app
+COPY hexstrike-ai-main/requirements.txt /tmp/requirements.txt
+RUN set -eux; \
+    curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh; \
+    uv python install 3.12; \
+    uv venv /opt/venv --python 3.12 --seed; \
+    uv pip install --python /opt/venv/bin/python \
+      -r /tmp/requirements.txt \
+      'bitstring>=4,<5' \
+      'pycparser>=2.20,<3' \
+      scapy dpkt pyshark pillow; \
+    /opt/venv/bin/python -c "import flask, fastmcp, selenium, requests, aiohttp, bs4, pwn, angr, scapy, dpkt, pyshark, PIL; print('[ok] venv core + angr + pwntools ready')"; \
+    rm -rf /tmp/requirements.txt /root/.cache
+
+# -- Layer 3: Kali Network, Recon, Web, Auth, and Exploitation CLI packages ---
+RUN set -eux; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends \
+      nmap masscan rustscan autorecon amass subfinder fierce dnsenum dnsrecon \
+      theharvester arp-scan nbtscan smbclient enum4linux enum4linux-ng smbmap \
+      responder netexec crackmapexec naabu dnsx subjack sublist3r assetfinder \
+      gobuster dirsearch feroxbuster ffuf dirb dirbuster katana hakrawler \
+      nuclei nikto sqlmap wpscan arjun paramspider dalfox wafw00f testssl.sh \
+      sslscan sslyze qsreplace uro whatweb wfuzz commix xsser dotdotpwn zaproxy \
+      hydra john hashcat hashcat-utils medusa patator evil-winrm \
+      hash-identifier hashid ophcrack ophcrack-cli \
+      metasploit-framework exploitdb \
+      netcat-traditional bind9-dnsutils whois httpie openssl \
+    || (apt-get update -qq && apt-get install -y --no-install-recommends --fix-missing \
+      nmap masscan rustscan autorecon amass subfinder fierce dnsenum dnsrecon \
+      theharvester arp-scan nbtscan smbclient enum4linux enum4linux-ng smbmap \
+      responder netexec crackmapexec naabu dnsx subjack sublist3r assetfinder \
+      gobuster dirsearch feroxbuster ffuf dirb dirbuster katana hakrawler \
+      nuclei nikto sqlmap wpscan arjun paramspider dalfox wafw00f testssl.sh \
+      sslscan sslyze qsreplace uro whatweb wfuzz commix xsser dotdotpwn zaproxy \
+      hydra john hashcat hashcat-utils medusa patator evil-winrm \
+      hash-identifier hashid ophcrack ophcrack-cli \
+      metasploit-framework exploitdb \
+      netcat-traditional bind9-dnsutils whois httpie openssl); \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# -- Layer 4: Kali Binary/RE, Forensics, OSINT, Cloud, Wireless, Browser, Devs -
+RUN set -eux; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends \
+      gdb gdb-peda radare2 ghidra binwalk ropper checksec binutils xxd \
+      bsdextrautils upx-ucl apktool jadx ltrace strace patchelf adb \
+      foremost testdisk steghide stegcracker scalpel bulk-extractor \
+      sleuthkit zbar-tools libimage-exiftool-perl unrar 7zip poppler-utils \
+      sherlock recon-ng spiderfoot trufflehog \
+      trivy awscli kubernetes-client terraform ansible \
+      tshark tcpdump tcpflow aircrack-ng \
+      chromium chromium-driver \
+      golang ruby-full ruby-dev nodejs npm default-jdk-headless \
+      wordlists \
+    || (apt-get update -qq && apt-get install -y --no-install-recommends --fix-missing \
+      gdb gdb-peda radare2 ghidra binwalk ropper checksec binutils xxd \
+      bsdextrautils upx-ucl apktool jadx ltrace strace patchelf adb \
+      foremost testdisk steghide stegcracker scalpel bulk-extractor \
+      sleuthkit zbar-tools libimage-exiftool-perl unrar 7zip poppler-utils \
+      sherlock recon-ng spiderfoot trufflehog \
+      trivy awscli kubernetes-client terraform ansible \
+      tshark tcpdump tcpflow aircrack-ng \
+      chromium chromium-driver \
+      golang ruby-full ruby-dev nodejs npm default-jdk-headless \
+      wordlists); \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# -- Layer 5: Optional heavy Kali suites + SecLists wordlists ----------------
+RUN set -eux; \
+    apt-get update -qq; \
+    for pkg in burpsuite maltego autopsy wireshark kismet; do \
+      apt-get install -y --no-install-recommends "$pkg" \
+        || echo "[warn] skip optional package $pkg"; \
+    done; \
+    if [ "$INSTALL_SECLISTS" = "true" ]; then \
+      apt-get install -y --no-install-recommends seclists \
+        || (apt-get update -qq && apt-get install -y --no-install-recommends --fix-missing seclists) \
+        || echo "[warn] skip seclists"; \
+    fi; \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# -- Layer 6: Prebuilt linux/arm64 upstream releases (non-apt CLI binaries) ---
+RUN set -eux; \
+    curl -fsSLo /tmp/httpx.zip https://github.com/projectdiscovery/httpx/releases/download/v1.12.0/httpx_1.12.0_linux_arm64.zip; \
+    unzip -oqj /tmp/httpx.zip httpx -d /usr/local/bin; \
+    chmod 0755 /usr/local/bin/httpx; \
+    ln -sf /usr/local/bin/httpx /opt/venv/bin/httpx; \
+    curl -fsSLo /tmp/gau.tgz https://github.com/lc/gau/releases/download/v2.2.4/gau_2.2.4_linux_arm64.tar.gz; \
+    tar -xzf /tmp/gau.tgz -C /usr/local/bin gau; \
+    chmod 0755 /usr/local/bin/gau; \
+    curl -fsSLo /tmp/aquatone.zip https://github.com/michenriksen/aquatone/releases/download/v1.7.0/aquatone_linux_arm64_1.7.0.zip; \
+    unzip -oqj /tmp/aquatone.zip aquatone -d /usr/local/bin; \
+    chmod 0755 /usr/local/bin/aquatone; \
+    curl -fsSLo /tmp/findomain.zip https://github.com/Findomain/Findomain/releases/download/10.0.1/findomain-aarch64.zip; \
+    unzip -oqj /tmp/findomain.zip findomain -d /usr/local/bin; \
+    chmod 0755 /usr/local/bin/findomain; \
+    curl -fsSLo /tmp/kube-bench.deb https://github.com/aquasecurity/kube-bench/releases/download/v0.16.0/kube-bench_0.16.0_linux_arm64.deb; \
+    dpkg -i /tmp/kube-bench.deb || (apt-get update -qq && apt-get install -f -y --no-install-recommends && apt-get clean && rm -rf /var/lib/apt/lists/*); \
+    curl -fsSLo /tmp/terrascan.tgz https://github.com/tenable/terrascan/releases/download/v1.19.9/terrascan_1.19.9_Linux_arm64.tar.gz; \
+    tar -xzf /tmp/terrascan.tgz -C /usr/local/bin terrascan; \
+    chmod 0755 /usr/local/bin/terrascan; \
+    curl -fsSLo /usr/local/bin/opa https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_linux_arm64_static; \
+    chmod 0755 /usr/local/bin/opa; \
+    curl -fsSLo /tmp/helm.tgz https://get.helm.sh/helm-v3.17.3-linux-arm64.tar.gz; \
+    tar -xzf /tmp/helm.tgz --strip-components=1 -C /usr/local/bin linux-arm64/helm; \
+    chmod 0755 /usr/local/bin/helm; \
+    curl -fsSLo /tmp/falco.tgz https://download.falco.org/packages/bin/aarch64/falco-0.45.2-aarch64.tar.gz; \
+    mkdir -p /opt/falco; \
+    tar -xzf /tmp/falco.tgz --strip-components=1 -C /opt/falco; \
+    ln -sf /opt/falco/usr/bin/falco /usr/local/bin/falco; \
+    ln -sf /opt/falco/usr/bin/falcoctl /usr/local/bin/falcoctl; \
+    ln -sfn /opt/falco/usr/share/falco /usr/share/falco; \
+    [ -d /opt/falco/etc/falco ] && ln -sfn /opt/falco/etc/falco /etc/falco || true; \
+    curl -fsSLo /tmp/gcloud.tgz https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-arm.tar.gz; \
+    tar -xzf /tmp/gcloud.tgz -C /opt; \
+    /opt/google-cloud-sdk/install.sh --quiet --path-update=false --usage-reporting=false; \
+    ln -sf /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud; \
+    ln -sf /opt/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil; \
+    ln -sf /opt/google-cloud-sdk/bin/bq /usr/local/bin/bq; \
+    rm -rf /tmp/*.zip /tmp/*.tgz /tmp/*.deb
+
+# -- Layer 7: Go, Cargo, Ruby, npm, and isolated Python 3.12 CLI tools -------
+RUN set -eux; \
+    GOBIN=/usr/local/bin go install github.com/tomnomnom/waybackurls@latest; \
+    GOBIN=/usr/local/bin go install github.com/tomnomnom/anew@latest; \
+    (GOBIN=/usr/local/bin go install github.com/jaeles-project/jaeles@latest || echo "[warn] skip jaeles"); \
+    (GOBIN=/usr/local/bin go install github.com/quay/clair/v4/cmd/clairctl@latest || echo "[warn] skip clairctl"); \
+    rm -rf /root/go /root/.cache/go-build; \
+    apt-get update -qq && apt-get install -y --no-install-recommends cargo rustc \
+      || (apt-get update -qq && apt-get install -y --no-install-recommends --fix-missing cargo rustc); \
+    cargo install --root /usr/local x8; \
+    cargo install --root /usr/local pwninit; \
+    apt-get purge -y --auto-remove cargo rustc || true; \
+    apt-get clean; rm -rf /var/lib/apt/lists/* /root/.cargo /tmp/cargo*; \
+    gem install --no-document zsteg one_gadget; \
+    npm install -g newman && npm cache clean --force; \
+    for tool in prowler scoutsuite checkov pacu volatility3 kube-hunter shodan censys social-analyzer azure-cli frida-tools ropper; do \
+      uv tool install --python 3.12 "$tool" || echo "[warn] skip uv tool $tool"; \
+    done; \
+    rm -rf /root/.cache
+
+# -- Layer 8: Source builds, /opt suites, symlinks, wordlists, nuclei templates -
+RUN set -eux; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends photorec \
+      || (apt-get update -qq && apt-get install -y --no-install-recommends --fix-missing photorec); \
+    apt-get clean; rm -rf /var/lib/apt/lists/*; \
+    if [ -f /usr/share/gdb-peda/peda.py ]; then \
+      ln -sfn /usr/share/gdb-peda /opt/peda; \
+    else \
+      git clone --depth 1 https://github.com/longld/peda /opt/peda; \
+    fi; \
+    ln -sfn /opt/peda /root/peda; \
+    git clone --depth 1 https://github.com/hugsy/gef /opt/gef; \
+    git clone --depth 1 https://github.com/scwuaptx/Pwngdb /opt/Pwngdb; \
+    git clone --depth 1 https://github.com/niklasb/libc-database /opt/libc-database; \
+    git clone --depth 1 https://github.com/docker/docker-bench-security /opt/docker-bench-security; \
+    printf '#!/bin/sh\ncd /opt/docker-bench-security && exec sh /opt/docker-bench-security/docker-bench-security.sh "$@"\n' \
+      > /usr/local/bin/docker-bench-security && chmod 0755 /usr/local/bin/docker-bench-security; \
+    git clone --depth 1 https://github.com/ticarpi/jwt_tool /opt/jwt_tool; \
+    uv venv /opt/jwt_tool/.venv --python 3.12; \
+    uv pip install --python /opt/jwt_tool/.venv/bin/python -r /opt/jwt_tool/requirements.txt; \
+    printf '#!/bin/sh\nexec /opt/jwt_tool/.venv/bin/python /opt/jwt_tool/jwt_tool.py "$@"\n' \
+      > /usr/local/bin/jwt_tool && chmod 0755 /usr/local/bin/jwt_tool; \
+    git clone --depth 1 https://github.com/vladko312/SSTImap /opt/SSTImap; \
+    uv venv /opt/SSTImap/.venv --python 3.12; \
+    uv pip install --python /opt/SSTImap/.venv/bin/python -r /opt/SSTImap/requirements.txt; \
+    printf '#!/bin/sh\nexec /opt/SSTImap/.venv/bin/python /opt/SSTImap/sstimap.py "$@"\n' \
+      > /usr/local/bin/sstimap && chmod 0755 /usr/local/bin/sstimap; \
+    (git clone --depth 1 https://github.com/aquasecurity/cloudsploit /opt/cloudsploit \
+      && cd /opt/cloudsploit && npm install --omit=dev && chmod 0755 /opt/cloudsploit/index.js \
+      && ln -sf /opt/cloudsploit/index.js /usr/local/bin/cloudsploit \
+      || echo "[warn] skip cloudsploit"); \
+    git clone --depth 1 https://github.com/miekrr/HashPump /tmp/hp; \
+    (cd /tmp/hp && g++ -O2 *.cpp -lcrypto -o /usr/local/bin/hashpump && chmod 0755 /usr/local/bin/hashpump); \
+    git clone --depth 1 https://github.com/Giotino/stegsolve /tmp/ss; \
+    (cd /tmp/ss && javac -Xlint:none stegsolve/*.java \
+      && mkdir -p /opt/stegsolve \
+      && jar cfm /opt/stegsolve/stegsolve.jar META-INF/MANIFEST.MF stegsolve/*.class \
+      && printf '#!/bin/sh\nexec java -jar /opt/stegsolve/stegsolve.jar "$@"\n' > /usr/local/bin/stegsolve \
+      && chmod 0755 /usr/local/bin/stegsolve); \
+    (git clone --depth 1 https://github.com/resurrecting-open-source-projects/outguess /tmp/og \
+      && cd /tmp/og \
+      && ./autogen.sh \
+      && sed -i '1i #define HAVE_PROTOTYPES 1' src/jpeg-6b-steg/jconfig.cfg \
+      && CC="gcc -std=gnu17 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-return-type -fcommon" \
+         CXX="g++ -fcommon" \
+         ./configure --with-generic-jconfig \
+      && make -j"$(nproc)" CC="gcc -std=gnu17 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-return-type -fcommon" \
+      && make install \
+      || echo "[warn] skip outguess"); \
+    [ -e /usr/bin/theHarvester ] && ln -sf /usr/bin/theHarvester /usr/local/bin/theharvester || true; \
+    [ -e /opt/venv/bin/ROPgadget ] && ln -sf /opt/venv/bin/ROPgadget /usr/local/bin/ropgadget || true; \
+    [ -e /usr/local/bin/one_gadget ] && ln -sf /usr/local/bin/one_gadget /usr/local/bin/one-gadget || true; \
+    [ -e /usr/local/bin/scout ] && ln -sf /usr/local/bin/scout /usr/local/bin/scout-suite || true; \
+    [ -e /usr/bin/bulk_extractor ] && ln -sf /usr/bin/bulk_extractor /usr/local/bin/bulk-extractor || true; \
+    [ -e /usr/local/bin/shodan ] && ln -sf /usr/local/bin/shodan /usr/local/bin/shodan-cli || true; \
+    [ -e /usr/local/bin/censys ] && ln -sf /usr/local/bin/censys /usr/local/bin/censys-cli || true; \
+    if [ -e /usr/local/bin/vol ]; then \
+      ln -sf /usr/local/bin/vol /usr/local/bin/vol.py; \
+      ln -sf /usr/local/bin/vol /usr/local/bin/volatility3; \
+      mkdir -p /opt/volatility3 && ln -sf /usr/local/bin/vol /opt/volatility3/vol.py; \
+    fi; \
+    [ -e /usr/bin/testssl.sh ] && [ ! -e /usr/local/bin/testssl ] && ln -sf /usr/bin/testssl.sh /usr/local/bin/testssl || true; \
+    [ -e /usr/bin/testssl ] && [ ! -e /usr/local/bin/testssl.sh ] && ln -sf /usr/bin/testssl /usr/local/bin/testssl.sh || true; \
+    [ -e /usr/share/burpsuite/burpsuite.jar ] && mkdir -p /opt/burpsuite && ln -sf /usr/share/burpsuite/burpsuite.jar /opt/burpsuite/burpsuite.jar || true; \
+    [ -e /usr/bin/zaproxy ] && ln -sf /usr/bin/zaproxy /usr/local/bin/zap.sh || true; \
+    [ -e /usr/share/ghidra/support/analyzeHeadless ] && ln -sf /usr/share/ghidra/support/analyzeHeadless /usr/local/bin/analyzeHeadless || true; \
+    [ -e /usr/share/ghidra/ghidraRun ] && [ ! -e /usr/bin/ghidra ] && ln -sf /usr/share/ghidra/ghidraRun /usr/local/bin/ghidra || true; \
+    [ -e /usr/local/bin/clairctl ] && ln -sf /usr/local/bin/clairctl /usr/local/bin/clair || true; \
+    mkdir -p /usr/share/wordlists/dirb /usr/share/wordlists/dirbuster /usr/share/wordlists/dirsearch /usr/share/wordlists/x8 /usr/share/wordlists/api; \
+    if [ -f /usr/share/wordlists/rockyou.txt.gz ] && [ ! -f /usr/share/wordlists/rockyou.txt ]; then \
+      gunzip -kf /usr/share/wordlists/rockyou.txt.gz; \
+    elif [ -f /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt.tar.gz ] && [ ! -f /usr/share/wordlists/rockyou.txt ]; then \
+      tar -xzf /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt.tar.gz -C /usr/share/wordlists/; \
+    elif [ -f /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt ] && [ ! -f /usr/share/wordlists/rockyou.txt ]; then \
+      cp /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt /usr/share/wordlists/; \
+    fi; \
+    [ -f /usr/share/dirsearch/db/dicc.txt ] && ln -sf /usr/share/dirsearch/db/dicc.txt /usr/share/wordlists/dirsearch/common.txt || true; \
+    if [ -d /usr/share/seclists ]; then \
+      [ -f /usr/share/seclists/Discovery/Web-Content/common.txt ] && [ ! -e /usr/share/wordlists/dirb/common.txt ] && ln -sf /usr/share/seclists/Discovery/Web-Content/common.txt /usr/share/wordlists/dirb/common.txt || true; \
+      [ -f /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt ] && [ ! -e /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt ] && ln -sf /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt || true; \
+      [ -f /usr/share/seclists/Discovery/Web-Content/common.txt ] && [ ! -e /usr/share/wordlists/dirsearch/common.txt ] && ln -sf /usr/share/seclists/Discovery/Web-Content/common.txt /usr/share/wordlists/dirsearch/common.txt || true; \
+      [ -f /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt ] && ln -sf /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt /usr/share/wordlists/x8/params.txt || true; \
+      [ -f /usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt ] && ln -sf /usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt /usr/share/wordlists/api/api-endpoints.txt || true; \
+    fi; \
+    (nuclei -update-templates || echo "[warn] skip nuclei templates update"); \
+    [ -d /root/.local/nuclei-templates ] && [ ! -e /root/nuclei-templates ] && ln -sfn /root/.local/nuclei-templates /root/nuclei-templates || true; \
+    rm -rf /tmp/hp /tmp/ss /tmp/og /root/.cache
 
 EXPOSE 8888
 CMD ["python3", "/app/hexstrike-ai-main/hexstrike_server.py", "--port", "8888"]

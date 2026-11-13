@@ -1,0 +1,1131 @@
+{
+  "id": "malaria-dual-brain-relay",
+  "name": "0. Dual-Brain Auto-Relay Loop (Orchestrator ⇄ Cyber-Model วนทำงานอัตโนมัติจนกว่าจะเสร็จจริง)",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Zone 1: เริ่มภารกิจ & สร้างสมุดคุมงาน (Checklist)\nพิมพ์สั่งงานผ่านแชท หรือกดปุ่ม Test Workflow ได้เลย ระบบจะแตกโจทย์เป็น Checklist ย่อยให้เองเพื่อป้องกันไม่ให้ AI หยุดทำงานกลางคัน",
+        "height": 520,
+        "width": 700,
+        "color": 4
+      },
+      "id": "note-zone-1",
+      "name": "Sticky Note: Zone 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Zone 2: ตัวคัดแยกงานอัตโนมัติ (Hybrid Task Dispatcher)\nประเมินจากป้ายส่งไม้ต่อ + โมเดล `summarizer (:8092)` + ระบบ **Cross-Brain Rescue**\n- งาน **Cyber Security / Recon / VA** ส่งสายบนให้ **`Cyber-Model (:8091)`**\n- งาน **Coding / เขียนสคริปต์ / รายงาน** ส่งสายล่างให้ **`Orchestrator (:8090)`**",
+        "height": 520,
+        "width": 540,
+        "color": 5
+      },
+      "id": "note-zone-2",
+      "name": "Sticky Note: Zone 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        830,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Zone 3A: Brain B — `Cyber-Model (:8091)` (Cyber Security Specialist)\nรับผิดชอบงานเจาะระบบ, สำรวจพอร์ต/บริการ, วิเคราะห์ช่องโหว่ตาม WSTG, แกะ Binary (REA), ค้น CVE และแคปภาพหลักฐาน (ถอด/เสียบโหนดเครื่องมือด้านล่างได้อิสระ)",
+        "height": 470,
+        "width": 1240,
+        "color": 6
+      },
+      "id": "note-zone-3a",
+      "name": "Sticky Note: Zone 3A",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Zone 3B: Brain A — `Orchestrator (:8090)` (Orchestrator, Coding & Report Synthesis)\nรับผิดชอบงานเขียนโค้ด Python/Bash/JS, สร้างสคริปต์ PoC/Exploit ซับซ้อน, แก้บั๊ก, วิเคราะห์ระบบ และเรียบเรียงรายงาน `.docx` (ถอด/เสียบโหนดด้านล่างได้อิสระ)",
+        "height": 520,
+        "width": 1240,
+        "color": 3
+      },
+      "id": "note-zone-3b",
+      "name": "Sticky Note: Zone 3B",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Zone 4: Handover & Anti-Stall Watchdog (Completion Gate)\nตรวจว่า Checklist ครบทุกข้อและมีไฟล์หลักฐานจริงหรือยัง:\n- **ถ้ายังไม่เสร็จ (`false`)**: ยิงสายวนกลับไปปลุก **Zone 2 (`Task Dispatcher`)** เพื่อส่งงานให้ AI ตัวถัดไปอัตโนมัติ (ไม่หยุดรอคนพิมพ์!)\n- **ถ้าเสร็จครบจริง (`true`)**: จบงานและสรุปผล",
+        "height": 520,
+        "width": 840,
+        "color": 2
+      },
+      "id": "note-zone-4",
+      "name": "Sticky Note: Zone 4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "relay-chat-trigger",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        140,
+        220
+      ],
+      "webhookId": "dual-brain-relay-chat"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dsh-dual-brain",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "relay-dsh-webhook",
+      "name": "DeepSeek Harness Webhook (รับคำสั่งจาก DeepSeek UI :3080)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        140,
+        360
+      ],
+      "webhookId": "dsh-dual-brain"
+    },
+    {
+      "parameters": {},
+      "id": "relay-manual-trigger",
+      "name": "Manual Start (กดปุ่มรันทดสอบ)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-goal",
+              "name": "goal",
+              "value": "={{ $json.chatInput || $json.goal || ($json.body && ($json.body.goal || $json.body.chatInput || $json.body.prompt)) || 'สำรวจและตรวจสอบช่องโหว่ของเป้าหมาย http://host.docker.internal:18056 จากนั้นเขียนสคริปต์ Python PoC เพื่อทดสอบและสรุปผลการตรวจ' }}",
+              "type": "string"
+            },
+            {
+              "id": "cfg-target",
+              "name": "target_url",
+              "value": "={{ $json.target_url || ($json.body && $json.body.target_url) || 'http://host.docker.internal:18056' }}",
+              "type": "string"
+            },
+            {
+              "id": "cfg-max-iter",
+              "name": "max_iterations",
+              "value": "={{ $json.max_iterations || ($json.body && $json.body.max_iterations) || 30 }}",
+              "type": "number"
+            },
+            {
+              "id": "cfg-req-docx",
+              "name": "require_report_docx",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "relay-config-node",
+      "name": "1. ตั้งค่าภารกิจ & เพดานรอบ (Max 30 รอบ)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        370,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/relay/init",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"goal\": {{ JSON.stringify($json.goal) }},\n  \"target_url\": {{ JSON.stringify($json.target_url) }},\n  \"max_iterations\": {{ $json.max_iterations || 30 }},\n  \"require_report_docx\": {{ Boolean($json.require_report_docx) }}\n}",
+        "options": {}
+      },
+      "id": "relay-init-node",
+      "name": "2. สร้าง Session & แตก Checklist ย่อย",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/relay/dispatch",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"session_id\": {{ JSON.stringify($json.session_id) }}\n}",
+        "options": {}
+      },
+      "id": "relay-dispatcher-node",
+      "name": "3. ประเมินงาน & เลือกสมอง (Hybrid Task Dispatcher)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        890,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-is-cyber-model",
+              "leftValue": "={{ $json.selected_brain }}",
+              "rightValue": "cyber",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "relay-brain-switch",
+      "name": "4. แยกสายงาน: Cyber-Model (บน) vs Orchestrator (ล่าง)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1140,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agent_prompt }}",
+        "options": {
+          "systemMessage": "You are Cyber-Model (Brain B), the Cyber Security & Penetration Testing Specialist in a non-stop Dual-Brain Relay loop with Orchestrator (Brain A). Use your attached MCP and Plugin tools to execute the active security step thoroughly. Never stop without completing the step or handing over concrete findings. Always end your response with DONE_STEP, HANDOVER_TO (cyber-model or Orchestrator), HANDOVER_NOTE, and MISSION_STATUS."
+        }
+      },
+      "id": "agent-cyber-model",
+      "name": "Brain B: Cyber-Model (Cyber Security Agent)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1680,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "cyber-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "model-cyber-model",
+      "name": "Model: Cyber-Model (Local :8091)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1440,
+        340
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "litellm-local-cred",
+          "name": "LiteLLM Gateway (Local + Cloud Models)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('3. ประเมินงาน & เลือกสมอง (Hybrid Task Dispatcher)').item.json.session_id + '-cyber-model' }}",
+        "contextWindowLength": 14
+      },
+      "id": "mem-cyber-model",
+      "name": "Memory: Cyber-Model Context",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1600,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Run or search 150+ HexStrike pentest tools (nmap, nuclei, ffuf, curl, python, bash, etc.). Pass action='search' to find tools, action='describe' for schema, or action='run' with query_or_tool=<tool_name> and arguments=<JSON string of tool arguments>.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/hexstrike",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "action",
+              "value": "={{ $fromAI('action', 'search, describe, or run', 'string', 'search') }}"
+            },
+            {
+              "name": "query_or_tool",
+              "value": "={{ $fromAI('query_or_tool', 'Search keyword or exact HexStrike tool name', 'string', 'nmap') }}"
+            },
+            {
+              "name": "arguments",
+              "value": "={{ $fromAI('arguments', 'JSON string of arguments when action=run', 'string', '{}') }}"
+            }
+          ]
+        }
+      },
+      "id": "cyber-mcp-hexstrike",
+      "name": "mcp_hexstrike_tools",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "REA Reverse Engineering MCP (radare2, strings, objdump, file triage, YARA, decompile). Pass action='search', 'describe', or 'run' with query_or_tool and arguments JSON string.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/rea",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "action",
+              "value": "={{ $fromAI('action', 'search, describe, or run', 'string', 'search') }}"
+            },
+            {
+              "name": "query_or_tool",
+              "value": "={{ $fromAI('query_or_tool', 'Search keyword or exact REA tool name', 'string', 'triage') }}"
+            },
+            {
+              "name": "arguments",
+              "value": "={{ $fromAI('arguments', 'JSON string of arguments when action=run', 'string', '{}') }}"
+            }
+          ]
+        }
+      },
+      "id": "cyber-mcp-rea",
+      "name": "mcp_rea_reverse_engineering",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1920,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "CVE & Vulnerability Intelligence MCP (NVD, CISA KEV, EPSS, Exploit-DB). Pass action='search', 'describe', or 'run' with query_or_tool and arguments JSON string.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/cve",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "action",
+              "value": "={{ $fromAI('action', 'search, describe, or run', 'string', 'search') }}"
+            },
+            {
+              "name": "query_or_tool",
+              "value": "={{ $fromAI('query_or_tool', 'CVE ID, product keyword, or CVE tool name', 'string', 'cve') }}"
+            },
+            {
+              "name": "arguments",
+              "value": "={{ $fromAI('arguments', 'JSON string of arguments when action=run', 'string', '{}') }}"
+            }
+          ]
+        }
+      },
+      "id": "cyber-mcp-cve",
+      "name": "mcp_cve_vuln_intel",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        2080,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Shared Knowledge-Graph Memory across both AI brains. Pass action='search' or 'read' to query findings, or action='add' with name, entity_type, and observations to store findings.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/memory",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "action",
+              "value": "={{ $fromAI('action', 'search, add, or read', 'string', 'search') }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $fromAI('name', 'Entity name or search query', 'string', 'target') }}"
+            },
+            {
+              "name": "entity_type",
+              "value": "={{ $fromAI('entity_type', 'host, port, vuln, credential, or note', 'string', 'vuln') }}"
+            },
+            {
+              "name": "observations",
+              "value": "={{ $fromAI('observations', 'Observation text when action=add', 'string', '') }}"
+            }
+          ]
+        }
+      },
+      "id": "cyber-mcp-memory",
+      "name": "mcp_shared_kg_memory",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        2240,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Capture headless-Chromium screenshot of a URL into /evidence and optionally describe it with the local Vision model (Qwen2.5-VL).",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/screenshot",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "url",
+              "value": "={{ $fromAI('url', 'Target URL to screenshot', 'string') }}"
+            },
+            {
+              "name": "out",
+              "value": "={{ $fromAI('out', 'Output PNG filename in /evidence', 'string', 'shot_evidence.png') }}"
+            },
+            {
+              "name": "describe",
+              "value": "={{ Boolean($fromAI('describe', 'Also run local Vision OCR/description on the screenshot', 'boolean', true)) }}"
+            }
+          ]
+        }
+      },
+      "id": "cyber-plugin-shot",
+      "name": "plugin_web_screenshot_vision",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Run specialized PHP web assessment tools or specific PHP vulnerability scanners when testing targeted PHP applications.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/php2shell",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "tool",
+              "value": "={{ $fromAI('tool', 'php2shell tool name, e.g. php2shell_scan_vulnerability', 'string', 'php2shell_scan_vulnerability') }}"
+            },
+            {
+              "name": "target",
+              "value": "={{ $fromAI('target', 'Target base URL', 'string', 'http://host.docker.internal:18056') }}"
+            }
+          ]
+        }
+      },
+      "id": "cyber-plugin-php2shell",
+      "name": "plugin_php2shell_toolkit",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        2540,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agent_prompt }}",
+        "options": {
+          "systemMessage": "You are Orchestrator (Brain A), the Master Architect, Coding & Report Synthesis Specialist in a non-stop Dual-Brain Relay loop with Cyber-Model (Brain B). Write clean, complete scripts/PoCs, solve coding problems, or assemble the final report. When active security scanning, recon, or target verification is needed, hand over to cyber-model using HANDOVER_TO: cyber-model. Always end your response with DONE_STEP, HANDOVER_TO, HANDOVER_NOTE, and MISSION_STATUS."
+        }
+      },
+      "id": "agent-orchestrator",
+      "name": "Brain A: Orchestrator (Coding Agent)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1680,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "orchestrator",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "model-orchestrator",
+      "name": "Model: Orchestrator (Local :8090)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1440,
+        860
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "litellm-local-cred",
+          "name": "LiteLLM Gateway (Local + Cloud Models)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "nim",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "model-nim-backup",
+      "name": "Model สำรอง: NVIDIA NIM 120B (ลากสายมาเสียบแทนได้)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1440,
+        1000
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "litellm-local-cred",
+          "name": "LiteLLM Gateway (Local + Cloud Models)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('3. ประเมินงาน & เลือกสมอง (Hybrid Task Dispatcher)').item.json.session_id + '-gpt' }}",
+        "contextWindowLength": 14
+      },
+      "id": "mem-orchestrator",
+      "name": "Memory: Orchestrator Context",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1620,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Run Python/Bash scripts or CLI commands inside the HexStrike container. Pass action='search', 'describe', or 'run' with query_or_tool and arguments JSON string.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/hexstrike",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "action",
+              "value": "={{ $fromAI('action', 'search, describe, or run', 'string', 'search') }}"
+            },
+            {
+              "name": "query_or_tool",
+              "value": "={{ $fromAI('query_or_tool', 'Search keyword or exact HexStrike script/tool name', 'string', 'python') }}"
+            },
+            {
+              "name": "arguments",
+              "value": "={{ $fromAI('arguments', 'JSON string of arguments when action=run', 'string', '{}') }}"
+            }
+          ]
+        }
+      },
+      "id": "gpt-mcp-hexstrike",
+      "name": "mcp_hexstrike_scripts",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1780,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Search the web via SearXNG or fetch a URL to read documentation, CVEs, or code examples.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/search",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "action",
+              "value": "={{ $fromAI('action', 'web_search or fetch_url', 'string', 'web_search') }}"
+            },
+            {
+              "name": "query_or_url",
+              "value": "={{ $fromAI('query_or_url', 'Search query or full http/https URL', 'string', '') }}"
+            }
+          ]
+        }
+      },
+      "id": "gpt-mcp-search",
+      "name": "mcp_web_search_searxng",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1940,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Shared Knowledge-Graph Memory across both AI brains. Pass action='search' or 'read' to query findings, or action='add' with name, entity_type, and observations.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/memory",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "action",
+              "value": "={{ $fromAI('action', 'search, add, or read', 'string', 'search') }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $fromAI('name', 'Entity name or search query', 'string', 'target') }}"
+            },
+            {
+              "name": "entity_type",
+              "value": "={{ $fromAI('entity_type', 'host, port, vuln, credential, or note', 'string', 'script') }}"
+            },
+            {
+              "name": "observations",
+              "value": "={{ $fromAI('observations', 'Observation text when action=add', 'string', '') }}"
+            }
+          ]
+        }
+      },
+      "id": "gpt-mcp-memory",
+      "name": "mcp_shared_kg_memory_gpt",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        2100,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Flatten/dewarp and remove shadows from a document photo or PDF in /evidence using vFlat, and run local Vision OCR (Thai/English).",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/vflat",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "image_path",
+              "value": "={{ $fromAI('image_path', 'Filename in /evidence or path to image/PDF', 'string') }}"
+            },
+            {
+              "name": "dewarp",
+              "value": "={{ Boolean($fromAI('dewarp', 'True for 3D page dewarping', 'boolean', true)) }}"
+            },
+            {
+              "name": "ocr_with_vision",
+              "value": "={{ Boolean($fromAI('ocr_with_vision', 'Run local Vision model OCR after scanning', 'boolean', true)) }}"
+            }
+          ]
+        }
+      },
+      "id": "gpt-plugin-vflat",
+      "name": "plugin_vflat_document_ocr",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        2260,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Assemble a formatted TLP:AMBER (.docx) security report into /reports from JSON content and /evidence images.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/bridge/report",
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "report_name",
+              "value": "={{ $fromAI('report_name', 'Output report base name without extension', 'string', 'va_report') }}"
+            },
+            {
+              "name": "content_json",
+              "value": "={{ $fromAI('content_json', 'JSON string matching report_contract.md with titles, date, blocks', 'string', '') }}"
+            },
+            {
+              "name": "json_file_path",
+              "value": "={{ $fromAI('json_file_path', 'Optional path to report JSON file in /reports', 'string', '') }}"
+            }
+          ]
+        }
+      },
+      "id": "gpt-plugin-report",
+      "name": "plugin_tlp_docx_report_assembler",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        2440,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/relay/step-complete",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"output\": {{ JSON.stringify($json.output || $json.text || '') }}\n}",
+        "options": {}
+      },
+      "id": "relay-handover-updater",
+      "name": "5. บันทึกผล & อัปเดต Checklist (Handover Updater)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2740,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-mission-done",
+              "leftValue": "={{ $json.is_done }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "relay-completion-gate",
+      "name": "6. Completion Gate: งานครบทุกข้อจริงหรือยัง?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3000,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "final-status",
+              "name": "mission_status",
+              "value": "={{ $json.stop_reason }}",
+              "type": "string"
+            },
+            {
+              "id": "final-turns",
+              "name": "total_turns",
+              "value": "={{ $json.turn }}",
+              "type": "number"
+            },
+            {
+              "id": "final-checklist",
+              "name": "completed_checklist",
+              "value": "={{ $json.checklist }}",
+              "type": "array"
+            },
+            {
+              "id": "final-output",
+              "name": "output",
+              "value": "={{ 'ภารกิจเสร็จสมบูรณ์ (' + $json.turn + ' รอบผลัดไม้)\\n\\n' + ($json.last_output || '') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "relay-final-summary",
+      "name": "7. สรุปผลงานฉบับสมบูรณ์ (Mission Complete)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3280,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "1. ตั้งค่าภารกิจ & เพดานรอบ (Max 30 รอบ)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Harness Webhook (รับคำสั่งจาก DeepSeek UI :3080)": {
+      "main": [
+        [
+          {
+            "node": "1. ตั้งค่าภารกิจ & เพดานรอบ (Max 30 รอบ)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Start (กดปุ่มรันทดสอบ)": {
+      "main": [
+        [
+          {
+            "node": "1. ตั้งค่าภารกิจ & เพดานรอบ (Max 30 รอบ)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. ตั้งค่าภารกิจ & เพดานรอบ (Max 30 รอบ)": {
+      "main": [
+        [
+          {
+            "node": "2. สร้าง Session & แตก Checklist ย่อย",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. สร้าง Session & แตก Checklist ย่อย": {
+      "main": [
+        [
+          {
+            "node": "3. ประเมินงาน & เลือกสมอง (Hybrid Task Dispatcher)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. ประเมินงาน & เลือกสมอง (Hybrid Task Dispatcher)": {
+      "main": [
+        [
+          {
+            "node": "4. แยกสายงาน: Cyber-Model (บน) vs Orchestrator (ล่าง)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. แยกสายงาน: Cyber-Model (บน) vs Orchestrator (ล่าง)": {
+      "main": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model: Cyber-Model (Local :8091)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory: Cyber-Model Context": {
+      "ai_memory": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp_hexstrike_tools": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp_rea_reverse_engineering": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp_cve_vuln_intel": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp_shared_kg_memory": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "plugin_web_screenshot_vision": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "plugin_php2shell_toolkit": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain B: Cyber-Model (Cyber Security Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model: Orchestrator (Local :8090)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory: Orchestrator Context": {
+      "ai_memory": [
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp_hexstrike_scripts": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp_web_search_searxng": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp_shared_kg_memory_gpt": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "plugin_vflat_document_ocr": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "plugin_tlp_docx_report_assembler": {
+      "ai_tool": [
+        [
+          {
+            "node": "Brain A: Orchestrator (Coding Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Brain B: Cyber-Model (Cyber Security Agent)": {
+      "main": [
+        [
+          {
+            "node": "5. บันทึกผล & อัปเดต Checklist (Handover Updater)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Brain A: Orchestrator (Coding Agent)": {
+      "main": [
+        [
+          {
+            "node": "5. บันทึกผล & อัปเดต Checklist (Handover Updater)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. บันทึกผล & อัปเดต Checklist (Handover Updater)": {
+      "main": [
+        [
+          {
+            "node": "6. Completion Gate: งานครบทุกข้อจริงหรือยัง?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Completion Gate: งานครบทุกข้อจริงหรือยัง?": {
+      "main": [
+        [
+          {
+            "node": "7. สรุปผลงานฉบับสมบูรณ์ (Mission Complete)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "3. ประเมินงาน & เลือกสมอง (Hybrid Task Dispatcher)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

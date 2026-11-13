@@ -15,6 +15,8 @@ and runs them with
 Scripts resolve relative to THIS file: <dir>/php2shell-poc/{exploit,poc,scanner}.
 Default target: env PHP2SHELL_TARGET (fallback http://host.docker.internal:18056).
 """
+from __future__ import annotations
+
 import inspect
 import os
 import subprocess
@@ -282,7 +284,12 @@ TOOLS = [
 
 DISPATCH = {fn.__name__: fn for fn in TOOLS}
 
-_PY_JSON_TYPE = {int: "integer", bool: "boolean", float: "number", str: "string"}
+_PY_JSON_TYPE = {
+    int: "integer", "int": "integer",
+    bool: "boolean", "bool": "boolean",
+    float: "number", "float": "number",
+    str: "string", "str": "string",
+}
 
 
 def json_schema(fn) -> dict:

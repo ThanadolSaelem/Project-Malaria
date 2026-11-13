@@ -25,6 +25,8 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY}
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # ── ชั้นเครื่องมือ: server ที่รันเครื่องมือจริง (opt-in ผ่าน profile "full") ──
@@ -80,6 +82,12 @@ services:
       - ./php2shell-poc:/app/pipeline/php2shell-poc:ro
       # shot: tool proxy (browser อยู่ service แยก) — mount ให้แก้สดได้
       - ./shot_tools.py:/app/pipeline/shot_tools.py:ro
+      - ./vflat_tools.py:/app/pipeline/vflat_tools.py:ro
+      - ./report_tools.py:/app/pipeline/report_tools.py:ro
+      - ./node-config.json:/app/pipeline/node-config.json:ro
+      - ./reporting:/reporting:ro
+      - ./reports:/reports
+      - ./evidence:/evidence
     environment:
       HEXSTRIKE_SERVER: ${HEXSTRIKE_SERVER:-http://host.docker.internal:8888}
       MCP_HOST: 0.0.0.0
@@ -112,10 +120,10 @@ services:
       - "127.0.0.1:8002:8002"
     restart: unless-stopped
 
-  # ── ชั้นผู้ช่วยเขียน exploit (MCP over HTTP) ─────────────────────────────
-  # ให้ Tiel (orchestrator) delegate งานเขียน exploit/PoC/payload ไปโมเดล
-  # offensive เฉพาะทาง (ดีฟอลต์ BugTraceAI-CORE-Ultra-27B บน llama :8091) ผ่าน
-  # LiteLLM — expose ออกมาเป็น tool เดียว `ask_exploit_specialist`
+  # ── สะพานผู้เชี่ยวชาญแบบ stateless (MCP over HTTP) ─────────────────────────
+  # ask_exploit_specialist เป็นคำขอ single-turn ไปยัง local Cyber-Model (:8091).
+  # ask_coding_orchestrator ปิดไว้โดยดีฟอลต์ เพราะ Qwen Code เองใช้ Flint (:8090)
+  # และการเรียกกลับไปยัง slot เดียวกันแบบ synchronous อาจ deadlock.
   # reuse image เดียวกับ hexstrike-mcp (มี mcp SDK + requests อยู่แล้ว)
   specialist-mcp:
     build:
@@ -126,12 +134,17 @@ services:
       - ./specialist_mcp_http.py:/app/pipeline/specialist_mcp_http.py:ro
     environment:
       LITELLM_BASE: http://litellm:4000/v1   # เรียกผ่าน gateway ใน compose network
-      SPECIALIST_MODEL: exploit-specialist   # alias ใน litellm-config.yaml
-      SPECIALIST_TIMEOUT: 1200               # specialist เป็น reasoning 27B ตอบช้า ให้ถึง 20 นาที
+      SPECIALIST_MODEL: cyber-model          # alias ใน litellm-config.yaml (:8091)
+      ORCHESTRATOR_MODEL: orchestrator       # alias ใน litellm-config.yaml (:8090)
+      ALLOW_ORCHESTRATOR_DELEGATION: "0"      # ป้องกัน self-delegation จาก Flint (:8090)
+      CONTROL_PLANE_URL: http://host.docker.internal:8010
+      SPECIALIST_TIMEOUT: 1200               # specialist เป็น reasoning 27B/35B ตอบช้า ให้ถึง 20 นาที
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8003
     ports:
       - "127.0.0.1:8003:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - litellm
     restart: unless-stopped
@@ -249,6 +262,7 @@ services:
       dockerfile: pipeline/Dockerfile.cve-mcp
     volumes:
       - ./cve_mcp_router.py:/app/cve_mcp_router.py:ro   # router mount → แก้ได้ไม่ต้อง rebuild
+      - ./node-config.json:/app/node-config.json:ro
     environment:
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8009
@@ -258,67 +272,207 @@ services:
       - "127.0.0.1:8009:8009"
     restart: unless-stopped
 
-  # ── ชั้นรันโมเดล/harness ─────────────────────────────────────────────────
-  harnessrouter:
-    image: harnessrouter/harnessrouter:latest
-    ports:
-      - "127.0.0.1:3000:3000"
-    env_file:
-      - .env
-    environment:
-      # เชื่อ CA ภายในของ LLM cluster (Caddy ใช้ tls internal) เพื่อเรียก
-      # https://172.19.0.1:8443/v1 ได้โดยไม่ต้องปิดการตรวจ certificate
-      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/caddy-root.crt
-    volumes:
-      - harnessrouter-data:/data
-      - ./caddy-root.crt:/etc/ssl/certs/caddy-root.crt:ro
-    depends_on:
-      - litellm
-      - hexstrike-mcp
-    restart: unless-stopped
-
-  # ── deepseek-harness (orchestrator ทางเลือก — ขนาน harnessrouter) ─────────
-  #   รันใน container → bash/command tool ของ Tiel อยู่ "ใน container" (isolation)
-  #   + reproducible (host ไม่ต้องลง node/pnpm/npx) — ต่างจาก npx บน host เดิม
-  #   คุยกับ stack ด้วยชื่อ service: litellm:4000 / hexstrike-mcp:8001 / rea-mcp:8007
-  #   UI: http://localhost:3080  (token อยู่ใน: docker compose logs deepseek-harness)
-  deepseek-harness:
+  # ── qwen-code (Unified Orchestrator Harness & Web Studio) ───────────────
+  #   รันใน container เพื่อ isolation (คำสั่ง shell/python/tools ทำงานใน sandbox)
+  #   เชื่อมต่อ LiteLLM (:4000) และ MCP microservices (:8001-:8009)
+  #   Web Studio: http://localhost:3080 (token: malaria-qwen-token)
+  qwen-code:
     profiles: ["full"]
     build:
       context: ..
-      dockerfile: pipeline/Dockerfile.deepseek-harness
+      dockerfile: pipeline/Dockerfile.qwen-code
     ports:
-      - "127.0.0.1:3080:3080"
+      - "3080:3080"
     environment:
       LITELLM_KEY: ${LITELLM_KEY:-sk-local}
+      OPENAI_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_KEY:-sk-local}
+      OPENAI_MODEL: flint
+      QWEN_SERVER_TOKEN: ${QWEN_SERVER_TOKEN:-malaria-qwen-token}
+      QWEN_CODE_ENABLE_AGENT_TEAM: "0"
+      HOST_LAN_IP: ${HOST_LAN_IP:-}
     volumes:
-      # config (patch) จาก repo แบบ :ro ที่ path แยก → entrypoint copy ไปที่ profile (เขียนได้)
-      #   (ห้าม mount ทับ /dsh/profiles/web/cordis.patch.yml ตรง ๆ: UI เขียนทับไฟล์นั้นไม่ได้ → EBUSY)
-      - ./deepseek-harness/cordis.patch.yml:/config/cordis.patch.yml:ro
-      # system prompt → entrypoint ตัด wrapper แล้ววางเป็น /dsh/AGENTS.md (agent-instructions โหลดเอง)
+      - ./qwen-code/settings.json:/config/settings.json:ro
+      - ./qwen-code/agents:/config/agents:ro
       - ./cyber-operator.system.md:/config/cyber-operator.system.md:ro
-      # mount entrypoint ด้วย → แก้ logic entrypoint ได้โดยไม่ต้อง rebuild image (แค่ recreate)
-      - ./deepseek-harness/entrypoint.sh:/app/entrypoint.sh:ro
-      # report pipeline → Tiel เขียน content.json + รูป แล้วรัน assemble.py เองในตัว (python3+pillow ใน image)
-      - ./reporting:/reporting:ro      # engine+template (assemble.py / build_report.py / template.docx)
-      - ./reports:/reports             # output .docx + content.json (เขียนได้)
-      - ./evidence:/evidence           # รูปหลักฐานที่ figure อ้างถึง (เขียนได้)
-      # playbooks: baseline การตรวจ (WSTG v4.2) → Tiel อ่าน objective/ID ของแต่ละ test ได้
-      - ./playbooks:/playbooks:ro      # /playbooks/wstg-v4.2-checklist.md (97 tests, 12 หมวด)
-      # home/workspace ของ agent → persist ออก host. โมเดลชอบเขียนไฟล์ลง /root/<project>/...
-      #   (HOME ของ container) ซึ่งเป็น ephemeral layer → เดิมหายเกลี้ยงตอน --force-recreate.
-      #   mount ออก host ตรงนี้ = ทุกไฟล์ที่มันสร้าง (แม้ไม่ได้ใช้ /evidence,/reports) รอด recreate
-      #   relative path → Docker auto-create, ใช้ได้ทั้ง Mac/Windows ไม่ต้อง setup มือ (reproducible)
-      - ./dsh-workspace:/root          # = pipeline/dsh-workspace/ บน host (gitignored)
+      - ./qwen-code/entrypoint.sh:/app/entrypoint.sh:ro
+      - ./qwen-code/runtime:/host-net:ro
+      - ./reporting:/reporting:ro
+      - ./reports:/reports
+      - ./evidence:/evidence
+      - ./playbooks:/playbooks:ro
+      - ./skills:/skills:ro
+      - ./skills:/workspace/.qwen/skills:ro
+      - ./dsh-workspace:/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - litellm
       - hexstrike-mcp
       - rea-mcp
       - memory-mcp
+      - specialist-mcp
       - cve-mcp
       - search-mcp
     restart: unless-stopped
 
+  # ── artex-db (PostgreSQL database for ARTEX) ─────────────────────────────
+  artex-db:
+    profiles: ["full", "artex"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${ARTEX_PG_USER:-artex}
+      POSTGRES_PASSWORD: ${ARTEX_PG_PASSWORD:-artex_secure_password_malaria}
+      POSTGRES_DB: ${ARTEX_PG_DB:-artex}
+    volumes:
+      - artex-pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ARTEX_PG_USER:-artex} -d ${ARTEX_PG_DB:-artex}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── artex (AI Autonomous Penetration Testing Platform & Graph Dashboard) ──
+  #   Full-stack Go backend + Next.js web UI on http://localhost:8787
+  #   Features: Exploration Graph, Force-Directed Asset Coverage, Session Tracking,
+  #             Traffic Capture, Interception Approvals, Finding Quality Gate, RSI
+  artex:
+    profiles: ["full", "artex"]
+    build:
+      context: ./artex
+      dockerfile: Dockerfile
+      args:
+        ARTEX_VERSION: dev
+    image: artex:local
+    depends_on:
+      artex-db:
+        condition: service_healthy
+      litellm:
+        condition: service_started
+    environment:
+      ARTEX_PG_DSN: postgres://${ARTEX_PG_USER:-artex}:${ARTEX_PG_PASSWORD:-artex_secure_password_malaria}@artex-db:5432/${ARTEX_PG_DB:-artex}?sslmode=disable
+      ARTEX_LLM_PROVIDER: openai
+      ARTEX_LLM_BASE_URL: http://litellm:4000/v1
+      ARTEX_LLM_MODEL: ${ARTEX_LLM_MODEL:-cyber-model}
+      OPENAI_API_KEY: ${LITELLM_KEY:-sk-local}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ARTEX_JWT_KEY_DIR: /app/keys
+      ARTEX_BIND_ADDR: 0.0.0.0
+    ports:
+      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:8788:8788"
+    volumes:
+      - ./artex/data:/app/data
+      - ./artex/keys:/app/keys
+      - ./artex/skills:/app/skills
+      - ./evidence:/evidence
+      - ./reports:/reports
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ── scopesentry-mongodb (ScopeSentry ASM metadata store) ─────────────────
+  scopesentry-mongodb:
+    profiles: ["full", "scopesentry"]
+    image: mongo:7.0.4
+    container_name: scopesentry-mongodb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${SCOPESENTRY_MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${SCOPESENTRY_MONGO_PASSWORD:-scopesentry_mongo_malaria_2026}
+    volumes:
+      - scopesentry-mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── scopesentry-redis (ScopeSentry task queue & pub/sub) ─────────────────
+  scopesentry-redis:
+    profiles: ["full", "scopesentry"]
+    image: redis:7.0.11
+    container_name: scopesentry-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server --requirepass ${SCOPESENTRY_REDIS_PASSWORD:-scopesentry_redis_malaria_2026}
+    volumes:
+      - scopesentry-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${SCOPESENTRY_REDIS_PASSWORD:-scopesentry_redis_malaria_2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── scope-sentry (ASM & Recon platform server + Native MCP endpoint) ─────
+  #   Web UI on http://localhost:8082
+  #   MCP Endpoint on http://localhost:8082/mcp (or http://scope-sentry:8082/mcp)
+  scope-sentry:
+    profiles: ["full", "scopesentry"]
+    image: autumn27/scopesentry:latest
+    container_name: scope-sentry
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8082"
+    environment:
+      TIMEZONE: Asia/Bangkok
+      MONGODB_IP: scopesentry-mongodb
+      MONGODB_PORT: 27017
+      MONGODB_DATABASE: ScopeSentry
+      MONGODB_USER: ${SCOPESENTRY_MONGO_USER:-admin}
+      MONGODB_PASSWORD: ${SCOPESENTRY_MONGO_PASSWORD:-scopesentry_mongo_malaria_2026}
+      REDIS_IP: scopesentry-redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${SCOPESENTRY_REDIS_PASSWORD:-scopesentry_redis_malaria_2026}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      scopesentry-mongodb:
+        condition: service_healthy
+      scopesentry-redis:
+        condition: service_healthy
+    volumes:
+      - ./scopesentry/data/files:/opt/ScopeSentry/files
+      - ./scopesentry/data/images:/opt/ScopeSentry/images
+      - ./scopesentry/data/uploads:/opt/ScopeSentry/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── scopesentry-scan (ScopeSentry distributed scanner worker node) ───────
+  scopesentry-scan:
+    profiles: ["full", "scopesentry"]
+    image: autumn27/scopesentry-scan:latest
+    container_name: scopesentry-scan
+    restart: unless-stopped
+    environment:
+      NodeName: node-malaria
+      TimeZoneName: Asia/Bangkok
+      MONGODB_IP: scopesentry-mongodb
+      MONGODB_PORT: 27017
+      MONGODB_DATABASE: ScopeSentry
+      MONGODB_USER: ${SCOPESENTRY_MONGO_USER:-admin}
+      MONGODB_PASSWORD: ${SCOPESENTRY_MONGO_PASSWORD:-scopesentry_mongo_malaria_2026}
+      REDIS_IP: scopesentry-redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${SCOPESENTRY_REDIS_PASSWORD:-scopesentry_redis_malaria_2026}
+    depends_on:
+      - scopesentry-redis
+      - scope-sentry
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
-  harnessrouter-data:
   memory-data:
+  artex-pgdata:
+  scopesentry-mongodb-data:
+  scopesentry-redis-data:
+

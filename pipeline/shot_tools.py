@@ -13,6 +13,8 @@ Tiel calls it via the hexstrike router:
 
 env: SHOT_URL (default http://shot:9000)
 """
+from __future__ import annotations
+
 import inspect
 import json
 import os
@@ -90,7 +92,12 @@ def web_screenshot(
 TOOLS = [web_screenshot]
 DISPATCH = {fn.__name__: fn for fn in TOOLS}
 
-_PY_JSON_TYPE = {int: "integer", bool: "boolean", float: "number", str: "string"}
+_PY_JSON_TYPE = {
+    int: "integer", "int": "integer",
+    bool: "boolean", "bool": "boolean",
+    float: "number", "float": "number",
+    str: "string", "str": "string",
+}
 
 
 def json_schema(fn) -> dict:

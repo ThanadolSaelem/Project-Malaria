@@ -1,0 +1,313 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-11-11T10:12:07.950710+07:00",
+  "harnesses": {
+    "qwen-code": {
+      "enabled": true,
+      "label": "Qwen Code Studio",
+      "service": "qwen-code",
+      "port": 3080,
+      "url": "http://localhost:3080",
+      "default_model": "flint",
+      "connected_mcps": [
+        "hexstrike",
+        "rea",
+        "memory",
+        "cve",
+        "search",
+        "specialist",
+        "scopesentry"
+      ]
+    },
+    "artex": {
+      "enabled": true,
+      "label": "ARTEX Autonomous Pentest Platform",
+      "service": "artex",
+      "port": 8787,
+      "url": "http://localhost:8787",
+      "default_model": "cyber-model",
+      "connected_mcps": [
+        "hexstrike",
+        "rea",
+        "memory",
+        "cve",
+        "search",
+        "specialist",
+        "scopesentry"
+      ]
+    }
+  },
+  "gateway": {
+    "litellm": {
+      "enabled": true,
+      "label": "LiteLLM Model Router",
+      "service": "litellm",
+      "port": 4000,
+      "timeout": 1200,
+      "num_retries": 1,
+      "drop_params": true,
+      "fallbacks": []
+    }
+  },
+  "models": {
+    "gpt-oss-120b": {
+      "enabled": true,
+      "label": "Orchestrator (Coding :8090)",
+      "type": "local_llama",
+      "alias": "orchestrator",
+      "aliases": [
+        "orchestrator",
+        "flint",
+        "qwen2.5-coder-32b",
+        "qwen2.5-coder-14b",
+        "qwen2.5-coder",
+        "gpt-oss-120b",
+        "cybermodel",
+        "big-brain",
+        "local-cybertiel"
+      ],
+      "port": 8090,
+      "api_base": "http://host.docker.internal:8090/v1",
+      "api_key": "sk-local",
+      "target_model": "openai/cybermodel",
+      "expose_in_dsh": true,
+      "dsh_display_name": "Orchestrator (Coding & Synthesis)",
+      "sensitive_safe": true
+    },
+    "cyber-tiel": {
+      "enabled": true,
+      "label": "Cyber-Model (Cyber Security Specialist :8091)",
+      "type": "local_llama",
+      "alias": "cyber-model",
+      "aliases": [
+        "cyber-model",
+        "cyber-tiel",
+        "exploit-specialist"
+      ],
+      "port": 8091,
+      "api_base": "http://host.docker.internal:8091/v1",
+      "api_key": "sk-local",
+      "target_model": "openai/exploit-specialist",
+      "sandbox": true,
+      "expose_in_dsh": true,
+      "dsh_display_name": "Cyber-Model (Cyber Security)",
+      "supports_vision": true,
+      "sensitive_safe": true
+    },
+    "summarizer": {
+      "enabled": true,
+      "label": "Qwen2.5-3B (Observer Summarizer)",
+      "type": "local_llama",
+      "alias": "summarizer",
+      "aliases": [
+        "summarizer"
+      ],
+      "port": 8092,
+      "api_base": "http://host.docker.internal:8092/v1",
+      "api_key": "sk-local",
+      "target_model": "openai/summarizer",
+      "expose_in_dsh": false,
+      "sensitive_safe": true
+    },
+    "vision": {
+      "enabled": true,
+      "label": "Qwen2.5-VL-7B (Vision & OCR)",
+      "type": "local_llama",
+      "alias": "vision",
+      "aliases": [
+        "vision"
+      ],
+      "port": 8093,
+      "api_base": "http://host.docker.internal:8093/v1",
+      "api_key": "sk-local",
+      "target_model": "openai/vision",
+      "expose_in_dsh": true,
+      "dsh_display_name": "Vision (Qwen2.5-VL)",
+      "supports_vision": true,
+      "sensitive_safe": true
+    },
+    "nim": {
+      "enabled": true,
+      "label": "NVIDIA NIM (Nemotron VL 120B Cloud)",
+      "type": "cloud",
+      "alias": "nim",
+      "aliases": [
+        "nim"
+      ],
+      "api_base": "https://integrate.api.nvidia.com/v1",
+      "api_key_env": "NVIDIA_API_KEY",
+      "target_model": "nvidia_nim/nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "supports_vision": true,
+      "expose_in_dsh": true,
+      "dsh_display_name": "NIM (Nemotron VL Cloud)",
+      "sensitive_safe": false
+    },
+    "or-glm": {
+      "enabled": true,
+      "label": "OpenRouter (GLM-5.3 Cloud)",
+      "type": "cloud",
+      "alias": "or-glm",
+      "aliases": [
+        "or-glm"
+      ],
+      "api_key_env": "OPENROUTER_API_KEY",
+      "target_model": "openrouter/z-ai/glm-5.3",
+      "expose_in_dsh": true,
+      "dsh_display_name": "OpenRouter GLM-5.3 (Cloud)",
+      "sensitive_safe": false
+    }
+  },
+  "mcp_servers": {
+    "hexstrike": {
+      "enabled": true,
+      "label": "HexStrike MCP (150+ Pentest Tools)",
+      "service": "hexstrike-mcp",
+      "port": 8001,
+      "internal_url": "http://hexstrike-mcp:8001/mcp",
+      "host_url": "http://localhost:8001/mcp",
+      "timeout_ms": 300000,
+      "tool_rag": true,
+      "search_limit": 15,
+      "repeat_limit": 3,
+      "max_output_bytes": 20000,
+      "plugins": {
+        "php2shell": true,
+        "shot": true,
+        "vflat": true,
+        "reporting": true
+      },
+      "disabled_tools": []
+    },
+    "rea": {
+      "enabled": true,
+      "label": "REA MCP (Reverse Engineering 139 Tools)",
+      "service": "rea-mcp",
+      "port": 8007,
+      "internal_url": "http://rea-mcp:8007/mcp",
+      "host_url": "http://localhost:8007/mcp",
+      "timeout_ms": 300000,
+      "tool_rag": true,
+      "search_limit": 15,
+      "repeat_limit": 3,
+      "max_output_bytes": 20000,
+      "disabled_tools": []
+    },
+    "cve": {
+      "enabled": true,
+      "label": "CVE & Vuln-Intel MCP (NVD/EPSS/KEV)",
+      "service": "cve-mcp",
+      "port": 8009,
+      "internal_url": "http://cve-mcp:8009/mcp",
+      "host_url": "http://localhost:8009/mcp",
+      "timeout_ms": 120000,
+      "tool_rag": true,
+      "passive_osint_filter": true,
+      "search_limit": 15,
+      "repeat_limit": 3,
+      "max_output_bytes": 20000,
+      "disabled_tools": []
+    },
+    "search": {
+      "enabled": true,
+      "label": "Web Search MCP (SearXNG Self-Hosted)",
+      "service": "search-mcp",
+      "port": 8004,
+      "internal_url": "http://search-mcp:8004/mcp",
+      "host_url": "http://localhost:8004/mcp",
+      "timeout_ms": 60000,
+      "max_results": 8,
+      "fetch_max_chars": 6000
+    },
+    "memory": {
+      "enabled": true,
+      "label": "Knowledge-Graph Memory MCP",
+      "service": "memory-mcp",
+      "port": 8002,
+      "internal_url": "http://memory-mcp:8002/mcp",
+      "host_url": "http://localhost:8002/mcp",
+      "timeout_ms": 60000
+    },
+    "specialist": {
+      "enabled": true,
+      "label": "Exploit Specialist MCP Bridge",
+      "service": "specialist-mcp",
+      "port": 8003,
+      "internal_url": "http://specialist-mcp:8003/mcp",
+      "host_url": "http://localhost:8003/mcp",
+      "timeout_ms": 1200000,
+      "model": "exploit-specialist"
+    },
+    "scopesentry": {
+      "enabled": true,
+      "label": "ScopeSentry ASM & Recon MCP",
+      "service": "scope-sentry",
+      "port": 8082,
+      "internal_url": "http://scope-sentry:8082/mcp",
+      "host_url": "http://localhost:8082/mcp",
+      "header_auth": "X-API-Key",
+      "api_key_env": "SCOPESENTRY_API_KEY",
+      "timeout_ms": 60000,
+      "tool_rag": true,
+      "search_limit": 15,
+      "repeat_limit": 3,
+      "max_output_bytes": 20000,
+      "disabled_tools": []
+    }
+  },
+  "plugins": {
+    "php2shell": {
+      "enabled": true,
+      "label": "php2shell Toolkit (PHP Assessment)",
+      "module": "php2shell_tools",
+      "target_env": "PHP2SHELL_TARGET",
+      "default_target": "http://host.docker.internal:18056"
+    },
+    "shot": {
+      "enabled": true,
+      "label": "Web Screenshot + Vision (Playwright)",
+      "module": "shot_tools",
+      "service": "shot",
+      "port": 9000,
+      "vision_model": "vision"
+    },
+    "vflat": {
+      "enabled": true,
+      "label": "vFlat Document Dewarp & Vision OCR",
+      "module": "vflat_tools",
+      "service": "vflat-scan",
+      "port": 8006,
+      "threads": 4
+    },
+    "reporting": {
+      "enabled": true,
+      "label": "TLP:AMBER DOCX Report Assembler",
+      "module": "report_tools",
+      "template": "/reporting/template.docx",
+      "evidence_dir": "/evidence",
+      "reports_dir": "/reports"
+    }
+  },
+  "auxiliary_services": {
+    "hexstrike-server": {
+      "enabled": true,
+      "label": "HexStrike Kali Tool Server (150+ Tools)",
+      "service": "hexstrike-server",
+      "port": 8888
+    },
+    "scopesentry": {
+      "enabled": true,
+      "label": "ScopeSentry ASM Platform Web UI",
+      "service": "scope-sentry",
+      "port": 8082,
+      "url": "http://localhost:8082"
+    },
+    "observer": {
+      "enabled": true,
+      "label": "Observer Real-Time Dashboard (EN/TH)",
+      "type": "host_process",
+      "port": 8005,
+      "model": "summarizer",
+      "interval": 45
+    }
+  }
+}

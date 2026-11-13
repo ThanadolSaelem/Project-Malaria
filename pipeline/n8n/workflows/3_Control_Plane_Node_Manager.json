@@ -1,0 +1,87 @@
+{
+  "id": "malaria-control-plane-workflow",
+  "name": "3. System Control Plane (เช็คไฟเขียว/แดง · สลับ Tool-RAG · เปิด/ปิด Plugin · Restart Node)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cp-trigger",
+      "name": "Click to Inspect or Toggle Stack",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8010/api/topology",
+        "options": {}
+      },
+      "id": "cp-get-topology",
+      "name": "เช็คสถานะทุก Node (Models + MCPs + Plugins)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/node/toggle",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"target\": \"mcp:hexstrike\",\n  \"field\": \"tool_rag\",\n  \"value\": true\n}",
+        "options": {}
+      },
+      "id": "cp-toggle-rag",
+      "name": "สลับโหมด Tool-RAG (mcp:hexstrike / rea / cve)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/node/toggle",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"target\": \"plugin:php2shell\",\n  \"field\": \"enabled\",\n  \"value\": true\n}",
+        "options": {}
+      },
+      "id": "cp-toggle-plugin",
+      "name": "ถอด/เสียบ Sub-Plugin (php2shell / shot / vflat / reporting)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8010/api/node/action",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"id\": \"mcp:hexstrike\",\n  \"action\": \"restart\"\n}",
+        "options": {}
+      },
+      "id": "cp-restart-node",
+      "name": "สั่ง Start / Stop / Restart Node หรือ llama-server",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 380]
+    }
+  ],
+  "connections": {
+    "Click to Inspect or Toggle Stack": {
+      "main": [
+        [
+          {
+            "node": "เช็คสถานะทุก Node (Models + MCPs + Plugins)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

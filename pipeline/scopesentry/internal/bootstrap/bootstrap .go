@@ -1,0 +1,88 @@
+package bootstrap
+
+import (
+	"context"
+	"fmt"
+	"github.com/Autumn-27/ScopeSentry/internal/config"
+	"github.com/Autumn-27/ScopeSentry/internal/database/mongodb"
+	"go.mongodb.org/mongo-driver/bson"
+	"log"
+	"time"
+)
+
+// StartupEvent 启动事件处理函数
+type StartupEvent func(ctx context.Context) error
+
+var startupEvents []StartupEvent
+
+// RegisterStartupEvent 注册启动事件
+func RegisterStartupEvent(event StartupEvent) {
+	startupEvents = append(startupEvents, event)
+}
+
+// ExecuteStartupEvents 执行所有启动事件
+func ExecuteStartupEvents() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	for _, event := range startupEvents {
+		if err := event(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// 注册默认的启动事件
+func init() {
+	// 加载配置
+	//RegisterStartupEvent(func(ctx context.Context) error {
+	//	return config.Load()
+	//})
+
+	//// 初始化日志
+	//RegisterStartupEvent(func(ctx context.Context) error {
+	//	return logger.Init()
+	//})
+
+	// 初始化MongoDB
+	//RegisterStartupEvent(func(ctx context.Context) error {
+	//	return mongodb.Init()
+	//})
+
+	// 初始化Redis
+	//RegisterStartupEvent(func(ctx context.Context) error {
+	//	return redis.Init()
+	//})
+
+	RegisterStartupEvent(func(ctx context.Context) error {
+		return Banner()
+	})
+
+	//// 初始化数据库
+	RegisterStartupEvent(func(ctx context.Context) error {
+		return mongodb.CreateDatabase()
+	})
+
+	// 初始化通知接口
+	RegisterStartupEvent(func(ctx context.Context) error {
+		if err := mongodb.FindAll("notification", bson.M{"state": true}, bson.M{"_id": 0, "method": 1, "url": 1, "contentType": 1, "data": 1, "state": 1}, &config.NotificationApi); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	// 这里可以添加更多的启动事件
+	// 例如：初始化缓存、加载插件、启动定时任务等
+	err := ExecuteStartupEvents()
+	if err != nil {
+		log.Fatalf("Error during startup events: %v", err)
+		return
+	}
+}
+
+func Banner() error {
+	banner := "   _____                         _____            _              \n  / ____|                       / ____|          | |             \n | (___   ___ ___  _ __   ___  | (___   ___ _ __ | |_ _ __ _   _ \n  \\___ \\ / __/ _ \\| '_ \\ / _ \\  \\___ \\ / _ \\ '_ \\| __| '__| | | |\n  ____) | (_| (_) | |_) |  __/  ____) |  __/ | | | |_| |  | |_| |\n |_____/ \\___\\___/| .__/ \\___| |_____/ \\___|_| |_|\\__|_|   \\__, |\n                  | |                                       __/ |\n                  |_|                                      |___/ "
+	fmt.Println(banner)
+	return nil
+}
