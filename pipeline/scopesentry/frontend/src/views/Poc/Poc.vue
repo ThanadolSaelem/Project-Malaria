@@ -28,6 +28,7 @@ import { Dialog } from '@/components/Dialog'
 import { useUserStore } from '@/store/modules/user'
 import { RowState } from '@/api/asset/types'
 import { addTagApi, deleteTagApi } from '@/api/asset'
+import { scopeSentryApiPath } from '@/runtime'
 const searchicon = useIcon({ icon: 'iconoir:search' })
 const { t } = useI18n()
 const dialogVisible = ref(false)
@@ -344,7 +345,7 @@ const filterChange = async (newFilters: any) => {
           <ElUpload
             ref="upload"
             class="flex items-center"
-            action="/api/poc/data/import"
+            :action="scopeSentryApiPath('/api/poc/data/import')"
             :headers="uploadHeaders"
             :on-success="handleUploadSuccess"
             :limit="1"

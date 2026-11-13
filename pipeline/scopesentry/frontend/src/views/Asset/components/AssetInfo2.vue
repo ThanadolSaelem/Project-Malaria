@@ -41,6 +41,7 @@ import Csearch from '../search/Csearch.vue'
 import { createImageViewer } from '@/components/ImageViewer'
 import { AssetData, RowState } from '@/api/asset/types'
 import AssetDetail2 from '../detail/AssetDetail2.vue'
+import { scopeSentryStaticPath } from '@/runtime'
 import { url } from 'inspector'
 const { push } = useRouter()
 const { t } = useI18n()
@@ -328,7 +329,7 @@ let crudSchemas = reactive<CrudSchema[]>([
           </ElRow>
         )
       }
-      const st = '/images/icon/' + row.faviconmmh3 + '.png'
+      const st = scopeSentryStaticPath('/images/icon/' + row.faviconmmh3 + '.png')
       return (
         <ElRow gutter={20}>
           <ElCol span={2}>
@@ -537,7 +538,7 @@ let crudSchemas = reactive<CrudSchema[]>([
         return
       }
       if (row.ResponseBodyHash != '') {
-        const imageSrc = `/images/screenshots/${row.ResponseBodyHash}.png`
+        const imageSrc = scopeSentryStaticPath(`/images/screenshots/${row.ResponseBodyHash}.png`)
         return (
           <img
             key={`${row.id}-${row.ResponseBodyHash}`}
@@ -965,7 +966,7 @@ const confirmSelectedIcons = () => {
                   :key="icon.icon_hash"
                   class="icon-selection-img"
                 >
-                  <img :src="'/images/icon/' + icon.icon_hash + '.png'" />
+                  <img :src="scopeSentryStaticPath('/images/icon/' + icon.icon_hash + '.png')" />
                 </span>
                 <ElButton
                   class="float-confirm"
@@ -1000,7 +1001,7 @@ const confirmSelectedIcons = () => {
                     <ElBadge :value="iconItem.number" :max="99" style="font-size: 8px">
                       <ElTooltip :content="iconItem.icon_hash" placement="top-start">
                         <img
-                          :src="'/images/icon/' + iconItem.icon_hash + '.png'"
+                          :src="scopeSentryStaticPath('/images/icon/' + iconItem.icon_hash + '.png')"
                           alt="Icon"
                           style="width: 30px; height: 30px"
                           :class="{
@@ -1101,10 +1102,10 @@ const confirmSelectedIcons = () => {
           <!-- 图片元素，先隐藏，加载成功后再显示 -->
           <img
             v-show="imageLoadStates[site.ResponseBodyHash] === 'loaded'"
-            :src="`/images/screenshots/${site.ResponseBodyHash}.png`"
+            :src="scopeSentryStaticPath(`/images/screenshots/${site.ResponseBodyHash}.png`)"
             alt="screenshot"
             style="width: 100%; height: 100%; max-height: 270px"
-            @click="handleImageClick(`/images/screenshots/${site.ResponseBodyHash}.png`)"
+            @click="handleImageClick(scopeSentryStaticPath(`/images/screenshots/${site.ResponseBodyHash}.png`))"
             @load="handleImageLoad(site.ResponseBodyHash)"
             @error="handleImageError(site.ResponseBodyHash)"
           />
@@ -1112,7 +1113,7 @@ const confirmSelectedIcons = () => {
           <img
             v-if="imageLoadStates[site.ResponseBodyHash] !== 'loaded'"
             v-show="false"
-            :src="`/images/screenshots/${site.ResponseBodyHash}.png`"
+            :src="scopeSentryStaticPath(`/images/screenshots/${site.ResponseBodyHash}.png`)"
             @load="handleImageLoad(site.ResponseBodyHash)"
             @error="handleImageError(site.ResponseBodyHash)"
           />

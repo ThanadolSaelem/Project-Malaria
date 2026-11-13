@@ -6,6 +6,7 @@ import { useDesign } from '@/hooks/web/useDesign'
 import { useStorage } from '@/hooks/web/useStorage'
 import { getCssVar, setCssVar } from './utils'
 import { isDark } from '@/utils/is'
+import { getScopeSentryTheme, isScopeSentryEmbedded } from './runtime'
 
 const { getPrefixCls } = useDesign()
 
@@ -15,12 +16,25 @@ const appStore = useAppStore()
 
 const currentSize = computed(() => appStore.getCurrentSize)
 
+const darkMode = computed(() => appStore.getIsDark)
+
 const greyMode = computed(() => appStore.getGreyMode)
 
 const { getStorage } = useStorage('localStorage')
 
 // 根据浏览器当前主题设置系统主题色
 const setDefaultTheme = () => {
+  if (isScopeSentryEmbedded()) {
+    const embeddedIsDark = getScopeSentryTheme() === 'dark'
+    appStore.setIsDark(embeddedIsDark)
+    const color = getCssVar('--el-bg-color')
+    appStore.setMenuTheme(color)
+    appStore.setHeaderTheme(color)
+    const tagsViewEnabled = appStore.getTagsView
+    setCssVar('--tags-view-height', tagsViewEnabled ? '35px' : '0px')
+    return
+  }
+
   if (getStorage('isDark') !== null) {
     // 如果用户已经手动设置过主题，使用用户设置
     const isDarkValue = getStorage('isDark')
@@ -48,9 +62,14 @@ setDefaultTheme()
 </script>
 
 <template>
-  <ConfigGlobal :size="currentSize">
-    <RouterView :class="greyMode ? `${prefixCls}-grey-mode` : ''" />
-  </ConfigGlobal>
+  <div
+    :class="['scope-sentry-root', darkMode ? 'dark scope-sentry-dark' : 'light scope-sentry-light']"
+    data-scopesentry-root
+  >
+    <ConfigGlobal :size="currentSize">
+      <RouterView :class="greyMode ? `${prefixCls}-grey-mode` : ''" />
+    </ConfigGlobal>
+  </div>
 </template>
 
 <style lang="less">
@@ -61,16 +80,16 @@ setDefaultTheme()
   height: 100%;
 }
 
-html,
-body {
+.scope-sentry-root {
   padding: 0 !important;
   margin: 0;
   overflow: hidden;
   .size;
+  isolation: isolate;
+}
 
-  #app {
-    .size;
-  }
+#app {
+  .size;
 }
 
 .@{prefix-cls}-grey-mode {

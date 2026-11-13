@@ -31,6 +31,7 @@ import { delDataApi } from '@/api/asset'
 import { useRoute } from 'vue-router'
 import { defineProps, defineEmits } from 'vue'
 import { CrudSchema } from '@/hooks/web/useCrudSchemas'
+import { scopeSentryStaticPath } from '@/runtime'
 import AddTask from '../../Task/components/AddTask.vue'
 const { t } = useI18n()
 const { query } = useRoute()
@@ -576,7 +577,7 @@ const openCreateTask = async () => {
           >
             <template v-if="tag.startsWith('icon=')">
               <img
-                :src="'/images/icon/' + tag.split('=')[1] + '.png'"
+                :src="scopeSentryStaticPath('/images/icon/' + tag.split('=')[1] + '.png')"
                 :alt="tag"
                 style="width: 20px; height: 20px; vertical-align: middle"
               />

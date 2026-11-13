@@ -1,9 +1,10 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
+import { createMemoryHistory, createRouter, createWebHashHistory } from 'vue-router'
+import type { RouteRecordRaw, RouterHistory } from 'vue-router'
 import type { App } from 'vue'
 import { Layout, getParentLayout } from '@/utils/routerHelper'
 import { useI18n } from '@/hooks/web/useI18n'
 import { NO_RESET_WHITE_LIST } from '@/constants'
+import { isScopeSentryEmbedded } from '@/runtime'
 
 const { t } = useI18n()
 
@@ -52,6 +53,17 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
       hidden: true,
       title: '404',
       noTagsView: true
+    }
+  },
+  {
+    path: '/map',
+    component: () => import('@/views/Map/Map.vue'),
+    name: 'ScopeSentryMap',
+    meta: {
+      hidden: true,
+      title: 'Map',
+      noTagsView: true,
+      noCache: true
     }
   }
 ]
@@ -385,12 +397,15 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
   }
 ]
 
-const router = createRouter({
-  history: createWebHashHistory(),
-  strict: true,
-  routes: constantRouterMap as RouteRecordRaw[],
-  scrollBehavior: () => ({ left: 0, top: 0 })
-})
+export const createScopeSentryRouter = (history?: RouterHistory) =>
+  createRouter({
+    history: history || (isScopeSentryEmbedded() ? createMemoryHistory() : createWebHashHistory()),
+    strict: true,
+    routes: constantRouterMap as RouteRecordRaw[],
+    scrollBehavior: () => ({ left: 0, top: 0 })
+  })
+
+const router = createScopeSentryRouter()
 
 export const resetRouter = (): void => {
   router.getRoutes().forEach((route) => {
@@ -401,8 +416,8 @@ export const resetRouter = (): void => {
   })
 }
 
-export const setupRouter = (app: App<Element>) => {
-  app.use(router)
+export const setupRouter = (app: App<Element>, routerInstance = router) => {
+  app.use(routerInstance)
 }
 
 export default router

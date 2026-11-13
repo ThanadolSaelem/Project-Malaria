@@ -1,3 +1,5 @@
+import { getScopeSentryStyleRoot } from '@/runtime'
+
 /**
  *
  * @param component 需要注册的组件
@@ -41,14 +43,14 @@ export const humpToDash = (str: string): string => {
   return str.replace(/([A-Z])/g, '-$1').toLowerCase()
 }
 
-export const setCssVar = (prop: string, val: any, dom = document.documentElement) => {
+export const setCssVar = (prop: string, val: any, dom = getScopeSentryStyleRoot()) => {
   dom.style.setProperty(prop, val)
 }
 
 /**
  * 查找数组对象的某个下标
  * @param {Array} ary 查找的数组
- * @param {Functon} fn 判断的方法
+ * @param {Functon} fn 判断函数
  */
 // eslint-disable-next-line
 export const findIndex = <T = Recordable>(ary: Array<T>, fn: Fn): number => {
@@ -70,7 +72,7 @@ export const trim = (str: string) => {
   return str.replace(/(^\s*)|(\s*$)/g, '')
 }
 
-export const getCssVar = (prop: string, dom = document.documentElement) => {
+export const getCssVar = (prop: string, dom = getScopeSentryStyleRoot()) => {
   return getComputedStyle(dom).getPropertyValue(prop)
 }
 /**
@@ -110,8 +112,8 @@ export function formatTime(time: Date | number | string, fmt: string) {
  */
 export function toAnyString() {
   const str: string = 'xxxxx-xxxxx-4xxxx-yxxxx-xxxxx'.replace(/[xy]/g, (c: string) => {
-    const r: number = (Math.random() * 16) | 0
-    const v: number = c === 'x' ? r : (r & 0x3) | 0x8
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
     return v.toString()
   })
   return str

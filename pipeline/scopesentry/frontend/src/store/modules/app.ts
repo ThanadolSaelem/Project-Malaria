@@ -6,6 +6,7 @@ import { colorIsDark, hexToRGB, lighten, mix } from '@/utils/color'
 import { unref } from 'vue'
 import { useCssVar } from '@vueuse/core'
 import { useStorage } from '@/hooks/web/useStorage'
+import { getScopeSentryStyleRoot } from '@/runtime'
 
 const { setStorage } = useStorage('localStorage')
 
@@ -240,12 +241,13 @@ export const useAppStore = defineStore('app', {
       this.isDark = isDark
       // 保存到 localStorage
       setStorage('isDark', isDark)
+      const styleRoot = getScopeSentryStyleRoot()
       if (this.isDark) {
-        document.documentElement.classList.add('dark')
-        document.documentElement.classList.remove('light')
+        styleRoot.classList.add('dark')
+        styleRoot.classList.remove('light')
       } else {
-        document.documentElement.classList.add('light')
-        document.documentElement.classList.remove('dark')
+        styleRoot.classList.add('light')
+        styleRoot.classList.remove('dark')
       }
       this.setPrimaryLight()
     },
@@ -276,7 +278,7 @@ export const useAppStore = defineStore('app', {
       }
     },
     setMenuTheme(color: string) {
-      const primaryColor = useCssVar('--el-color-primary', document.documentElement)
+      const primaryColor = useCssVar('--el-color-primary', getScopeSentryStyleRoot())
       const isDarkColor = colorIsDark(color)
       const theme: Recordable = {
         // 左侧菜单边框颜色

@@ -18,6 +18,7 @@ import { Dialog } from '@/components/Dialog'
 import { defineProps } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { deleteProjectApi } from '@/api/project'
+import { scopeSentryStaticPath } from '@/runtime'
 import AddProject from './AddProject.vue'
 import { useIcon } from '@/hooks/web/useIcon'
 import { useRouter } from 'vue-router'
@@ -168,7 +169,7 @@ const action = (id: string) => {
             <ElCheckbox :value="row.id" class="pr-16px" v-if="multipleSelection" />
             <div class="pr-16px">
               <template v-if="row.logo != ''">
-                <ElAvatar :src="row.logo" class="avatar" fit="cover" />
+                <ElAvatar :src="scopeSentryStaticPath(row.logo)" class="avatar" fit="cover" />
               </template>
               <template v-else>
                 <ElAvatar class="avatar avatar-placeholder"> {{ row.name.charAt(0) }} </ElAvatar>

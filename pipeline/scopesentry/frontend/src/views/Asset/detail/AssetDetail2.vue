@@ -20,6 +20,7 @@ import { getAssetChangeLogApi, getAssetDetailApi } from '@/api/asset'
 import { ref } from 'vue'
 import { AssetChangeLog } from '@/api/asset/types'
 import { createImageViewer } from '@/components/ImageViewer'
+import { scopeSentryStaticPath } from '@/runtime'
 const extensions = [javascript(), oneDark]
 const props = defineProps<{
   id: string
@@ -53,7 +54,7 @@ const getAssetChangeLog = async () => {
 getAssetChangeLog()
 const handleImageClick = (screenshot: string) => {
   createImageViewer({
-    urlList: [screenshot],
+    urlList: [scopeSentryStaticPath(screenshot)],
     zIndex: 999999
   })
 }
@@ -128,7 +129,7 @@ const handleImageClick = (screenshot: string) => {
                             <strong>{{ change.fieldname }}:</strong>
                             <template v-if="change.fieldname === 'Screenshot'">
                               <img
-                                :src="change.old"
+                                :src="scopeSentryStaticPath(change.old)"
                                 alt="screenshot"
                                 style="width: 100%; height: auto; max-height: 250px"
                                 @click="handleImageClick(change.old)"
@@ -156,7 +157,7 @@ const handleImageClick = (screenshot: string) => {
                             <strong>{{ change.fieldname }}:</strong>
                             <template v-if="change.fieldname === 'Screenshot'">
                               <img
-                                :src="change.new"
+                                :src="scopeSentryStaticPath(change.new)"
                                 alt="screenshot"
                                 style="width: 100%; height: auto; max-height: 250px"
                                 @click="handleImageClick(change.new)"

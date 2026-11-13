@@ -45,6 +45,7 @@ import {
 } from '@/api/plugins'
 import detail from './detail.vue'
 import { useUserStore } from '@/store/modules/user'
+import { scopeSentryApiPath } from '@/runtime'
 
 const searchicon = useIcon({ icon: 'iconoir:search' })
 const { t } = useI18n()
@@ -691,7 +692,7 @@ const handleFileChange = (_file, fileList) => {
           <ElUpload
             ref="upload"
             class="flex items-center"
-            :action="'/api/plugin/import?key=' + (pluginKey || '')"
+            :action="scopeSentryApiPath('/api/plugin/import?key=' + (pluginKey || ''))"
             :headers="uploadHeaders"
             :on-success="handleUploadSuccess"
             :limit="1"

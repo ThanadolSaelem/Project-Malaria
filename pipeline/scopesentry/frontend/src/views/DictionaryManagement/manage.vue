@@ -27,6 +27,7 @@ import {
   getManagetListApi
 } from '@/api/DictionaryManagement'
 import { useUserStore } from '@/store/modules/user'
+import { scopeSentryApiPath } from '@/runtime'
 const { t } = useI18n()
 const userStore = useUserStore()
 const uploadHeaders = { Authorization: `${userStore.getToken}` }
@@ -68,7 +69,7 @@ const nodeColums = reactive<TableColumn[]>([
     field: 'upload',
     label: t('common.upload'),
     formatter: (row, __: TableColumn, _: string) => {
-      const uploadAction = `/api/dictionary/manage/save?id=${row.id}`
+      const uploadAction = scopeSentryApiPath(`/api/dictionary/manage/save?id=${row.id}`)
       return h('div', [
         h(
           ElUpload,

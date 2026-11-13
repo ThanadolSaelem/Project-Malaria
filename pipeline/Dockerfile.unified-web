@@ -1,0 +1,148 @@
+# =============================================================================
+# Project-Malaria unified web — source-only multi-stage build contract
+# -----------------------------------------------------------------------------
+# Build context: repository root (the Compose definition uses context: ..).
+# This Dockerfile is intentionally declarative. No image build or dependency
+# installation is performed during the source-only integration task.
+#
+# Canonical mode is a normal Next server build (NEXT_EXPORT=0), not the legacy
+# static-export branch. The final image keeps the repository-root-traced
+# pipeline/unified-web/server.js nesting and copies .next/static and public at
+# that same project nesting.
+# =============================================================================
+
+ARG NODE_BASE=docker.io/library/node:22-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+
+# -----------------------------------------------------------------------------
+# Qwen source build
+# -----------------------------------------------------------------------------
+# The supplied Qwen workspace owns the pnpm 11.24.0 package-manager pin and a
+# checked-in pnpm-lock.yaml. Its normal build recursively builds the SDK and
+# Web Shell workspaces; the Web Shell build runs both its application/library
+# Vite passes and the scoped-CSS injection pass in vite.lib.config.ts. No Java
+# managed-agent build or managed runtime is enabled here.
+FROM ${NODE_BASE} AS qwen-builder
+
+ARG APT_MIRROR=
+RUN set -eux; \
+  if [ -n "${APT_MIRROR}" ]; then \
+    for sources in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+      if [ -f "${sources}" ]; then sed -i "s|deb.debian.org|${APT_MIRROR}|g" "${sources}"; fi; \
+    done; \
+  fi; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends python3 make g++ git ca-certificates; \
+  apt-get clean; \
+  rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/pipeline/qwen-source
+COPY pipeline/qwen-source/ ./
+
+# QWEN_SKIP_PREPARE avoids the install-time duplicate prepare build. The
+# explicit source build is still lifecycle-complete: package scripts are not
+# skipped, and pnpm's checked-in allowBuilds policy remains authoritative.
+RUN set -eux; \
+  QWEN_SKIP_PREPARE=1 corepack pnpm install --frozen-lockfile --reporter=append-only; \
+  npm run build; \
+  test -f packages/sdk-typescript/dist/index.mjs; \
+  test -f packages/sdk-typescript/dist/index.d.ts; \
+  test -f packages/web-shell/dist/index.js; \
+  test -f packages/web-shell/dist/standalone-host.js; \
+  test -d packages/web-shell/dist/types; \
+  test -f packages/web-shell/NOTICES.txt
+
+# -----------------------------------------------------------------------------
+# ScopeSentry native module build
+# -----------------------------------------------------------------------------
+FROM ${NODE_BASE} AS scopesentry-builder
+
+WORKDIR /workspace/pipeline/scopesentry/frontend
+COPY pipeline/scopesentry/frontend/ ./
+# Native Map preparation reads these original static inputs and emits adapted
+# copies under unified-web/public; the backend originals are not rewritten.
+COPY pipeline/scopesentry/cmd/main/static/ /workspace/pipeline/scopesentry/cmd/main/static/
+
+# The supplied frontend declares pnpm@9.1.1 but currently carries only an npm
+# package-lock.json. Do not invent pnpm-lock.yaml, use npm ci, loosen frozen
+# mode, or bypass lifecycle policy. A later explicitly authorized operation
+# must first import/regenerate the pnpm lockfile (for example, with the pinned
+# pnpm 9.1.1: `pnpm import` from package-lock.json followed by a lockfile-only
+# review). Until that operation lands, this source Dockerfile must fail closed.
+RUN set -eux; \
+  test -f pnpm-lock.yaml || { \
+    echo >&2 'ScopeSentry build blocked: pnpm-lock.yaml is absent.'; \
+    echo >&2 'Pending authorized operation: pnpm@9.1.1 import package-lock.json and review the regenerated lockfile in the worktree.'; \
+    exit 86; \
+  }
+
+# module.build.ts emits the complete JS/CSS/dynamic-chunk tree directly into
+# unified-web/public/_modules/scopesentry. No output is renamed or flattened.
+RUN set -eux; \
+  mkdir -p /workspace/pipeline/unified-web/public/_modules/scopesentry; \
+  corepack pnpm install --frozen-lockfile --reporter=append-only; \
+  corepack pnpm run build:module; \
+  test -f /workspace/pipeline/unified-web/public/_modules/scopesentry/module.js; \
+  test -f /workspace/pipeline/unified-web/public/_modules/scopesentry/module.css
+
+# -----------------------------------------------------------------------------
+# Unified host build
+# -----------------------------------------------------------------------------
+FROM ${NODE_BASE} AS web-builder
+
+WORKDIR /workspace
+
+# Preserve the supplied local Qwen package paths used by unified-web. The
+# source builder contributes generated dist plus package source/license files;
+# npm's install-links=true in unified-web/.npmrc makes local package copies,
+# rather than React-sensitive symlinks, during the later authorized npm ci.
+COPY --from=qwen-builder /workspace/pipeline/qwen-source/packages/web-shell /workspace/pipeline/qwen-source/packages/web-shell
+COPY --from=qwen-builder /workspace/pipeline/qwen-source/packages/sdk-typescript /workspace/pipeline/qwen-source/packages/sdk-typescript
+
+# Keep package metadata separate for Docker layer reuse. The current
+# package-lock.json is intentionally stale relative to the approved local
+# package declarations; npm ci below is therefore a future reproducible gate,
+# not an install performed by this source-only task. Do not replace it with
+# npm install or silently refresh the lockfile in the image build.
+COPY pipeline/unified-web/package.json pipeline/unified-web/package-lock.json pipeline/unified-web/.npmrc /workspace/pipeline/unified-web/
+COPY pipeline/unified-web/ /workspace/pipeline/unified-web/
+
+# The lockfile must be regenerated by the later approved npm operation before
+# this reproducible install can succeed. npm@11.6.2 is selected by the
+# packageManager field in unified-web/package.json.
+WORKDIR /workspace/pipeline/unified-web
+RUN corepack npm ci --include=dev
+
+# Copy every emitted ScopeSentry public asset before Next traces/builds the
+# application. This includes module.js, module.css, dynamic chunks, and assets.
+COPY --from=scopesentry-builder /workspace/pipeline/unified-web/public/_modules/scopesentry/ /workspace/pipeline/unified-web/public/_modules/scopesentry/
+
+WORKDIR /workspace/pipeline/unified-web
+# NEXT_EXPORT=0 is the canonical unified runtime. NEXT_EXPORT=1 remains the
+# optional legacy static branch in next.config.mjs but is never selected here.
+RUN NEXT_EXPORT=0 npm run build
+
+# -----------------------------------------------------------------------------
+# Minimal normal-Next runtime
+# -----------------------------------------------------------------------------
+FROM ${NODE_BASE} AS runtime
+
+ENV NODE_ENV=production \
+    NEXT_EXPORT=0 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
+
+# outputFileTracingRoot points at the repository root, so Next emits the
+# standalone server under .next/standalone/pipeline/unified-web/server.js.
+# Copying that directory at /app preserves the required nested project path.
+WORKDIR /app
+COPY --from=web-builder /workspace/pipeline/unified-web/.next/standalone/ /app/
+COPY --from=web-builder /workspace/pipeline/unified-web/.next/static /app/pipeline/unified-web/.next/static
+COPY --from=web-builder /workspace/pipeline/unified-web/public/ /app/pipeline/unified-web/public/
+# Preserve the host's license notice in the runtime artifact without shipping
+# the source/build toolchain.
+COPY --from=web-builder /workspace/pipeline/unified-web/LICENSE /app/pipeline/unified-web/LICENSE
+
+WORKDIR /app/pipeline/unified-web
+USER node
+EXPOSE 3000
+CMD ["node", "server.js"]

@@ -470,6 +470,45 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # ── unified web host (non-exposed integration service) ────────────────────
+  # Canonical normal Next standalone server. The optional static-export branch
+  # remains source-declared but is not selected by this service.
+  unified-web:
+    profiles: ["full", "unified"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.unified-web
+    environment:
+      NODE_ENV: production
+      NEXT_EXPORT: "0"
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    expose:
+      - "3000"
+    restart: unless-stopped
+
+  # ── unified namespace gateway (non-exposed integration service) ───────────
+  # No host port or host-network mode is declared. Observer stays fail-closed
+  # until a user-approved local topology proves the native loopback boundary.
+  unified-gateway:
+    profiles: ["full", "unified"]
+    build:
+      context: ..
+      dockerfile: pipeline/Dockerfile.unified-gateway
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BIND: 0.0.0.0
+      FRONTEND_TARGET: http://unified-web:3000
+      QWEN_TARGET: http://qwen-code:3080
+      ARTEX_TARGET: http://artex:8787
+      SCOPESENTRY_TARGET: http://scope-sentry:8082
+      OBSERVER_TARGET: http://127.0.0.1:8005
+      OBSERVER_ENABLED: "0"
+    expose:
+      - "3000"
+    restart: unless-stopped
+
 volumes:
   memory-data:
   artex-pgdata:

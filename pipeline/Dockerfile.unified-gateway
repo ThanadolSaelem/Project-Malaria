@@ -1,0 +1,27 @@
+# Project-Malaria unified gateway — source-only declaration
+#
+# The gateway intentionally has no third-party runtime dependencies. The
+# runtime worker owns compose service wiring and port exposure; this Dockerfile
+# does not add or change those mappings. Keep the same digest-pinned Node 22
+# base as the source-built Qwen image so integration does not silently switch
+# runtime families.
+FROM docker.io/library/node:22-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    BIND=0.0.0.0 \
+    FRONTEND_TARGET=http://unified-web:3000 \
+    QWEN_TARGET=http://qwen-code:3080 \
+    ARTEX_TARGET=http://artex:8787 \
+    SCOPESENTRY_TARGET=http://scope-sentry:8082 \
+    OBSERVER_TARGET=http://127.0.0.1:8005 \
+    OBSERVER_ENABLED=0
+
+WORKDIR /app
+COPY pipeline/unified-gateway/package.json ./package.json
+COPY pipeline/unified-gateway/README.md ./README.md
+COPY pipeline/unified-gateway/src ./src
+
+USER node
+EXPOSE 3000
+CMD ["node", "src/server.mjs"]

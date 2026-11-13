@@ -1,4 +1,4 @@
-:root {
+.scope-sentry-root {
   --login-bg-color: #293146;
 
   /* left menu start */
@@ -56,6 +56,7 @@
   --transition-time-02: 0.2s;
 }
 
-.dark {
+.scope-sentry-root.dark,
+.scope-sentry-root.scope-sentry-dark {
   --app-content-bg-color: var(--el-bg-color);
 }

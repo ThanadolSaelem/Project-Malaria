@@ -18,6 +18,7 @@ import RootDomain from './components/RootDomain.vue'
 import APP from './components/APP.vue'
 import MP from './components/MP.vue'
 import IP from './components/IP.vue'
+import { navigateScopeSentry } from '@/runtime'
 const { t } = useI18n()
 interface Project {
   value: string
@@ -47,7 +48,7 @@ getTaskList()
 const handleTabClick = (tab: any) => {
   if (tab.paneName === 'map') {
     // 跳转到同一网站的map项目
-    window.location.href = '/map'
+    navigateScopeSentry('/map')
   }
 }
 </script>

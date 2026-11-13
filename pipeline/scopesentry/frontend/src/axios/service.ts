@@ -5,8 +5,9 @@ import { AxiosInstance, InternalAxiosRequestConfig, RequestConfig, AxiosResponse
 import { ElMessage } from 'element-plus'
 import { REQUEST_TIMEOUT } from '@/constants'
 import { useUserStoreWithOut } from '@/store/modules/user'
+import { getScopeSentryApiBasePath } from '@/runtime'
 
-export const PATH_URL = import.meta.env.VITE_API_BASE_PATH
+export const PATH_URL = getScopeSentryApiBasePath()
 
 const abortControllerMap: Map<string, AbortController> = new Map()
 
