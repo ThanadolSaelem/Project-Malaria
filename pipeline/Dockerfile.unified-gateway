@@ -14,8 +14,9 @@ ENV NODE_ENV=production \
     QWEN_TARGET=http://qwen-code:3080 \
     ARTEX_TARGET=http://artex:8787 \
     SCOPESENTRY_TARGET=http://scope-sentry:8082 \
-    OBSERVER_TARGET=http://127.0.0.1:8005 \
-    OBSERVER_ENABLED=0
+    OBSERVER_TARGET=http://host.docker.internal:8005 \
+    OBSERVER_ENABLED=0 \
+    OBSERVER_ALLOW_DOCKER_BRIDGE=1
 
 WORKDIR /app
 COPY pipeline/unified-gateway/package.json ./package.json

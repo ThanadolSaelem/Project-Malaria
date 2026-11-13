@@ -1,55 +1,18 @@
 # =============================================================================
-# Qwen Code Studio — source-built unified orchestrator harness
+# Qwen Code Studio — Unified Orchestrator Harness (Docker Isolation)
 # -----------------------------------------------------------------------------
-# The supplied Qwen source is built from pipeline/qwen-source and packaged into
-# the runtime image. The runtime still exposes the same qwen serve endpoint and
-# keeps the existing Project-Malaria bootstrap and operational mounts.
+# Replaces legacy harnesses with Qwen Code Studio inside Docker.
+# Shell commands and code execution run in container sandbox for safety.
+# Communicates with LiteLLM (:4000) and internal MCP microservices (:8001-:8009).
 # =============================================================================
-
-# Build the exact supplied Qwen source (0.27.1) with its checked-in lockfile and
-# pnpm@11.24.0 package-manager policy. This stage is intentionally not shipped.
-FROM docker.io/library/node:22-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS qwen-builder
+FROM node:22-bookworm-slim
 
 ARG APT_MIRROR=
-
-RUN set -e; \
-  if [ -n "${APT_MIRROR}" ]; then \
-    for sources in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
-      if [ -f "${sources}" ]; then sed -i "s|deb.debian.org|${APT_MIRROR}|g" "${sources}"; fi; \
-    done; \
-  fi; \
-  apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    git \
-    ca-certificates \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /home/node/app
-COPY pipeline/qwen-source/ /home/node/app/
-
-# QWEN_SKIP_PREPARE avoids a duplicate prepare build. The explicit sequence
-# matches the supplied Qwen Dockerfile: workspace build, CLI/Web Shell bundle,
-# package preparation, then one distributable tarball for the runtime layer.
-RUN QWEN_SKIP_PREPARE=1 corepack pnpm install --frozen-lockfile --reporter=append-only \
-  && npm run build \
-  && npm run bundle \
-  && npm run prepare:package \
-  && cd dist \
-  && npm pack
-
-# Runtime stage: retain the existing Project-Malaria operational toolchain and
-# Pillow used by the mounted TLP report compiler. Only the generated Qwen
-# package, not the full source tree or build toolchain, is copied here.
-FROM docker.io/library/node:22-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
-
-ARG APT_MIRROR=
-ARG CLI_VERSION_ARG=0.27.1
+ARG CLI_VERSION_ARG=0.27.2
 ENV CLI_VERSION=${CLI_VERSION_ARG}
 ENV SANDBOX=qwen-code-sandbox
 
+# System tools, python3, and Pillow for TLP docx report compilation
 RUN set -e; \
   if [ -n "${APT_MIRROR}" ]; then \
     for sources in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
@@ -67,14 +30,12 @@ RUN set -e; \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-# Keep npm's default global prefix. The existing entrypoint LAN compatibility
-# patch is explicitly path-bound to /usr/local/lib/node_modules/.../chunks.
-COPY --from=qwen-builder /home/node/app/dist/*.tgz /tmp/
-RUN npm install -g /tmp/*.tgz \
-  && npm cache clean --force \
-  && rm -f /tmp/*.tgz
+# Pin the inspected native-agent/tool implementation for reproducible builds.
+RUN npm install -g @qwen-code/qwen-code@0.27.2
 
 WORKDIR /workspace
+
+# Entrypoint script
 COPY pipeline/qwen-code/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 

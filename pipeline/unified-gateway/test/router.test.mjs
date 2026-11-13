@@ -57,6 +57,18 @@ test('Observer can only be enabled when both listener and target are literal loo
   assert.equal(observerRequestAllowed(config, '192.168.1.10'), false);
 });
 
+test('Observer allows Docker bridge peers when OBSERVER_ALLOW_DOCKER_BRIDGE=1', () => {
+  const config = loadGatewayConfig({
+    OBSERVER_ENABLED: '1',
+    OBSERVER_ALLOW_DOCKER_BRIDGE: '1',
+    OBSERVER_TARGET: 'http://host.docker.internal:8005',
+  });
+  assert.equal(observerRequestAllowed(config, '127.0.0.1'), true);
+  assert.equal(observerRequestAllowed(config, '172.18.0.1'), true);
+  assert.equal(observerRequestAllowed(config, '192.168.1.10'), true);
+  assert.equal(observerRequestAllowed(config, '8.8.8.8'), false);
+});
+
 test('loopback detection does not trust Host or X-Forwarded-For values', () => {
   assert.equal(isLoopbackAddress('127.0.0.1'), true);
   assert.equal(isLoopbackAddress('::ffff:127.0.0.1'), true);

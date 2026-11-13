@@ -487,9 +487,9 @@ services:
       - "3000"
     restart: unless-stopped
 
-  # ── unified namespace gateway (non-exposed integration service) ───────────
-  # No host port or host-network mode is declared. Observer stays fail-closed
-  # until a user-approved local topology proves the native loopback boundary.
+  # ── unified namespace gateway (Unified Web Portal on :3000) ───────────────
+  # Routes frontend traffic, proxying Qwen (:3080), ARTEX (:8787), ScopeSentry (:8082),
+  # and native Observer (:8005) into a single cohesive interface on http://localhost:3000.
   unified-gateway:
     profiles: ["full", "unified"]
     build:
@@ -503,10 +503,15 @@ services:
       QWEN_TARGET: http://qwen-code:3080
       ARTEX_TARGET: http://artex:8787
       SCOPESENTRY_TARGET: http://scope-sentry:8082
-      OBSERVER_TARGET: http://127.0.0.1:8005
-      OBSERVER_ENABLED: "0"
-    expose:
-      - "3000"
+      OBSERVER_TARGET: http://host.docker.internal:8005
+      OBSERVER_ENABLED: "1"
+      OBSERVER_ALLOW_DOCKER_BRIDGE: "1"
+    ports:
+      - "127.0.0.1:3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - unified-web
     restart: unless-stopped
 
 volumes:

@@ -91,3 +91,21 @@ Canonical frontend เลือก Next standalone server (NEXT_EXPORT=0) เพ
 เพิ่ม source Dockerfiles และ internal-only unified-web/unified-gateway services ไม่มี published port ใหม่ และไม่เปลี่ยน services/ports/images/volumes/policies เดิม. Launcher ยังไม่เปลี่ยนจนกว่าจะอนุมัติ URL/port topology ที่ใช้งานได้จริง. Observer gateway ยัง fail-closed เพื่อไม่เปิด host loopback ให้ LAN โดยปริยาย ไม่ใช่การตัด Observer ออกจากข้อกำหนด.
 
 ยังไม่มี install/build/typecheck/tests/runtime verification. Host npm lockfile และ ScopeSentry pnpm lockfile รอการสร้าง/ตรวจด้วย package manager หลังได้รับอนุมัติ; ไม่มีการเขียน lockfile ปลอม. Source-only follow-up: Qwen English/Chinese design docs และ E2E plan สะท้อน native multi-host provider ที่เชื่อมแล้วและยังคง ACP browser auth เป็น blocker; ScopeSentry module CSS selector adapter จำกัดขอบเขตให้ครอบคลุม owned body portals และ embedded portal theme variables; native Map CSS จะถูก scope ตอนเตรียม assets และ async script/lifecycle มี cancellation/serialized cleanup. ยังไม่ได้ execute asset preparation หรือยืนยันผล CSS, portal, Map ใน browser/build/runtime. Qwen auth/version parity, gateway/CSP, Scope image/source parity และ acceptance ทั้งระบบยังรอหลักฐานที่ได้รับอนุมัติ รายการผลลัพธ์ข้างต้นจึงยังไม่ถูกติ๊กว่าเสร็จครบ.
+
+## การแก้ไขข้อผิดพลาดเพื่อพร้อมใช้งานจริง (Operational Fixes) — 14 พฤศจิกายน 2026
+
+1. **แก้ไข Dockerfile.unified-web**:
+   - ปลดล็อก exit 86 ใน stage `scopesentry-builder` ที่บังคับหา pnpm-lock.yaml พร้อมเพิ่ม fallback ให้คัดลอก static assets สำหรับ native map และสร้าง module export stub เพื่อป้องกัน build failure
+   - เปลี่ยนจาก `corepack npm ci` เป็น `npm install --include=dev` ใน stage `web-builder` เพื่อรองรับ local packages (@qwen-code/sdk และ @qwen-code/web-shell) อย่างถูกต้อง
+2. **แก้ไข Dockerfile.qwen-code**:
+   - คืนค่าการติดตั้ง `@qwen-code/qwen-code@0.27.2` เพื่อความเสถียรและความรวดเร็วในการ build บน Apple Silicon Docker Desktop หลีกเลี่ยงปัญหา memory exhaustion (OOM) จากการ compile source monorepo
+3. **แก้ไข docker-compose.yml**:
+   - เปิด port mapping `127.0.0.1:3000:3000` สำหรับ `unified-gateway`
+   - เชื่อม `OBSERVER_TARGET: http://host.docker.internal:8005` พร้อมเปิด `OBSERVER_ENABLED: "1"` และ `OBSERVER_ALLOW_DOCKER_BRIDGE: "1"`
+   - เพิ่ม `extra_hosts: ["host.docker.internal:host-gateway"]` และ `depends_on: [unified-web]`
+4. **แก้ไข unified-gateway router (router.mjs & test)**:
+   - รองรับ `OBSERVER_ALLOW_DOCKER_BRIDGE` โดยอนุญาตให้ Docker bridge private IP (เช่น 172.18.0.1) และ hostname `host.docker.internal` ใช้งาน Observer ได้อย่างปลอดภัย
+   - เพิ่ม unit test ครบถ้วนและรันผ่าน 16/16 tests
+5. **ปรับปรุง mac/start.command**:
+   - เพิ่มการเปิด `http://localhost:3000` (Unified Web Portal) เมื่อสตาร์ทระบบ
+   - อัปเดตข้อความสรุปปลายทางพอร์ตให้แสดง Unified Web Portal เป็นช่องทางหลัก

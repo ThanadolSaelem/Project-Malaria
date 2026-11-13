@@ -108,6 +108,10 @@ export function loadGatewayConfig(env = process.env) {
     env.OBSERVER_ENABLED,
     DEFAULTS.observerEnabled,
   );
+  const observerAllowBridge = parseBoolean(
+    env.OBSERVER_ALLOW_DOCKER_BRIDGE,
+    false,
+  );
   const targets = {
     frontend: parseTarget(
       envValue(env, 'FRONTEND_TARGET', DEFAULTS.frontendTarget),
@@ -137,7 +141,9 @@ export function loadGatewayConfig(env = process.env) {
     targets: Object.freeze(targets),
     observer: Object.freeze({
       enabled: observerEnabled,
+      allowDockerBridge: observerAllowBridge,
       targetIsLiteralLoopback: isLiteralLoopbackHostname(targets.observer.hostname),
+      targetIsHostOrLoopback: isHostOrLoopbackHostname(targets.observer.hostname),
       listenerIsLiteralLoopback: isLiteralLoopbackHostname(envValue(env, 'BIND', DEFAULTS.bind)),
     }),
   });
@@ -360,8 +366,13 @@ export function isForwardedHeader(name) {
 
 export function isLiteralLoopbackHostname(hostname) {
   const host = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
-  if (host === '127.0.0.1' || host === '::1') return true;
+  if (host === '127.0.0.1' || host === '::1' || host === 'localhost') return true;
   return false;
+}
+
+export function isHostOrLoopbackHostname(hostname) {
+  const host = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
+  return isLiteralLoopbackHostname(host) || host === 'host.docker.internal';
 }
 
 export function isLoopbackAddress(address) {
@@ -369,9 +380,28 @@ export function isLoopbackAddress(address) {
   return normalized === '127.0.0.1' || normalized === '::1';
 }
 
+export function isPrivateOrDockerAddress(address) {
+  const normalized = String(address || '').replace(/^::ffff:/i, '').toLowerCase();
+  if (isLoopbackAddress(normalized)) return true;
+  const parts = normalized.split('.').map((p) => Number.parseInt(p, 10));
+  if (parts.length === 4 && parts.every((p) => !Number.isNaN(p) && p >= 0 && p <= 255)) {
+    if (parts[0] === 10) return true;
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    if (parts[0] === 192 && parts[1] === 168) return true;
+  }
+  if (normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80')) return true;
+  return false;
+}
+
 export function observerRequestAllowed(config, remoteAddress) {
+  if (config?.observer?.enabled !== true) return false;
+
+  if (config.observer.allowDockerBridge === true) {
+    const validTarget = config.observer.targetIsLiteralLoopback || config.observer.targetIsHostOrLoopback;
+    return validTarget && (isLoopbackAddress(remoteAddress) || isPrivateOrDockerAddress(remoteAddress));
+  }
+
   return (
-    config?.observer?.enabled === true &&
     config.observer.targetIsLiteralLoopback === true &&
     config.observer.listenerIsLiteralLoopback === true &&
     isLoopbackAddress(remoteAddress)

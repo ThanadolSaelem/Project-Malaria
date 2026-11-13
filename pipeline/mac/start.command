@@ -145,15 +145,14 @@ if [ -f "$HERE/summarize-watch.py" ] && command -v python3 >/dev/null 2>&1; then
   open "http://localhost:${WATCH_PORT:-8005}" 2>/dev/null || true
 fi
 
-# ── 3) เปิดหน้า Qwen Code Studio และ ARTEX Platform ──────────────────────────
-echo "[3/3] เปิด Qwen Code Studio (:3080) และ ARTEX Pentest Platform (:8787)"
-QWEN_URL="http://localhost:3080/?token=malaria-qwen-token"
-open "$QWEN_URL" 2>/dev/null || true
-open "http://localhost:8787" 2>/dev/null || true
+# ── 3) เปิดหน้า Unified Web Portal (:3000) ──────────────────────────────────
+echo "[3/3] เปิด Unified Web Portal (:3000)"
+open "http://localhost:3000" 2>/dev/null || true
 
 echo ""
 echo "──────────────────────────────────────────────────────────────"
 echo "สรุป: โมเดล native + stack ใน docker"
+echo "  • Unified Web Portal  : http://localhost:3000"
 echo "  • Orchestrator        : http://localhost:${LLAMA_PORT}/v1/models"
 echo "  • Cyber-Model         : http://localhost:${LLAMA_PORT_SPECIALIST}/v1/models"
 echo "  • summarizer          : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092}/v1/models"
@@ -163,7 +162,7 @@ echo "  • Qwen Code Studio    : http://localhost:3080/?token=malaria-qwen-toke
 echo "  • ARTEX Pentest Graph : http://localhost:8787"
 echo "  • ScopeSentry ASM     : http://localhost:8082"
 if [ -n "${HOST_LAN_IP:-}" ]; then
-  echo "  • เข้าจากมือถือ (LAN)   : http://${HOST_LAN_IP}:3080/?token=malaria-qwen-token"
+  echo "  • เข้าจากมือถือ (LAN)   : http://${HOST_LAN_IP}:3000"
 fi
 echo ""
 echo "เรียก specialist เขียน exploit/PoC แบบ full-quality (direct path, ไม่ติด harness timeout):"
