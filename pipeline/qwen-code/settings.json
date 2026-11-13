@@ -73,6 +73,10 @@
     "specialist": {
       "httpUrl": "http://specialist-mcp:8003/mcp",
       "trust": true
+    },
+    "scopesentry": {
+      "httpUrl": "http://scope-sentry:8082/mcp",
+      "trust": true
     }
   },
   "security": {

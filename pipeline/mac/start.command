@@ -145,10 +145,11 @@ if [ -f "$HERE/summarize-watch.py" ] && command -v python3 >/dev/null 2>&1; then
   open "http://localhost:${WATCH_PORT:-8005}" 2>/dev/null || true
 fi
 
-# ── 3) เปิดหน้า Qwen Code Studio ───────────────────────────────────────────────
-echo "[3/3] เปิด Qwen Code Studio → http://localhost:3080/?token=malaria-qwen-token"
+# ── 3) เปิดหน้า Qwen Code Studio และ ARTEX Platform ──────────────────────────
+echo "[3/3] เปิด Qwen Code Studio (:3080) และ ARTEX Pentest Platform (:8787)"
 QWEN_URL="http://localhost:3080/?token=malaria-qwen-token"
 open "$QWEN_URL" 2>/dev/null || true
+open "http://localhost:8787" 2>/dev/null || true
 
 echo ""
 echo "──────────────────────────────────────────────────────────────"
@@ -159,6 +160,8 @@ echo "  • summarizer          : http://localhost:${LLAMA_PORT_SUMMARIZER:-8092
 echo "  • vision (อ่านภาพ)     : http://localhost:${LLAMA_PORT_VISION:-8093}/v1/models"
 echo "  • observer dashboard  : http://localhost:${WATCH_PORT:-8005}"
 echo "  • Qwen Code Studio    : http://localhost:3080/?token=malaria-qwen-token"
+echo "  • ARTEX Pentest Graph : http://localhost:8787"
+echo "  • ScopeSentry ASM     : http://localhost:8082"
 if [ -n "${HOST_LAN_IP:-}" ]; then
   echo "  • เข้าจากมือถือ (LAN)   : http://${HOST_LAN_IP}:3080/?token=malaria-qwen-token"
 fi

@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ScopeSentry
+    goos:
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+    env:
+      - GOAMD64=v1
+    main: ./cmd/main/main.go
+    binary: ScopeSentry
+    ldflags:
+      - -s -w
+      - -X github.com/Autumn-27/ScopeSentry/internal/constants.Version={{.Version}}
+
+archives:
+  - id: default
+    builds:
+      - ScopeSentry
+    format: zip
+    name_template: "ScopeSentry_{{ .Os }}_{{ .Arch }}"
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: Autumn-27
+    name: ScopeSentry
+  name_template: "ScopeSentry {{.Version}}"
+
+dist: ./dist

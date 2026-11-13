@@ -15,7 +15,25 @@
         "memory",
         "cve",
         "search",
-        "specialist"
+        "specialist",
+        "scopesentry"
+      ]
+    },
+    "artex": {
+      "enabled": true,
+      "label": "ARTEX Autonomous Pentest Platform",
+      "service": "artex",
+      "port": 8787,
+      "url": "http://localhost:8787",
+      "default_model": "cyber-model",
+      "connected_mcps": [
+        "hexstrike",
+        "rea",
+        "memory",
+        "cve",
+        "search",
+        "specialist",
+        "scopesentry"
       ]
     }
   },
@@ -218,6 +236,22 @@
       "host_url": "http://localhost:8003/mcp",
       "timeout_ms": 1200000,
       "model": "exploit-specialist"
+    },
+    "scopesentry": {
+      "enabled": true,
+      "label": "ScopeSentry ASM & Recon MCP",
+      "service": "scope-sentry",
+      "port": 8082,
+      "internal_url": "http://scope-sentry:8082/mcp",
+      "host_url": "http://localhost:8082/mcp",
+      "header_auth": "X-API-Key",
+      "api_key_env": "SCOPESENTRY_API_KEY",
+      "timeout_ms": 60000,
+      "tool_rag": true,
+      "search_limit": 15,
+      "repeat_limit": 3,
+      "max_output_bytes": 20000,
+      "disabled_tools": []
     }
   },
   "plugins": {
@@ -259,6 +293,13 @@
       "label": "HexStrike Kali Tool Server (150+ Tools)",
       "service": "hexstrike-server",
       "port": 8888
+    },
+    "scopesentry": {
+      "enabled": true,
+      "label": "ScopeSentry ASM Platform Web UI",
+      "service": "scope-sentry",
+      "port": 8082,
+      "url": "http://localhost:8082"
     },
     "observer": {
       "enabled": true,

@@ -30,6 +30,13 @@ if [ -d /config/agents ]; then
   echo "entrypoint: installed project subagents -> /workspace/.qwen/agents"
 fi
 
+# ── Install project skills ───────────────────────────────────────────────────
+if [ -d /skills ]; then
+  mkdir -p /workspace/.qwen/skills
+  cp -rf /skills/* /workspace/.qwen/skills/ 2>/dev/null || true
+  echo "entrypoint: synced skills -> /workspace/.qwen/skills"
+fi
+
 # ── Extract and inject baseline cyber-operator system prompt ─────────────────
 if [ -f /config/cyber-operator.system.md ]; then
   awk 'BEGIN { f=0 } /^## SYSTEM PROMPT$/ { f=1; next } f { print }' \

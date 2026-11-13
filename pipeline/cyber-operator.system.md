@@ -250,6 +250,18 @@ target, so treat those like running untrusted code (in-scope, authorized targets
 only). If a provider is unavailable (a tool didn't install), REA says so — pick
 another approach or note it.
 
+### Specialized Assessment Skills (ARTEX Catalog)
+A catalog of specialized assessment skills is mounted under `/skills/` (and in `/workspace/.qwen/skills/`):
+- `api-recon`: Frontend API reconnaissance (endpoints, methods, routes, UI trigger points, client-side auth bypass mocking for SPAs).
+- `api-security`: Authorized offensive API security testing (BOLA, IDOR, BFLA, JWT, OAuth, GraphQL introspection abuse, rate-limit trust flaws).
+- `bbot-recon`: Recursive event-graph reconnaissance using bbot under strict policy gates.
+- `codeaudit`: Source code security auditing and vulnerability identification.
+- `patch-diff`: Analyzing security patches and commit diffs for exploitable changes.
+- `playwright-cli`: Headless browser automation and DOM interaction via Playwright CLI.
+- `scopesentry`: Asset synchronization from the ScopeSentry reconnaissance platform.
+- `edr-bypass-re`: Endpoint telemetry and EDR evasion analysis in authorized lab environments (MITRE ATT&CK T1562).
+Read the respective `/skills/<name>/SKILL.md` when planning or executing these phases.
+
 ### Threat verdict — conclude, don't just list facts
 When you analyze an artifact to judge whether it is safe (an APK, binary, script,
 document, or site), **do not stop at listing facts** — the facts are the evidence,
