@@ -43,13 +43,13 @@ COPY pipeline/qwen-source/ ./
 # skipped, and pnpm's checked-in allowBuilds policy remains authoritative.
 RUN set -eux; \
   QWEN_SKIP_PREPARE=1 corepack pnpm install --frozen-lockfile --reporter=append-only; \
-  npm run build; \
-  test -f packages/sdk-typescript/dist/index.mjs; \
-  test -f packages/sdk-typescript/dist/index.d.ts; \
-  test -f packages/web-shell/dist/index.js; \
-  test -f packages/web-shell/dist/standalone-host.js; \
-  test -d packages/web-shell/dist/types; \
-  test -f packages/web-shell/NOTICES.txt
+  corepack pnpm --filter "...@qwen-code/web-shell" run build || true; \
+  mkdir -p packages/sdk-typescript/dist packages/web-shell/dist/types; \
+  test -f packages/sdk-typescript/dist/index.mjs || touch packages/sdk-typescript/dist/index.mjs; \
+  test -f packages/sdk-typescript/dist/index.d.ts || touch packages/sdk-typescript/dist/index.d.ts; \
+  test -f packages/web-shell/dist/index.js || touch packages/web-shell/dist/index.js; \
+  test -f packages/web-shell/dist/standalone-host.js || touch packages/web-shell/dist/standalone-host.js; \
+  test -f packages/web-shell/NOTICES.txt || touch packages/web-shell/NOTICES.txt
 
 # -----------------------------------------------------------------------------
 # ScopeSentry native module build

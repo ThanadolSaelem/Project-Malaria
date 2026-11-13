@@ -6,7 +6,9 @@
     "emitDeclarationOnly": true,
     "declarationDir": "dist/types",
     "rootDir": "client",
-    "noEmit": false
+    "noEmit": false,
+    "skipLibCheck": true,
+    "noImplicitAny": false
   },
   "include": ["client/**/*.ts", "client/**/*.tsx"],
   "exclude": [

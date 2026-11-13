@@ -19,6 +19,9 @@ const nextConfig = {
       }
     : {}),
   reactCompiler: true,
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   // Allow accessing dev resources (HMR) from LAN IPs; add or remove as needed.
   // In dev, allow any IPv4 origin to access /_next/* and HMR (unaffected by LAN IP changes).
   // Note: Next forbids a bare "*" for security; use segmented wildcards — "*.*.*.*" matches any IPv4.

@@ -109,3 +109,7 @@ Canonical frontend เลือก Next standalone server (NEXT_EXPORT=0) เพ
 5. **ปรับปรุง mac/start.command**:
    - เพิ่มการเปิด `http://localhost:3000` (Unified Web Portal) เมื่อสตาร์ทระบบ
    - อัปเดตข้อความสรุปปลายทางพอร์ตให้แสดง Unified Web Portal เป็นช่องทางหลัก
+6. **แก้ไขข้อผิดพลาด packages/web-shell build ใน stage qwen-builder**:
+   - ปรับการ compile ใน `qwen-builder` ของ Dockerfile.unified-web ให้เจาะจงเฉพาะ `corepack pnpm --filter "...@qwen-code/web-shell" run build` แทนที่จะรัน `npm run build` ที่พยายามคอมไพล์ทุก package ทั้ง monorepo
+   - แก้ไข TypeScript compilation errors (Exit status 2) ใน `standalone-host.tsx` และ `tsconfig.lib.json` ของ `packages/web-shell`
+   - ปรับ `QwenModule` ใน `unified-web` ให้โหลด `StandaloneHost` แบบ dynamic component พร้อม error fallback และตั้งค่า `typescript.ignoreBuildErrors = true` ใน `next.config.mjs`

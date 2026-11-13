@@ -238,12 +238,12 @@ function HostAuthGate({
         {state.status === 'token' && (
           <form
             className="flex flex-col gap-3"
-            onSubmit={(event) => {
+            onSubmit={(event: React.FormEvent<HTMLFormElement>) => {
               event.preventDefault();
               const next = input.trim();
               if (!next) return;
               setManualToken(next);
-              setAttempt((value) => value + 1);
+              setAttempt((value: number) => value + 1);
             }}
           >
             <label className="text-sm" htmlFor="qwen-host-token">
@@ -255,7 +255,7 @@ function HostAuthGate({
               type="password"
               autoComplete="off"
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) => setInput(event.target.value)}
             />
             <button
               className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground"
@@ -269,7 +269,7 @@ function HostAuthGate({
           <button
             className="rounded-md border px-3 py-2 text-sm"
             type="button"
-            onClick={() => setAttempt((value) => value + 1)}
+            onClick={() => setAttempt((value: number) => value + 1)}
           >
             {language === 'zh-CN' ? '重试' : 'Retry'}
           </button>
@@ -298,7 +298,7 @@ function FocusedHostWorkspaceProvider({
     typeof window === 'undefined' ? '' : window.location.origin;
   return (
     <DaemonWorkspaceProvider
-      key={activeOrigin}
+      key={activeOrigin || 'default'}
       baseUrl={baseUrl}
       token={activeToken ?? (activeOrigin === pageOrigin ? bootToken : undefined)}
     >
@@ -334,7 +334,7 @@ export function StandaloneHost({
   onNavigateRef.current = onNavigate;
   const pairingNavigation = useMemo<PairingNavigationOptions>(
     () => ({
-      replaceUrl: (url) =>
+      replaceUrl: (url: URL) =>
         replacePairingPath(pathRef.current, url, onNavigateRef.current),
     }),
     [],
@@ -350,7 +350,7 @@ export function StandaloneHost({
     >
       <ErrorBoundary
         label="web-shell-root"
-        fallback={(error, reset) => (
+        fallback={(error: unknown, reset: () => void) => (
           <RootErrorFallback error={error} onRetry={reset} language={language} />
         )}
       >
