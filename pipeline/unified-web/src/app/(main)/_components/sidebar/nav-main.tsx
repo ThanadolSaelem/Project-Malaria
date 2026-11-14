@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 import { ChevronRight, MailIcon, PlusCircleIcon } from "lucide-react";
 import { api } from "@/lib/api";
+import { auth } from "@/lib/auth";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -168,6 +169,7 @@ function InterceptPendingBadge() {
   React.useEffect(() => {
     let live = true;
     async function poll() {
+      if (!auth.getToken()) return;
       try {
         const list = await api.interceptPending();
         if (live) setCount(list.length);

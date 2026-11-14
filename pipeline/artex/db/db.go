@@ -289,18 +289,17 @@ ON CONFLICT (agent_id, var_name) DO UPDATE
 		}
 		_ = d.SetSetting("interactive_shell_default_v1", "true")
 	}
-	// Seed the built-in browser (Playwright) MCP once — DISABLED by default (the
-	// user enables it when needed), no proxy by default. The traffic-capture
-	// toggle injects/strips
-	// the recording proxy + CA at runtime (server.Manager.syncBrowserMCPProxy).
-	// Insert only if absent so we never clobber user edits (args/env/enabled/
-	// visibility) on restart.
+	// Seed the built-in browser (Playwright) MCP once — enabled by default in
+	// Project-Malaria container with --no-sandbox and /usr/bin/chromium.
 	if _, err := d.Exec(`
 INSERT INTO mcp_servers(name, transport, command, args, env, enabled)
-VALUES ('browser', 'stdio', 'npx', $1, '{}', false)
+VALUES ('browser', 'stdio', 'npx', $1, '{}', true)
 ON CONFLICT (name) DO NOTHING`,
-		`["@playwright/mcp","--headless"]`); err != nil {
+		`["@playwright/mcp","--headless","--no-sandbox","--executable-path","/usr/bin/chromium"]`); err != nil {
 		return fmt.Errorf("seed browser mcp: %w", err)
+	}
+	if err := d.seedProjectMalariaDefaults(); err != nil {
+		return fmt.Errorf("seed project-malaria defaults: %w", err)
 	}
 	// NOTE: the placeholder ScopeSentry data-source MCP (empty URL + empty X-API-Key,
 	// disabled) is seeded directly in schema.sql §F so a raw `psql < schema.sql` init
@@ -363,7 +362,90 @@ ON CONFLICT DO NOTHING`, r.kind, r.pattern, r.note); err != nil {
 // declares `mcps: ScopeSentry`, which only takes effect once it's made visible and
 // that MCP is enabled/configured.
 var builtinSkillVisibility = map[string][]string{
-	"api-recon": {"auto", "pentest", "worker"},
+	"api-recon":      {"mainagent", "worker", "auto", "pentest", "retester", "planner"},
+	"api-security":   {"mainagent", "worker", "auto", "pentest", "retester"},
+	"bbot-recon":     {"mainagent", "worker", "auto", "pentest", "retester", "planner"},
+	"codeaudit":      {"mainagent", "worker", "auto", "pentest", "retester"},
+	"edr-bypass-re":  {"mainagent", "worker", "auto", "pentest", "retester"},
+	"patch-diff":     {"mainagent", "worker", "auto", "pentest", "retester"},
+	"php2shell":      {"mainagent", "worker", "auto", "pentest", "retester"},
+	"playwright-cli": {"mainagent", "worker", "auto", "pentest", "retester"},
+	"rea":            {"mainagent", "worker", "auto", "pentest", "retester", "planner"},
+	"scopesentry":    {"mainagent", "worker", "auto", "pentest", "retester", "planner"},
+}
+
+// seedProjectMalariaDefaults seeds the Project-Malaria MCP servers, default
+// LiteLLM profiles, and agent-MCP bindings once on first startup.
+func (d *DB) seedProjectMalariaDefaults() error {
+	if v, _, _ := d.GetSetting("project_malaria_defaults_v1"); v == "done" {
+		return nil
+	}
+	if _, err := d.Exec(`
+UPDATE mcp_servers
+SET url = 'http://scope-sentry:8082/mcp',
+    env = '{"X-API-Key": "ssk_project_malaria_scopesentry_mcp_key_2026"}'::jsonb,
+    enabled = true
+WHERE name = 'ScopeSentry' AND (COALESCE(url, '') = '' OR enabled = false)`); err != nil {
+		return fmt.Errorf("configure scopesentry mcp: %w", err)
+	}
+	if _, err := d.Exec(`
+UPDATE mcp_servers
+SET args = '["@playwright/mcp","--headless","--no-sandbox","--executable-path","/usr/bin/chromium"]'::jsonb,
+    enabled = true
+WHERE name = 'browser'`); err != nil {
+		return fmt.Errorf("configure browser mcp: %w", err)
+	}
+	mcpSeeds := []struct {
+		name, url string
+	}{
+		{"hexstrike", "http://hexstrike-mcp:8001/mcp"},
+		{"rea", "http://rea-mcp:8007/mcp"},
+		{"memory", "http://memory-mcp:8002/mcp"},
+		{"cve", "http://cve-mcp:8009/mcp"},
+		{"search", "http://search-mcp:8004/mcp"},
+		{"specialist", "http://specialist-mcp:8003/mcp"},
+	}
+	for _, m := range mcpSeeds {
+		if _, err := d.Exec(`
+INSERT INTO mcp_servers(name, transport, args, env, url, enabled, timeout_seconds)
+VALUES ($1, 'http', '[]'::jsonb, '{}'::jsonb, $2, true, 120)
+ON CONFLICT (name) DO UPDATE SET url = EXCLUDED.url, enabled = true`, m.name, m.url); err != nil {
+			return fmt.Errorf("seed mcp %s: %w", m.name, err)
+		}
+	}
+	llmSeeds := []struct {
+		name, model string
+		ctxK        int
+		isDef       bool
+		prio        int
+		excl        bool
+	}{
+		{"LiteLLM Cyber-Model (Primary)", "cyber-model", 128, true, 100, false},
+		{"LiteLLM Flint Orchestrator", "flint", 128, false, 90, false},
+		{"LiteLLM Vision (Qwen2.5-VL)", "vision", 128, false, 80, true},
+		{"LiteLLM Summarizer (Qwen2.5-3B)", "summarizer", 32, false, 70, true},
+		{"NVIDIA NIM (Nemotron VL 120B)", "nim", 128, false, 60, true},
+		{"OpenRouter (GLM-5.3)", "or-glm", 128, false, 50, true},
+	}
+	for _, p := range llmSeeds {
+		if _, err := d.Exec(`
+INSERT INTO llm_profiles (name, format, base_url, model, api_key, api_key_hint, rate_per_second, rate_per_minute, context_window_k, is_default, priority, pool_exclude, streaming)
+SELECT $1, 'openai', 'http://litellm:4000/v1', $2, 'sk-local', '…ocal', 0, 0, $3, $4, $5, $6, true
+WHERE NOT EXISTS (SELECT 1 FROM llm_profiles WHERE model = $2)`,
+			p.name, p.model, p.ctxK, p.isDef, p.prio, p.excl); err != nil {
+			return fmt.Errorf("seed llm %s: %w", p.model, err)
+		}
+	}
+	if _, err := d.Exec(`
+INSERT INTO agent_visibility (agent_id, resource_kind, resource_id, enabled)
+SELECT a.id, 'mcp', m.id, true
+FROM agents a
+CROSS JOIN mcp_servers m
+WHERE a.key IN ('planner', 'mainagent', 'worker', 'auto', 'pentest', 'reporter', 'retester')
+ON CONFLICT (agent_id, resource_kind, resource_id, mcp_tool_name) DO UPDATE SET enabled = true`); err != nil {
+		return fmt.Errorf("seed mcp agent visibility: %w", err)
+	}
+	return d.SetSetting("project_malaria_defaults_v1", "done")
 }
 
 // seedBuiltinSkillVisibility binds the shipped built-in skills to their default

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { moduleForPath, namespacedModulePath, type UnifiedModuleId } from "@/lib/unified-modules";
 
 const NAV_ITEMS = [
   { id: "qwen", label: "AI Workspace", href: "/ai" },
-  { id: "artex", label: "ARTEX", href: "/artex" },
+  { id: "artex", label: "ARTEX", href: "/dashboard" },
   { id: "scopesentry", label: "ScopeSentry", href: "/scopesentry" },
   { id: "observer", label: "Observer", href: "/observer" },
 ] as const;
@@ -22,11 +23,13 @@ function activeItem(pathname: string): string {
 export function UnifiedNavigation({
   placement = "top",
   modulePaths = {},
-  artexPath = "/artex",
+  artexPath = "/dashboard",
+  showSidebarTrigger = false,
 }: {
   placement?: "top" | "sidebar";
   modulePaths?: Partial<Record<UnifiedModuleId, string>>;
   artexPath?: string;
+  showSidebarTrigger?: boolean;
 }) {
   const pathname = usePathname();
   const active = activeItem(pathname);
@@ -41,6 +44,7 @@ export function UnifiedNavigation({
           : "flex min-h-10 items-center gap-1 border-b bg-background/95 px-3 text-xs backdrop-blur supports-[backdrop-filter]:bg-background/75",
       )}
     >
+      {showSidebarTrigger && !sidebar && <SidebarTrigger className="-ml-1 mr-1 size-7" />}
       <Link
         href={namespacedModulePath("/ai", modulePaths.qwen ?? "/")}
         prefetch={false}
@@ -52,21 +56,29 @@ export function UnifiedNavigation({
         Project-Malaria
       </Link>
       <div className={cn("flex gap-1", sidebar && "flex-col")}>
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.id}
-            href={item.id === "artex" ? artexPath : namespacedModulePath(item.href, modulePaths[item.id] ?? "/")}
-            prefetch={false}
-            aria-current={active === item.id ? "page" : undefined}
-            className={cn(
-              "rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              active === item.id && "bg-accent text-accent-foreground",
-              sidebar && "w-full",
-            )}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const targetHref =
+            item.id === "artex"
+              ? active === "artex"
+                ? "/dashboard"
+                : artexPath
+              : namespacedModulePath(item.href, modulePaths[item.id] ?? "/");
+          return (
+            <Link
+              key={item.id}
+              href={targetHref}
+              prefetch={false}
+              aria-current={active === item.id ? "page" : undefined}
+              className={cn(
+                "rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                active === item.id && "bg-accent text-accent-foreground",
+                sidebar && "w-full",
+              )}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
       </div>
     </nav>
   );

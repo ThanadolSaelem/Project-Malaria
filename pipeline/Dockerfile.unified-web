@@ -43,13 +43,13 @@ COPY pipeline/qwen-source/ ./
 # skipped, and pnpm's checked-in allowBuilds policy remains authoritative.
 RUN set -eux; \
   QWEN_SKIP_PREPARE=1 corepack pnpm install --frozen-lockfile --reporter=append-only; \
-  corepack pnpm --filter "...@qwen-code/web-shell" run build || true; \
-  mkdir -p packages/sdk-typescript/dist packages/web-shell/dist/types; \
-  test -f packages/sdk-typescript/dist/index.mjs || touch packages/sdk-typescript/dist/index.mjs; \
-  test -f packages/sdk-typescript/dist/index.d.ts || touch packages/sdk-typescript/dist/index.d.ts; \
-  test -f packages/web-shell/dist/index.js || touch packages/web-shell/dist/index.js; \
-  test -f packages/web-shell/dist/standalone-host.js || touch packages/web-shell/dist/standalone-host.js; \
-  test -f packages/web-shell/NOTICES.txt || touch packages/web-shell/NOTICES.txt
+  npm run generate || true; \
+  corepack pnpm --filter '@qwen-code/web-shell...' run build; \
+  test -s packages/sdk-typescript/dist/index.mjs; \
+  test -s packages/sdk-typescript/dist/index.d.ts; \
+  test -s packages/web-shell/dist/index.js; \
+  test -s packages/web-shell/dist/standalone-host.js; \
+  test -s packages/web-shell/NOTICES.txt
 
 # -----------------------------------------------------------------------------
 # ScopeSentry native module build
@@ -63,21 +63,16 @@ COPY pipeline/scopesentry/frontend/ ./
 COPY pipeline/scopesentry/cmd/main/static/ /workspace/pipeline/scopesentry/cmd/main/static/
 
 RUN set -eux; \
+  corepack enable; \
   mkdir -p /workspace/pipeline/unified-web/public/_modules/scopesentry; \
   mkdir -p /workspace/pipeline/unified-web/public/_modules/scopesentry/native-map; \
   if [ -d "/workspace/pipeline/scopesentry/cmd/main/static" ]; then \
     cp -r /workspace/pipeline/scopesentry/cmd/main/static/* /workspace/pipeline/unified-web/public/_modules/scopesentry/native-map/ 2>/dev/null || true; \
   fi; \
-  if [ -f pnpm-lock.yaml ]; then \
-    corepack pnpm install --frozen-lockfile --reporter=append-only 2>/dev/null || corepack pnpm install --no-frozen-lockfile 2>/dev/null || true; \
-    corepack pnpm run build:module 2>/dev/null || true; \
-  elif npm ci --include=dev 2>/dev/null || npm install --include=dev 2>/dev/null; then \
-    npm run build:module 2>/dev/null || true; \
-  fi; \
-  if [ ! -f /workspace/pipeline/unified-web/public/_modules/scopesentry/module.js ]; then \
-    printf 'export const createScopeSentryModule = () => ({ setTheme(){}, setPath(){}, setActive(){}, dispose(){} });\n' > /workspace/pipeline/unified-web/public/_modules/scopesentry/module.js; \
-    touch /workspace/pipeline/unified-web/public/_modules/scopesentry/module.css; \
-  fi
+  corepack pnpm install --frozen-lockfile --reporter=append-only || corepack pnpm install --no-frozen-lockfile --reporter=append-only; \
+  corepack pnpm run build:module; \
+  test -s /workspace/pipeline/unified-web/public/_modules/scopesentry/module.js; \
+  test -s /workspace/pipeline/unified-web/public/_modules/scopesentry/module.css
 
 # -----------------------------------------------------------------------------
 # Unified host build

@@ -149,4 +149,31 @@ fi
 echo "Model: ${OPENAI_MODEL} via ${OPENAI_BASE_URL}"
 echo "============================================================================="
 
+# Wait briefly for slow-starting MCP servers (hexstrike-mcp & scope-sentry) so
+# initial Qwen Code MCP discovery succeeds on first boot.
+node - <<'EOF' || true
+const http = require("node:http");
+function checkPort(host, port) {
+  return new Promise((resolve) => {
+    const req = http.request({ host, port, path: "/mcp", method: "GET", timeout: 1500 }, (res) => {
+      res.resume();
+      resolve(true);
+    });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
+(async () => {
+  for (let i = 0; i < 20; i++) {
+    const [okHex, okSS] = await Promise.all([
+      checkPort("hexstrike-mcp", 8001),
+      checkPort("scope-sentry", 8082),
+    ]);
+    if (okHex && okSS) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+})();
+EOF
+
 exec qwen serve --hostname 0.0.0.0 --port 3080 --token "${QWEN_SERVER_TOKEN}"

@@ -76,6 +76,9 @@
     },
     "scopesentry": {
       "httpUrl": "http://scope-sentry:8082/mcp",
+      "headers": {
+        "X-API-Key": "ssk_project_malaria_scopesentry_mcp_key_2026"
+      },
       "trust": true
     }
   },

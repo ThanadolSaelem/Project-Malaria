@@ -2,10 +2,20 @@
 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import type { UnifiedModuleProps } from "@/modules/types";
+import { AppSidebar } from "@/app/(main)/_components/sidebar/app-sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { getClientCookie } from "@/lib/cookie.client";
+import {
+  SIDEBAR_COLLAPSIBLE_VALUES,
+  SIDEBAR_VARIANT_VALUES,
+  type SidebarCollapsible,
+  type SidebarVariant,
+} from "@/lib/preferences/layout";
+import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { ARTEX_AUTH_REQUIRED_EVENT } from "@/lib/unified-auth-navigation";
 import {
   moduleForPath,
@@ -16,9 +26,16 @@ import {
   UNIFIED_MODULES,
 } from "@/lib/unified-modules";
 import { applyUnifiedTheme } from "@/lib/unified-theme";
+import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 
 import { UnifiedNavigation } from "./unified-navigation";
+
+function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  if (typeof document === "undefined") return fallback;
+  const value = getClientCookie(key);
+  return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
 
 const QwenModule = dynamic(() => import("@/modules/qwen").then((module) => module.default), {
   ssr: false,
@@ -107,7 +124,7 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
   const [modulePaths, setModulePaths] = useState<Partial<Record<UnifiedModuleId, string>>>(() =>
     currentModule ? { [currentModule.id]: currentPath } : {},
   );
-  const [artexPath, setArtexPath] = useState("/artex");
+  const [artexPath, setArtexPath] = useState("/dashboard");
 
   useEffect(() => {
     applyUnifiedTheme(resolvedThemeMode);
@@ -115,7 +132,6 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const login = () => {
-      setArtexPath("/login");
       if (activeModuleRef.current !== null) return;
       router.replace("/login");
       router.refresh();
@@ -126,7 +142,14 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!currentModule) {
-      setArtexPath(`${pathname}${currentSearch ? `?${currentSearch}` : ""}${hash}`);
+      const isAuth =
+        pathname === "/login" ||
+        pathname === "/setup" ||
+        pathname.startsWith("/login/") ||
+        pathname.startsWith("/setup/");
+      if (!isAuth && pathname !== "/artex") {
+        setArtexPath(`${pathname}${currentSearch ? `?${currentSearch}` : ""}${hash}`);
+      }
       return;
     }
     setVisited((previous) => {
@@ -183,27 +206,74 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
 
   const theme = resolvedThemeMode;
   const isModuleRoute = currentModule !== null;
+  const isAuthRoute =
+    pathname === "/login" ||
+    pathname === "/setup" ||
+    pathname.startsWith("/login/") ||
+    pathname.startsWith("/setup/");
+
+  const defaultOpen = typeof document === "undefined" ? true : getClientCookie("sidebar_state") !== "false";
+  const variant = readPref<SidebarVariant>(
+    "sidebar_variant",
+    SIDEBAR_VARIANT_VALUES,
+    PREFERENCE_DEFAULTS.sidebar_variant,
+  );
+  const collapsible = readPref<SidebarCollapsible>(
+    "sidebar_collapsible",
+    SIDEBAR_COLLAPSIBLE_VALUES,
+    PREFERENCE_DEFAULTS.sidebar_collapsible,
+  );
+
+  const moduleSurfaces = UNIFIED_MODULES.map((definition) => {
+    if (!visited.has(definition.id)) return null;
+    const active = currentModule?.id === definition.id;
+    const path = modulePaths[definition.id] ?? "/";
+    return (
+      <ModuleSurface
+        key={definition.id}
+        id={definition.id}
+        active={active}
+        theme={theme}
+        path={path}
+        onNavigate={moduleNavigation[definition.id]}
+      />
+    );
+  });
+
+  if (isAuthRoute) {
+    return (
+      <div className="min-h-dvh">
+        <UnifiedNavigation modulePaths={modulePaths} artexPath={artexPath} showSidebarTrigger={false} />
+        {children}
+      </div>
+    );
+  }
 
   return (
-    <div className={isModuleRoute ? "min-h-dvh" : undefined}>
-      <UnifiedNavigation modulePaths={modulePaths} artexPath={artexPath} />
-      {!isModuleRoute && children}
-      {UNIFIED_MODULES.map((definition) => {
-        if (!visited.has(definition.id)) return null;
-        const active = currentModule?.id === definition.id;
-        const path = modulePaths[definition.id] ?? "/";
-        return (
-          <ModuleSurface
-            key={definition.id}
-            id={definition.id}
-            active={active}
-            theme={theme}
-            path={path}
-            onNavigate={moduleNavigation[definition.id]}
-          />
-        );
-      })}
-    </div>
+    <SidebarProvider
+      defaultOpen={defaultOpen}
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 68)",
+        } as CSSProperties
+      }
+    >
+      <AppSidebar variant={variant} collapsible={collapsible} />
+      <SidebarInset
+        className={cn(
+          !isModuleRoute && "[html[data-content-layout=centered]_&>*]:mx-auto",
+          !isModuleRoute && "[html[data-content-layout=centered]_&>*]:w-full",
+          !isModuleRoute && "[html[data-content-layout=centered]_&>*]:max-w-screen-2xl",
+          "peer-data-[variant=inset]:border",
+          "[--dashboard-header-height:--spacing(12)]",
+          "min-w-0 overflow-x-hidden",
+        )}
+      >
+        <UnifiedNavigation modulePaths={modulePaths} artexPath={artexPath} showSidebarTrigger={true} />
+        {!isModuleRoute && children}
+        {moduleSurfaces}
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 

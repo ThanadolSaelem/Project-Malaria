@@ -134,6 +134,21 @@ export HOST_LAN_IP="$("$HERE/mobile-link.sh" --ip-only 2>/dev/null || true)"
 "$HERE/mobile-link.sh" --start-watcher 2>/dev/null || true
 docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
 
+# Ensure ScopeSentry MCP API key exists in MongoDB so ARTEX & Qwen Code MCP connect immediately
+docker exec scopesentry-mongodb mongosh -u root -p scopesentry_mongo_pass --authenticationDatabase admin ScopeSentry --quiet --eval '
+  const hash = "72600f667c8500f32ed88ad8c098b68854cedea75715d572b0498436a97ebaa4";
+  if (!db.api_key.findOne({ key_hash: hash })) {
+    db.api_key.insertOne({
+      name: "Project-Malaria-MCP",
+      key_hash: hash,
+      key_prefix: "ssk_projec...",
+      enabled: true,
+      created_at: new Date(),
+      last_used_at: null
+    });
+  }
+' >/dev/null 2>&1 || true
+
 # ── observer dashboard (สรุปงาน Tiel EN+TH + alert) — รัน background ถ้ามี summarizer ──
 if [ -f "$HERE/summarize-watch.py" ] && command -v python3 >/dev/null 2>&1; then
   if ! curl -s -o /dev/null -w '%{http_code}' "http://localhost:${WATCH_PORT:-8005}/state" 2>/dev/null | grep -q '^200$'; then

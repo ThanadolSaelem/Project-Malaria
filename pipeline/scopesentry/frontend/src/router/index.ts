@@ -405,7 +405,7 @@ export const createScopeSentryRouter = (history?: RouterHistory) =>
     scrollBehavior: () => ({ left: 0, top: 0 })
   })
 
-const router = createScopeSentryRouter()
+export const router = createScopeSentryRouter()
 
 export const resetRouter = (): void => {
   router.getRoutes().forEach((route) => {

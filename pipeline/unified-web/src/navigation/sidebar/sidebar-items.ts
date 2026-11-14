@@ -6,13 +6,17 @@ import {
   Brain,
   Bug,
   ClipboardList,
+  Compass,
+  Eye,
   FolderOpen,
   FolderSync,
+  Globe,
   LayoutDashboard,
   type LucideIcon,
   MessageSquare,
   Network,
   Plug,
+  Radar,
   Radio,
   ScrollText,
   Settings2,
@@ -50,6 +54,7 @@ export interface NavMainLinkItem extends NavItemBase {
 }
 
 export interface NavMainParentItem extends NavItemBase {
+  url?: string;
   subItems: NavSubItem[];
 }
 
@@ -63,8 +68,59 @@ export interface NavGroup {
 
 export const sidebarItems: NavGroup[] = [
   {
+    id: 0,
+    label: "Platform Workspaces",
+    items: [
+      {
+        id: "workspace-ai",
+        title: "AI Workspace (Qwen)",
+        url: "/ai",
+        icon: Sparkles,
+        subItems: [
+          { id: "ai-chat", title: "Chat & Sessions", url: "/ai", icon: MessageSquare },
+          { id: "ai-plugins", title: "Subagents & Plugins", url: "/ai/plugins", icon: Bot },
+          { id: "ai-goals", title: "Autonomous Goals", url: "/ai/goals", icon: Target },
+          { id: "ai-scheduled", title: "Scheduled Tasks", url: "/ai/scheduled-tasks", icon: ClipboardList },
+          { id: "ai-live", title: "Live Monitor", url: "/ai/live", icon: Activity },
+          { id: "ai-channels", title: "Channels", url: "/ai/channels", icon: Radio },
+          { id: "ai-settings", title: "AI Settings", url: "/ai/settings", icon: Settings2 },
+        ],
+      },
+      {
+        id: "workspace-artex",
+        title: "ARTEX Autonomous",
+        url: "/dashboard",
+        icon: Compass,
+      },
+      {
+        id: "workspace-scopesentry",
+        title: "ScopeSentry ASM",
+        url: "/scopesentry/dashboard/index",
+        icon: Radar,
+        subItems: [
+          { id: "ss-dashboard", title: "ASM Dashboard", url: "/scopesentry/dashboard/index", icon: LayoutDashboard },
+          { id: "ss-assets", title: "Asset Inventory", url: "/scopesentry/asset-information/index", icon: Globe },
+          { id: "ss-tasks", title: "Scan Tasks", url: "/scopesentry/task-management/ScanTask", icon: Target },
+          { id: "ss-scheduled", title: "Scheduled Scans", url: "/scopesentry/task-management/ScheduledTask", icon: ClipboardList },
+          { id: "ss-projects", title: "Projects", url: "/scopesentry/project-management/index", icon: FolderOpen },
+          { id: "ss-poc", title: "POC & Vulns", url: "/scopesentry/poc-management/index", icon: Bug },
+          { id: "ss-plugins", title: "Scanner Plugins", url: "/scopesentry/plugin-management/index", icon: Plug },
+          { id: "ss-nodes", title: "Scanner Nodes", url: "/scopesentry/node-management/index", icon: Network },
+          { id: "ss-fingerprints", title: "Fingerprints", url: "/scopesentry/fingerprint-management/index", icon: Wrench },
+          { id: "ss-map", title: "Attack Surface Map", url: "/scopesentry/map", icon: Compass },
+        ],
+      },
+      {
+        id: "workspace-observer",
+        title: "Observer (Tiel)",
+        url: "/observer",
+        icon: Eye,
+      },
+    ],
+  },
+  {
     id: 1,
-    label: "Functions",
+    label: "ARTEX Functions",
     items: [
       { id: "dashboard", title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
       { id: "chat", title: "Chat", url: "/chat", icon: MessageSquare },
@@ -80,7 +136,7 @@ export const sidebarItems: NavGroup[] = [
   },
   {
     id: 2,
-    label: "System",
+    label: "ARTEX System",
     items: [
       { id: "llm", title: "LLM", url: "/system/llm", icon: Brain },
       { id: "agents", title: "Agent", url: "/system/agents", icon: Bot },
