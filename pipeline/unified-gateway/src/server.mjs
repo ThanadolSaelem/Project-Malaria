@@ -174,6 +174,7 @@ function responseHeaders(headers, connectionHeader = '') {
 function makeRequestOptions(target, request, nativePath, search, upgrade = false, service = '') {
   const headers = requestHeaders(request, target, { upgrade });
   if (service === 'qwen') {
+    delete headers.origin;
     const authHeader = String(headers.authorization || '').trim();
     if (!authHeader || authHeader === 'Bearer undefined' || authHeader === 'Bearer null') {
       headers.authorization = `Bearer ${process.env.QWEN_SERVER_TOKEN || 'malaria-qwen-token'}`;
