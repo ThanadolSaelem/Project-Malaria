@@ -5,7 +5,7 @@ import { AxiosInstance, InternalAxiosRequestConfig, RequestConfig, AxiosResponse
 import { ElMessage } from 'element-plus'
 import { REQUEST_TIMEOUT } from '@/constants'
 import { useUserStoreWithOut } from '@/store/modules/user'
-import { getScopeSentryApiBasePath } from '@/runtime'
+import { getScopeSentryApiBasePath, isScopeSentryEmbedded } from '@/runtime'
 
 export const PATH_URL = getScopeSentryApiBasePath()
 
@@ -16,11 +16,50 @@ const axiosInstance: AxiosInstance = axios.create({
   baseURL: PATH_URL
 })
 
-axiosInstance.interceptors.request.use((res: InternalAxiosRequestConfig) => {
+let ssoLoginPromise: Promise<string> | null = null
+
+const ensureEmbeddedSsoToken = async (): Promise<string> => {
+  const userStore = useUserStoreWithOut()
+  const existing = (userStore.getToken || '').replace(/^Bearer\s+/i, '').trim()
+  if (existing.split('.').length === 3) {
+    return userStore.getToken
+  }
+  if (!ssoLoginPromise) {
+    ssoLoginPromise = axios
+      .post(`${PATH_URL}/api/user/login`, {
+        username: 'ScopeSentry',
+        password: 'malaria-scopesentry-2026'
+      })
+      .then((res) => {
+        const token = res?.data?.data?.access_token
+        if (typeof token === 'string' && token.length > 0) {
+          userStore.setToken(token)
+          return userStore.getToken
+        }
+        return ''
+      })
+      .catch(() => '')
+      .finally(() => {
+        ssoLoginPromise = null
+      })
+  }
+  return ssoLoginPromise
+}
+
+axiosInstance.interceptors.request.use(async (res: InternalAxiosRequestConfig) => {
   const controller = new AbortController()
   const url = res.url || ''
   res.signal = controller.signal
   abortControllerMap.set(url, controller)
+  if (isScopeSentryEmbedded() && !url.includes('/api/user/login')) {
+    const token = await ensureEmbeddedSsoToken()
+    if (token && res.headers) {
+      if (typeof (res.headers as any).set === 'function') {
+        ;(res.headers as any).set('Authorization', token)
+      }
+      res.headers['Authorization'] = token
+    }
+  }
   return res
 })
 
@@ -31,8 +70,24 @@ axiosInstance.interceptors.response.use(
     // 这里不能做任何处理，否则后面的 interceptors 拿不到完整的上下文了
     return res
   },
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     console.log('err： ' + error) // for debug
+    if (error.response?.status === 401 && isScopeSentryEmbedded()) {
+      const userStore = useUserStoreWithOut()
+      userStore.setToken('')
+      const newToken = await ensureEmbeddedSsoToken()
+      if (newToken && error.config && !(error.config as any).__retriedSso) {
+        ;(error.config as any).__retriedSso = true
+        if (error.config.headers) {
+          if (typeof (error.config.headers as any).set === 'function') {
+            ;(error.config.headers as any).set('Authorization', newToken)
+          }
+          error.config.headers['Authorization'] = newToken
+        }
+        return axiosInstance.request(error.config)
+      }
+      return Promise.reject(error)
+    }
     if (error.response?.data) {
       const responseData = error.response.data as { message: string; data: string }
       // 显示后端返回的具体错误消息

@@ -49,6 +49,7 @@ export default function QwenModule({
           path={path}
           onNavigate={onNavigate}
           portalContainer={portalContainer}
+          brand={{ name: "Malaria" }}
           token={process.env.NEXT_PUBLIC_QWEN_TOKEN || "malaria-qwen-token"}
         />
       )}

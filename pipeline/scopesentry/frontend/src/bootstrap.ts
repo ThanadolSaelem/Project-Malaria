@@ -51,6 +51,13 @@ const mountNativeApp = async (
   options: ScopeSentryMountOptions
 ): Promise<ScopeSentryMountHandle> => {
   configureScopeSentryRuntime(options)
+  if (isScopeSentryEmbedded() && typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem('user')
+    } catch {
+      // ignore storage errors
+    }
+  }
   setScopeSentryStyleRoot(container as HTMLElement)
   setScopeSentryTheme(getScopeSentryTheme())
   const portalBoundary = createScopeSentryPortalBoundary(
@@ -68,7 +75,8 @@ const mountNativeApp = async (
   const removePermissionHooks = setupPermissionGuard(router)
 
   let syncingHostPath = false
-  const initialPath = normalizeScopeSentryPath(options.path || getScopeSentryRuntime().path)
+  const rawInitialPath = normalizeScopeSentryPath(options.path || getScopeSentryRuntime().path)
+  const initialPath = rawInitialPath.startsWith('/login') ? '/dashboard/index' : rawInitialPath
   setScopeSentryPath(initialPath)
 
   if (isScopeSentryEmbedded()) {
@@ -100,7 +108,8 @@ const mountNativeApp = async (
       appStoreRoot.dataset.scopesentryTheme = theme
     },
     setPath(path: string) {
-      const nextPath = normalizeScopeSentryPath(path)
+      const rawNextPath = normalizeScopeSentryPath(path)
+      const nextPath = rawNextPath.startsWith('/login') ? '/dashboard/index' : rawNextPath
       setScopeSentryPath(nextPath)
       if (!isScopeSentryEmbedded() || router.currentRoute.value.fullPath === nextPath) return
       syncingHostPath = true

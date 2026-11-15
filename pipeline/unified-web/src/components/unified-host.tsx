@@ -6,8 +6,16 @@ import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import type { UnifiedModuleProps } from "@/modules/types";
+import { AccountSwitcher } from "@/app/(main)/_components/sidebar/account-switcher";
 import { AppSidebar } from "@/app/(main)/_components/sidebar/app-sidebar";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { LayoutControls } from "@/app/(main)/_components/sidebar/layout-controls";
+import { SearchDialog } from "@/app/(main)/_components/sidebar/search-dialog";
+import { ThemeSwitcher } from "@/app/(main)/_components/sidebar/theme-switcher";
+import { Separator } from "@/components/ui/separator";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { useCurrentUser } from "@/hooks/use-current-user";
+import { api } from "@/lib/api";
+import { auth } from "@/lib/auth";
 import { getClientCookie } from "@/lib/cookie.client";
 import {
   SIDEBAR_COLLAPSIBLE_VALUES,
@@ -29,7 +37,17 @@ import { applyUnifiedTheme } from "@/lib/unified-theme";
 import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 
-import { UnifiedNavigation } from "./unified-navigation";
+function isFullBleed(pathname: string) {
+  const p = (() => {
+    try {
+      return decodeURIComponent(pathname);
+    } catch {
+      return pathname;
+    }
+  })();
+  const normalized = p.replace(/\/+$/, "");
+  return normalized.startsWith("/function/tasks/");
+}
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   if (typeof document === "undefined") return fallback;
@@ -39,15 +57,15 @@ function readPref<T extends string>(key: string, allowed: readonly T[], fallback
 
 const QwenModule = dynamic(() => import("@/modules/qwen").then((module) => module.default), {
   ssr: false,
-  loading: () => <ModuleLoading label="Loading AI Workspace" />,
+  loading: () => <ModuleLoading label="Loading AI Studio…" />,
 });
 const ScopeSentryModule = dynamic(() => import("@/modules/scopesentry").then((module) => module.default), {
   ssr: false,
-  loading: () => <ModuleLoading label="Loading ScopeSentry" />,
+  loading: () => <ModuleLoading label="Loading Attack Surface & Recon…" />,
 });
 const ObserverModule = dynamic(() => import("@/modules/observer").then((module) => module.default), {
   ssr: false,
-  loading: () => <ModuleLoading label="Loading Observer" />,
+  loading: () => <ModuleLoading label="Loading Live Monitor…" />,
 });
 
 const MODULE_COMPONENTS: Record<UnifiedModuleId, ComponentType<UnifiedModuleProps>> = {
@@ -109,6 +127,7 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const currentUser = useCurrentUser();
   const currentSearch = searchParams.toString();
   const { hash, setHash } = useHash(pathname, currentSearch);
   const resolvedThemeMode = usePreferencesStore((state) => state.resolvedThemeMode);
@@ -124,15 +143,37 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
   const [modulePaths, setModulePaths] = useState<Partial<Record<UnifiedModuleId, string>>>(() =>
     currentModule ? { [currentModule.id]: currentPath } : {},
   );
-  const [artexPath, setArtexPath] = useState("/dashboard");
+  const [version, setVersion] = useState("");
+
+  const isAuthRoute =
+    pathname === "/login" ||
+    pathname === "/setup" ||
+    pathname.startsWith("/login/") ||
+    pathname.startsWith("/setup/");
 
   useEffect(() => {
     applyUnifiedTheme(resolvedThemeMode);
   }, [resolvedThemeMode]);
 
   useEffect(() => {
+    if (isAuthRoute) return;
+    if (!auth.getToken()) {
+      auth.clearToken();
+      router.replace("/login");
+      router.refresh();
+    }
+  }, [isAuthRoute, pathname, router]);
+
+  useEffect(() => {
+    if (isAuthRoute) return;
+    api
+      .health()
+      .then((h) => setVersion((h.version ?? "").replace(/^v(?=\d)/, "")))
+      .catch(() => setVersion(""));
+  }, [isAuthRoute]);
+
+  useEffect(() => {
     const login = () => {
-      if (activeModuleRef.current !== null) return;
       router.replace("/login");
       router.refresh();
     };
@@ -141,22 +182,12 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
   }, [router]);
 
   useEffect(() => {
-    if (!currentModule) {
-      const isAuth =
-        pathname === "/login" ||
-        pathname === "/setup" ||
-        pathname.startsWith("/login/") ||
-        pathname.startsWith("/setup/");
-      if (!isAuth && pathname !== "/artex") {
-        setArtexPath(`${pathname}${currentSearch ? `?${currentSearch}` : ""}${hash}`);
-      }
-      return;
-    }
+    if (!currentModule) return;
     setVisited((previous) => {
       if (previous.has(currentModule.id)) return previous;
       return new Set([...previous, currentModule.id]);
     });
-  }, [currentModule, pathname, currentSearch, hash]);
+  }, [currentModule]);
 
   useEffect(() => {
     if (!currentModule) return;
@@ -206,11 +237,7 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
 
   const theme = resolvedThemeMode;
   const isModuleRoute = currentModule !== null;
-  const isAuthRoute =
-    pathname === "/login" ||
-    pathname === "/setup" ||
-    pathname.startsWith("/login/") ||
-    pathname.startsWith("/setup/");
+  const fullBleed = !isModuleRoute && isFullBleed(pathname);
 
   const defaultOpen = typeof document === "undefined" ? true : getClientCookie("sidebar_state") !== "false";
   const variant = readPref<SidebarVariant>(
@@ -241,12 +268,7 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
   });
 
   if (isAuthRoute) {
-    return (
-      <div className="min-h-dvh">
-        <UnifiedNavigation modulePaths={modulePaths} artexPath={artexPath} showSidebarTrigger={false} />
-        {children}
-      </div>
-    );
+    return <div className="min-h-dvh">{children}</div>;
   }
 
   return (
@@ -269,7 +291,33 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
           "min-w-0 overflow-x-hidden",
         )}
       >
-        <UnifiedNavigation modulePaths={modulePaths} artexPath={artexPath} showSidebarTrigger={true} />
+        {!fullBleed && (
+          <header
+            className={cn(
+              "flex h-12 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12",
+              "[html[data-navbar-style=sticky]_&]:sticky [html[data-navbar-style=sticky]_&]:top-0 [html[data-navbar-style=sticky]_&]:z-50 [html[data-navbar-style=sticky]_&]:overflow-hidden [html[data-navbar-style=sticky]_&]:rounded-t-[inherit] [html[data-navbar-style=sticky]_&]:bg-background/50 [html[data-navbar-style=sticky]_&]:backdrop-blur-md",
+            )}
+          >
+            <div className="flex w-full items-center justify-between px-4 lg:px-6">
+              <div className="flex items-center gap-1 lg:gap-2">
+                <SidebarTrigger className="-ml-1" />
+                <Separator
+                  orientation="vertical"
+                  className="mx-2 data-[orientation=vertical]:h-4 data-[orientation=vertical]:self-center"
+                />
+                <SearchDialog />
+              </div>
+              <div className="flex items-center gap-2">
+                {version && (
+                  <span className="font-medium text-muted-foreground text-xs tabular-nums">Version · {version}</span>
+                )}
+                <LayoutControls />
+                <ThemeSwitcher />
+                <AccountSwitcher users={[currentUser]} />
+              </div>
+            </div>
+          </header>
+        )}
         {!isModuleRoute && children}
         {moduleSurfaces}
       </SidebarInset>

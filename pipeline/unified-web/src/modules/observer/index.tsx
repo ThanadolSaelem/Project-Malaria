@@ -275,7 +275,7 @@ export default function ObserverModule({ active, theme }: UnifiedModuleProps) {
             title={state.online ? "Online" : "Unavailable"}
           />
           <span>Pentest Monitor</span>
-          <span className="observer-title-muted">— Tiel</span>
+          <span className="observer-title-muted">— Malaria</span>
           <span className="observer-status" aria-live="polite">
             {state.online ? "Online" : "Unavailable"}
           </span>

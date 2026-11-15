@@ -8,6 +8,7 @@ import { usePermissionStoreWithOut } from '@/store/modules/permission'
 import { usePageLoading } from '@/hooks/web/usePageLoading'
 import { NO_REDIRECT_WHITE_LIST } from '@/constants'
 import { useUserStoreWithOut } from '@/store/modules/user'
+import { isScopeSentryEmbedded } from '@/runtime'
 
 const { start, done } = useNProgress()
 const { loadStart, loadDone } = usePageLoading()
@@ -19,9 +20,17 @@ export const setupPermission = (routerInstance: Router = router) => {
     const permissionStore = usePermissionStoreWithOut()
     const appStore = useAppStoreWithOut()
     const userStore = useUserStoreWithOut()
+    if (isScopeSentryEmbedded()) {
+      if (!userStore.getUserInfo) {
+        userStore.setUserInfo({ username: 'Malaria', password: '', role: 'admin', roleId: '1' })
+      }
+      if (!userStore.getToken) {
+        userStore.setToken('malaria-sso-token')
+      }
+    }
     if (userStore.getUserInfo) {
       if (to.path === '/login') {
-        next({ path: '/' })
+        next({ path: '/dashboard/index' })
       } else {
         if (permissionStore.getIsAddRouters) {
           next()

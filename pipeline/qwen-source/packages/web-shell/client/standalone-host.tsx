@@ -52,7 +52,7 @@ import {
 } from './components/sidebar/WebShellSidebar';
 
 const QWEN_API_PATH = '/qwen-api';
-const HOST_BRAND: WebShellBrand = { name: 'Project-Malaria' };
+const HOST_BRAND: WebShellBrand = { name: 'Malaria' };
 const STANDALONE_COMPOSER_TOOLBAR_ADDITIONS = ['addMenu', 'plan'] as const;
 
 export interface StandaloneHostProps {
@@ -118,13 +118,13 @@ function authMessage(
   if (state.status === 'token') {
     return state.pairingFailed
       ? language === 'zh-CN'
-        ? '配对未完成。请输入 Qwen daemon token。'
-        : 'Pairing did not complete. Enter the Qwen daemon token.'
+        ? '配对未完成。请输入 Malaria AI Studio token。'
+        : 'Pairing did not complete. Enter the Malaria AI Studio token.'
       : language === 'zh-CN'
-        ? '请输入 Qwen daemon token。'
-        : 'Enter the Qwen daemon token.';
+        ? '请输入 Malaria AI Studio token。'
+        : 'Enter the Malaria AI Studio token.';
   }
-  return language === 'zh-CN' ? '正在连接 Qwen…' : 'Connecting to Qwen…';
+  return language === 'zh-CN' ? '正在连接 Malaria AI Studio…' : 'Connecting to Malaria AI Studio…';
 }
 
 function HostAuthGate({
@@ -231,7 +231,7 @@ function HostAuthGate({
       }`}
     >
       <div className="flex w-full max-w-md flex-col gap-4 rounded-lg border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Project-Malaria</h1>
+        <h1 className="text-xl font-semibold">Malaria</h1>
         <p role="status" className="text-sm text-muted-foreground">
           {authMessage(state, language)}
         </p>
@@ -312,7 +312,7 @@ export function StandaloneHost({
   theme,
   path,
   onNavigate,
-  token,
+  token = 'malaria-qwen-token',
   language: providedLanguage,
   brand = HOST_BRAND,
   portalContainer = null,
@@ -321,6 +321,9 @@ export function StandaloneHost({
     () => resolveQwenBaseUrl(initialTargetOrigin(path)),
     [],
   );
+  useEffect(() => {
+    if (token) persistDaemonToken(token, baseUrl);
+  }, [baseUrl, token]);
   const language =
     providedLanguage ??
     normalizeLanguage(typeof navigator === 'undefined' ? 'en' : navigator.language);
@@ -368,7 +371,7 @@ export function StandaloneHost({
               language={language}
               options={{
                 defaultEnabled: true,
-                appName: brand.name || 'Project-Malaria',
+                appName: brand.name || 'Malaria',
               }}
               active
             >

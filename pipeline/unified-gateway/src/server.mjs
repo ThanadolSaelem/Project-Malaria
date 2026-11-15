@@ -29,6 +29,70 @@ import {
 const gatewayForwardedHeaders = new Set(FORWARDED_HEADER_NAMES);
 const JSON_TYPE = 'application/json; charset=utf-8';
 
+let cachedScopeSentryToken = '';
+let cachedScopeSentryTokenExp = 0;
+let scopeSentryTokenPromise = null;
+
+function fetchScopeSentryToken(target) {
+  const now = Date.now();
+  if (cachedScopeSentryToken && now < cachedScopeSentryTokenExp) {
+    return Promise.resolve(cachedScopeSentryToken);
+  }
+  if (scopeSentryTokenPromise) return scopeSentryTokenPromise;
+
+  const username = process.env.SCOPESENTRY_SSO_USER || 'ScopeSentry';
+  const password = process.env.SCOPESENTRY_SSO_PASSWORD || 'malaria-scopesentry-2026';
+  const payload = Buffer.from(JSON.stringify({ username, password }), 'utf8');
+  const transport = transportFor(target);
+
+  scopeSentryTokenPromise = new Promise((resolve) => {
+    const req = transport(
+      {
+        protocol: target.protocol,
+        hostname: targetHostname(target),
+        port: target.port || undefined,
+        method: 'POST',
+        path: targetPath(target, '/api/user/login', ''),
+        headers: {
+          Host: targetHost(target),
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length,
+        },
+        timeout: 5_000,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.once('end', () => {
+          try {
+            const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            const token = parsed?.data?.access_token;
+            if (typeof token === 'string' && token.length > 0) {
+              cachedScopeSentryToken = token;
+              cachedScopeSentryTokenExp = Date.now() + 30 * 60 * 1000;
+              resolve(token);
+              return;
+            }
+          } catch {
+            // ignore
+          }
+          resolve('');
+        });
+      },
+    );
+    req.once('error', () => resolve(''));
+    req.once('timeout', () => {
+      req.destroy();
+      resolve('');
+    });
+    req.end(payload);
+  }).finally(() => {
+    scopeSentryTokenPromise = null;
+  });
+
+  return scopeSentryTokenPromise;
+}
+
 function remoteAddress(request) {
   return request.socket?.remoteAddress || '';
 }
@@ -107,14 +171,21 @@ function responseHeaders(headers, connectionHeader = '') {
   return copied;
 }
 
-function makeRequestOptions(target, request, nativePath, search, upgrade = false) {
+function makeRequestOptions(target, request, nativePath, search, upgrade = false, service = '') {
+  const headers = requestHeaders(request, target, { upgrade });
+  if (service === 'qwen') {
+    const authHeader = String(headers.authorization || '').trim();
+    if (!authHeader || authHeader === 'Bearer undefined' || authHeader === 'Bearer null') {
+      headers.authorization = `Bearer ${process.env.QWEN_SERVER_TOKEN || 'malaria-qwen-token'}`;
+    }
+  }
   return {
     protocol: target.protocol,
     hostname: targetHostname(target),
     port: target.port || undefined,
     method: request.method,
     path: targetPath(target, nativePath, search),
-    headers: requestHeaders(request, target, { upgrade }),
+    headers,
     agent: false,
     // Long-running ARTEX/Qwen work must not be shortened by a proxy timeout.
     timeout: 0,
@@ -134,14 +205,33 @@ function attachAbort(request, upstream) {
   return abort;
 }
 
-function pipeHttpRequest(request, response, route, config, search) {
+async function pipeHttpRequest(request, response, route, config, search) {
   const target = config.targets[route.service];
-  const options = makeRequestOptions(target, request, route.nativePath, search);
+  const options = makeRequestOptions(target, request, route.nativePath, search, false, route.service);
+  if (
+    route.service === 'scopesentry' &&
+    route.nativePath.startsWith('/api/') &&
+    route.nativePath !== '/api/user/login'
+  ) {
+    const authHeader = String(options.headers.authorization || '').trim();
+    const rawJwt = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const isRealJwt = rawJwt.split('.').length === 3;
+    if (!isRealJwt) {
+      const ssoToken = await fetchScopeSentryToken(target);
+      if (ssoToken) {
+        options.headers.authorization = `Bearer ${ssoToken}`;
+      }
+    }
+  }
   const transport = transportFor(target);
   let responseStarted = false;
 
   const upstream = transport(options, (upstreamResponse) => {
     responseStarted = true;
+    if (route.service === 'scopesentry' && upstreamResponse.statusCode === 401) {
+      cachedScopeSentryToken = '';
+      cachedScopeSentryTokenExp = 0;
+    }
     const headers = responseHeaders(
       upstreamResponse.headers,
       String(upstreamResponse.headers.connection || ''),
@@ -219,7 +309,7 @@ function pipeWebSocket(request, socket, head, route, config, search) {
   }
 
   const target = config.targets[route.service];
-  const options = makeRequestOptions(target, request, route.nativePath, search, true);
+  const options = makeRequestOptions(target, request, route.nativePath, search, true, route.service);
   const transport = transportFor(target);
   let settled = false;
   const upstreamRequest = transport(options);

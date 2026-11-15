@@ -42,7 +42,7 @@ export default function AssetSyncPage() {
       </div>
       <Tabs defaultValue="scopesentry">
         <TabsList>
-          <TabsTrigger value="scopesentry">ScopeSentry</TabsTrigger>
+          <TabsTrigger value="scopesentry">Recon Engine</TabsTrigger>
         </TabsList>
         <TabsContent value="scopesentry" className="mt-4">
           <ScopeSentryPanel />
@@ -110,7 +110,7 @@ function DataSourceCard({
     setBusy(true);
     try {
       await api.ssDatasource({});
-      toast.success("ScopeSentry data source created; fill in the URL and key");
+      toast.success("Recon Engine data source created; fill in the URL and key");
       onChanged();
     } catch (e) {
       toast.error(`Create failed: ${(e as Error).message}`);
@@ -149,7 +149,7 @@ function DataSourceCard({
         {!status?.exists ? (
           <div className="flex items-center justify-between gap-4">
             <p className="text-muted-foreground text-sm">
-              No ScopeSentry data source yet. Creating one adds a placeholder MCP (empty URL/key, disabled).
+              No Recon Engine data source yet. Creating one adds a placeholder MCP (empty URL/key, disabled).
             </p>
             <Button onClick={create} disabled={busy}>
               Create data source

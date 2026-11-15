@@ -69,7 +69,7 @@ export default function SetupPage() {
           <div className="absolute size-60 rounded-full border border-primary-foreground/15" />
           <div className="absolute size-40 rounded-full border border-primary-foreground/20" />
           <span className="relative max-w-40 text-center text-2xl font-semibold tracking-tight text-primary-foreground">
-            Project-Malaria
+            Malaria
           </span>
         </div>
       </div>

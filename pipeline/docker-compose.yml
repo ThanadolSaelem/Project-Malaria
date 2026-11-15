@@ -388,7 +388,11 @@ services:
     volumes:
       - scopesentry-mongodb-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh -u \"$${MONGO_INITDB_ROOT_USERNAME}\" -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin ScopeSentry --quiet --eval 'db.adminCommand(\"ping\"); db.user.updateOne({username:\"ScopeSentry\"},{$$set:{password:\"51abb11ddcbf0147f04fa374e5af3bdd72335cec46d155b9cadaf697b547c575\",role:\"admin\"},$$setOnInsert:{username:\"ScopeSentry\",created_at:new Date()}},{upsert:true}); const h=\"72600f667c8500f32ed88ad8c098b68854cedea75715d572b0498436a97ebaa4\"; if(!db.api_key.findOne({key_hash:h})){db.api_key.insertOne({name:\"Malaria-MCP\",key_hash:h,key_prefix:\"ssk_projec...\",enabled:true,created_at:new Date(),last_used_at:null});}' || mongosh -u root -p scopesentry_mongo_pass --authenticationDatabase admin ScopeSentry --quiet --eval 'db.adminCommand(\"ping\"); db.user.updateOne({username:\"ScopeSentry\"},{$$set:{password:\"51abb11ddcbf0147f04fa374e5af3bdd72335cec46d155b9cadaf697b547c575\",role:\"admin\"},$$setOnInsert:{username:\"ScopeSentry\",created_at:new Date()}},{upsert:true}); const h=\"72600f667c8500f32ed88ad8c098b68854cedea75715d572b0498436a97ebaa4\"; if(!db.api_key.findOne({key_hash:h})){db.api_key.insertOne({name:\"Malaria-MCP\",key_hash:h,key_prefix:\"ssk_projec...\",enabled:true,created_at:new Date(),last_used_at:null});}'",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10

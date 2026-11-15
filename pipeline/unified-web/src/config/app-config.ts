@@ -3,11 +3,11 @@ import packageJson from "../../package.json";
 const currentYear = new Date().getFullYear();
 
 export const APP_CONFIG = {
-  name: "Project-Malaria",
+  name: "Malaria",
   version: packageJson.version,
-  copyright: `© ${currentYear}, ARTEX.`,
+  copyright: `© ${currentYear}, Malaria.`,
   meta: {
-    title: "Project-Malaria",
-    description: "Unified workspace for the Project-Malaria security systems",
+    title: "Malaria",
+    description: "Malaria Autonomous Security & Intelligence Platform",
   },
 };

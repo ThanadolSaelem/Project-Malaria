@@ -7,9 +7,9 @@ export interface UnifiedModuleDefinition {
 }
 
 export const UNIFIED_MODULES: readonly UnifiedModuleDefinition[] = [
-  { id: "qwen", label: "AI Workspace", prefix: "/ai" },
-  { id: "scopesentry", label: "ScopeSentry", prefix: "/scopesentry" },
-  { id: "observer", label: "Observer", prefix: "/observer" },
+  { id: "qwen", label: "AI Studio", prefix: "/ai" },
+  { id: "scopesentry", label: "Attack Surface", prefix: "/scopesentry" },
+  { id: "observer", label: "Live Monitor", prefix: "/observer" },
 ];
 
 export const SCOPE_SENTRY_ASSETS = {

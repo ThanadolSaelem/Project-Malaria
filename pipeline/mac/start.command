@@ -134,12 +134,12 @@ export HOST_LAN_IP="$("$HERE/mobile-link.sh" --ip-only 2>/dev/null || true)"
 "$HERE/mobile-link.sh" --start-watcher 2>/dev/null || true
 docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile full up -d --build
 
-# Ensure ScopeSentry MCP API key exists in MongoDB so ARTEX & Qwen Code MCP connect immediately
-docker exec scopesentry-mongodb mongosh -u root -p scopesentry_mongo_pass --authenticationDatabase admin ScopeSentry --quiet --eval '
+# Ensure ScopeSentry MCP API key and SSO user password exist in MongoDB so Malaria SSO & MCP connect immediately
+SEED_JS='
   const hash = "72600f667c8500f32ed88ad8c098b68854cedea75715d572b0498436a97ebaa4";
   if (!db.api_key.findOne({ key_hash: hash })) {
     db.api_key.insertOne({
-      name: "Project-Malaria-MCP",
+      name: "Malaria-MCP",
       key_hash: hash,
       key_prefix: "ssk_projec...",
       enabled: true,
@@ -147,7 +147,15 @@ docker exec scopesentry-mongodb mongosh -u root -p scopesentry_mongo_pass --auth
       last_used_at: null
     });
   }
-' >/dev/null 2>&1 || true
+  const ssoPwdHash = "51abb11ddcbf0147f04fa374e5af3bdd72335cec46d155b9cadaf697b547c575";
+  db.user.updateOne(
+    { username: "ScopeSentry" },
+    { $set: { password: ssoPwdHash, role: "admin" }, $setOnInsert: { username: "ScopeSentry", created_at: new Date() } },
+    { upsert: true }
+  );
+'
+docker exec scopesentry-mongodb mongosh -u "${SCOPESENTRY_MONGO_USER:-admin}" -p "${SCOPESENTRY_MONGO_PASSWORD:-scopesentry_mongo_malaria_2026}" --authenticationDatabase admin ScopeSentry --quiet --eval "$SEED_JS" >/dev/null 2>&1 || \
+docker exec scopesentry-mongodb mongosh -u root -p scopesentry_mongo_pass --authenticationDatabase admin ScopeSentry --quiet --eval "$SEED_JS" >/dev/null 2>&1 || true
 
 # ── observer dashboard (สรุปงาน Tiel EN+TH + alert) — รัน background ถ้ามี summarizer ──
 if [ -f "$HERE/summarize-watch.py" ] && command -v python3 >/dev/null 2>&1; then
