@@ -46,6 +46,7 @@ interface NavItemBase {
   badge?: NavBadge;
   disabled?: boolean;
   newTab?: boolean;
+  matchUrls?: string[];
 }
 
 export interface NavMainLinkItem extends NavItemBase {
@@ -73,23 +74,27 @@ export const sidebarItems: NavGroup[] = [
     items: [
       { id: "dashboard", title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
       {
-        id: "workspace-ai",
-        title: "AI Studio",
-        url: "/ai",
+        id: "chat",
+        title: "AI Pentest Studio",
+        url: "/chat",
         icon: Sparkles,
-        subItems: [
-          { id: "ai-chat", title: "Agent Sessions", url: "/ai", icon: MessageSquare },
-          { id: "ai-plugins", title: "Subagents & Plugins", url: "/ai/plugins", icon: Bot },
-          { id: "ai-goals", title: "Autonomous Goals", url: "/ai/goals", icon: Target },
-          { id: "ai-scheduled", title: "Scheduled Workflows", url: "/ai/scheduled-tasks", icon: ClipboardList },
-          { id: "ai-live", title: "Live Stream", url: "/ai/live", icon: Activity },
-          { id: "ai-channels", title: "Channels", url: "/ai/channels", icon: Radio },
-        ],
+        matchUrls: ["/chat", "/ai"],
       },
-      { id: "chat", title: "Pentest Chat", url: "/chat", icon: MessageSquare },
-      { id: "tasks", title: "Pentest Tasks", url: "/function/tasks", icon: Target },
+      {
+        id: "tasks",
+        title: "Pentest Missions",
+        url: "/function/tasks",
+        icon: Target,
+        matchUrls: ["/function/tasks", "/ai/goals", "/ai/scheduled-tasks"],
+      },
       { id: "findings", title: "Findings", url: "/function/findings", icon: Bug },
-      { id: "workspace-observer", title: "Live Monitor", url: "/observer", icon: Eye },
+      {
+        id: "workspace-observer",
+        title: "Live Monitor",
+        url: "/observer",
+        icon: Eye,
+        matchUrls: ["/observer", "/ai/live"],
+      },
     ],
   },
   {
@@ -98,10 +103,14 @@ export const sidebarItems: NavGroup[] = [
     items: [
       { id: "ss-dashboard", title: "Recon Overview", url: "/scopesentry/dashboard/index", icon: Radar },
       { id: "ss-projects", title: "Projects", url: "/scopesentry/project-management/index", icon: FolderOpen },
-      { id: "ss-assets", title: "Asset Inventory", url: "/scopesentry/asset-information/index", icon: Globe },
-      { id: "assets", title: "Target Assets", url: "/function/assets", icon: Network },
+      {
+        id: "assets",
+        title: "Target Assets & Inventory",
+        url: "/function/assets",
+        icon: Globe,
+        matchUrls: ["/function/assets", "/scopesentry/asset-information/index", "/function/sync"],
+      },
       { id: "ss-map", title: "Attack Surface Map", url: "/scopesentry/map", icon: Compass },
-      { id: "sync", title: "Asset Sync", url: "/function/sync", icon: FolderSync },
       {
         id: "ss-scans-group",
         title: "Scan Operations",
@@ -129,30 +138,61 @@ export const sidebarItems: NavGroup[] = [
   },
   {
     id: 2,
-    label: "Telemetry & Workspace",
+    label: "Telemetry & Safety",
     items: [
       { id: "traffic", title: "HTTP Traffic", url: "/function/traffic", icon: Activity },
       { id: "commands", title: "Tool Execution", url: "/function/commands", icon: Terminal },
       { id: "llm-records", title: "LLM Recording", url: "/function/llm-records", icon: Radio },
+      {
+        id: "approvals",
+        title: "Safety & Approvals",
+        url: "/system/intercept/approvals",
+        icon: ShieldAlert,
+        matchUrls: ["/system/intercept/approvals", "/system/intercept", "/system/intercept/assets"],
+      },
       { id: "workspace", title: "Workspace Files", url: "/function/workspace", icon: FolderOpen },
     ],
   },
   {
     id: 3,
-    label: "System",
+    label: "System & AI Config",
     items: [
-      { id: "llm", title: "LLM Models", url: "/system/llm", icon: Brain },
-      { id: "agents", title: "Agents", url: "/system/agents", icon: Bot },
+      {
+        id: "llm",
+        title: "LLM Models",
+        url: "/system/llm",
+        icon: Brain,
+        matchUrls: ["/system/llm", "/ai/settings"],
+      },
+      {
+        id: "agents",
+        title: "Agents & Subagents",
+        url: "/system/agents",
+        icon: Bot,
+        matchUrls: ["/system/agents", "/ai/plugins"],
+      },
       { id: "mcp", title: "MCP Servers", url: "/system/mcp", icon: Plug },
-      { id: "skills", title: "Skills", url: "/system/skills", icon: Sparkles },
-      { id: "tools", title: "Custom Tools", url: "/system/tools", icon: Wrench },
-      { id: "ai-settings", title: "AI Studio Settings", url: "/ai/settings", icon: Settings2 },
-      { id: "notify", title: "Notifications", url: "/system/notify", icon: BellRing },
-      { id: "intercept", title: "Interception Rules", url: "/system/intercept", icon: ShieldAlert },
-      { id: "asset-intercept", title: "Asset Interception", url: "/system/intercept/assets", icon: Ban },
-      { id: "approvals", title: "Approval Records", url: "/system/intercept/approvals", icon: ClipboardList },
-      { id: "logs", title: "System Logs", url: "/system/logs", icon: ScrollText },
-      { id: "settings", title: "System Settings", url: "/system/settings", icon: Settings2 },
+      {
+        id: "skills",
+        title: "Skills & Tools",
+        url: "/system/skills",
+        icon: Wrench,
+        matchUrls: ["/system/skills", "/system/tools"],
+      },
+      {
+        id: "notify",
+        title: "Notifications & Channels",
+        url: "/system/notify",
+        icon: BellRing,
+        matchUrls: ["/system/notify", "/ai/channels"],
+      },
+      {
+        id: "settings",
+        title: "System Settings & Logs",
+        url: "/system/settings",
+        icon: Settings2,
+        matchUrls: ["/system/settings", "/system/logs"],
+      },
     ],
   },
 ];

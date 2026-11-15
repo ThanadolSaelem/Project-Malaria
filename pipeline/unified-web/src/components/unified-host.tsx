@@ -1,9 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RefreshCwIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import type { UnifiedModuleProps } from "@/modules/types";
 import { AccountSwitcher } from "@/app/(main)/_components/sidebar/account-switcher";
@@ -11,6 +14,7 @@ import { AppSidebar } from "@/app/(main)/_components/sidebar/app-sidebar";
 import { LayoutControls } from "@/app/(main)/_components/sidebar/layout-controls";
 import { SearchDialog } from "@/app/(main)/_components/sidebar/search-dialog";
 import { ThemeSwitcher } from "@/app/(main)/_components/sidebar/theme-switcher";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/hooks/use-current-user";
@@ -47,6 +51,249 @@ function isFullBleed(pathname: string) {
   })();
   const normalized = p.replace(/\/+$/, "");
   return normalized.startsWith("/function/tasks/");
+}
+
+interface WorkspaceModeTab {
+  id: string;
+  label: string;
+  subtitle: string;
+  url: string;
+}
+
+interface WorkspaceModeGroup {
+  id: string;
+  title: string;
+  showSyncButton?: boolean;
+  tabs: WorkspaceModeTab[];
+}
+
+const UNIFIED_WORKSPACE_GROUPS: readonly WorkspaceModeGroup[] = [
+  {
+    id: "ai-pentest-studio",
+    title: "AI Pentest Studio",
+    showSyncButton: true,
+    tabs: [
+      {
+        id: "pentest-chat",
+        label: "Pentest Graph Chat",
+        subtitle: "Interactive Pentest Agent + Knowledge Graph + Safety Gate",
+        url: "/chat",
+      },
+      {
+        id: "deep-agent-ide",
+        label: "Deep Agent IDE & Terminal",
+        subtitle: "Multi-Session Sandbox + Code Audit + 7 MCP Servers",
+        url: "/ai",
+      },
+    ],
+  },
+  {
+    id: "pentest-missions",
+    title: "Pentest Missions",
+    tabs: [
+      {
+        id: "pentest-tasks",
+        label: "Pentest Tasks & Graphs",
+        subtitle: "Autonomous Planner/Worker Missions & Coverage Graph",
+        url: "/function/tasks",
+      },
+      {
+        id: "autonomous-goals",
+        label: "Autonomous Goals",
+        subtitle: "Long-Running Verify-Loop Objectives",
+        url: "/ai/goals",
+      },
+      {
+        id: "scheduled-workflows",
+        label: "Scheduled Workflows",
+        subtitle: "Recurring Cron & Playbook Automation",
+        url: "/ai/scheduled-tasks",
+      },
+    ],
+  },
+  {
+    id: "live-monitor",
+    title: "Live Monitor",
+    tabs: [
+      {
+        id: "observer",
+        label: "Telemetry & Subagent Graph",
+        subtitle: "Real-Time Orchestration & Subagent Status",
+        url: "/observer",
+      },
+      {
+        id: "live-stream",
+        label: "Live Agent Stream",
+        subtitle: "Live Terminal & Tool Execution Stream",
+        url: "/ai/live",
+      },
+    ],
+  },
+  {
+    id: "target-assets",
+    title: "Target Assets & Inventory",
+    showSyncButton: true,
+    tabs: [
+      {
+        id: "target-assets",
+        label: "Target Assets & Scope",
+        subtitle: "Pentest Scope, Companies & Attack Graph Assets",
+        url: "/function/assets",
+      },
+      {
+        id: "recon-inventory",
+        label: "Recon Asset Inventory",
+        subtitle: "Subdomains, Ports, Fingerprints & Screenshots",
+        url: "/scopesentry/asset-information/index",
+      },
+      {
+        id: "recon-sync",
+        label: "Recon Sync Control",
+        subtitle: "ScopeSentry MCP Data Source & Selective Sync",
+        url: "/function/sync",
+      },
+    ],
+  },
+  {
+    id: "safety-approvals",
+    title: "Safety & Approvals",
+    tabs: [
+      {
+        id: "approvals",
+        label: "Approval Records",
+        subtitle: "Human-in-the-Loop Command Decisions",
+        url: "/system/intercept/approvals",
+      },
+      {
+        id: "intercept-rules",
+        label: "Command Interception Rules",
+        subtitle: "Regex & Tool Safety Policies",
+        url: "/system/intercept",
+      },
+      {
+        id: "asset-blocklist",
+        label: "Asset Blocklist",
+        subtitle: "Out-of-Scope Domains, IPs & CIDRs",
+        url: "/system/intercept/assets",
+      },
+    ],
+  },
+  {
+    id: "llm-models",
+    title: "LLM Models",
+    tabs: [
+      {
+        id: "llm-pool",
+        label: "Model Pool & Failover Profiles",
+        subtitle: "LiteLLM Profiles, Routing & Rate Limits",
+        url: "/system/llm",
+      },
+      {
+        id: "ide-runtime",
+        label: "Agent Runtime Settings",
+        subtitle: "Deep Agent IDE Runtime & Environment",
+        url: "/ai/settings",
+      },
+    ],
+  },
+  {
+    id: "agents-subagents",
+    title: "Agents & Subagents",
+    tabs: [
+      {
+        id: "pentest-agents",
+        label: "Pentest Agents & Prompts",
+        subtitle: "Planner, Worker, Retester & Custom Triggers",
+        url: "/system/agents",
+      },
+      {
+        id: "ide-subagents",
+        label: "IDE Subagents & Extensions",
+        subtitle: "Subagent Roles, Extensions & Runtime Bindings",
+        url: "/ai/plugins",
+      },
+    ],
+  },
+  {
+    id: "skills-tools",
+    title: "Skills & Tools",
+    tabs: [
+      {
+        id: "skills",
+        label: "Agent Skills (SKILL.md)",
+        subtitle: "Playbooks, Workflows & Agent Skill Visibility",
+        url: "/system/skills",
+      },
+      {
+        id: "custom-tools",
+        label: "Custom & Built-in Tools",
+        subtitle: "Python/Shell Custom Tools & Schemas",
+        url: "/system/tools",
+      },
+    ],
+  },
+  {
+    id: "notifications-channels",
+    title: "Notifications & Channels",
+    tabs: [
+      {
+        id: "webhooks",
+        label: "Alert Webhooks",
+        subtitle: "Vulnerability Push Notifications",
+        url: "/system/notify",
+      },
+      {
+        id: "bot-channels",
+        label: "Interactive Bot Channels",
+        subtitle: "Two-Way ChatOps & Messaging Channels",
+        url: "/ai/channels",
+      },
+    ],
+  },
+  {
+    id: "system-settings-logs",
+    title: "System Settings & Logs",
+    tabs: [
+      {
+        id: "system-settings",
+        label: "System Settings",
+        subtitle: "Concurrency, Confinement & Global Engine Config",
+        url: "/system/settings",
+      },
+      {
+        id: "system-logs",
+        label: "System Logs",
+        subtitle: "Live Backend Audit & Engine Logs",
+        url: "/system/logs",
+      },
+    ],
+  },
+];
+
+function isModeTabActive(pathname: string, tabUrl: string): boolean {
+  if (tabUrl === "/ai") {
+    return (
+      pathname === "/ai" ||
+      pathname.startsWith("/ai/s/") ||
+      pathname.startsWith("/ai/session")
+    );
+  }
+  if (tabUrl === "/system/intercept") {
+    return pathname === "/system/intercept";
+  }
+  if (tabUrl === "/function/tasks") {
+    return pathname === "/function/tasks";
+  }
+  return pathname === tabUrl || pathname.startsWith(`${tabUrl}/`);
+}
+
+function resolveWorkspaceGroup(pathname: string): WorkspaceModeGroup | null {
+  for (const group of UNIFIED_WORKSPACE_GROUPS) {
+    if (group.tabs.some((tab) => isModeTabActive(pathname, tab.url))) {
+      return group;
+    }
+  }
+  return null;
 }
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
@@ -144,12 +391,42 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
     currentModule ? { [currentModule.id]: currentPath } : {},
   );
   const [version, setVersion] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const autoSyncedRef = useRef(false);
+  const activeWorkspaceGroup = useMemo(() => resolveWorkspaceGroup(pathname), [pathname]);
 
   const isAuthRoute =
     pathname === "/login" ||
     pathname === "/setup" ||
     pathname.startsWith("/login/") ||
     pathname.startsWith("/setup/");
+
+  const runUnifiedSync = useCallback(async (silent = false) => {
+    if (!auth.getToken()) return;
+    if (!silent) setSyncing(true);
+    try {
+      const res = await api.syncUnified();
+      if (!silent) {
+        const assetTotal = Object.values(res.synced ?? {}).reduce((a, b) => a + b, 0);
+        const findingsCount = res.findings_synced ?? 0;
+        toast.success(
+          `Synced ${assetTotal} recon assets and ${findingsCount} new findings across Malaria engines`,
+        );
+      }
+    } catch (err) {
+      if (!silent) {
+        toast.error(`Sync failed: ${(err as Error).message}`);
+      }
+    } finally {
+      if (!silent) setSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthRoute || autoSyncedRef.current || !auth.getToken()) return;
+    autoSyncedRef.current = true;
+    void runUnifiedSync(true);
+  }, [isAuthRoute, runUnifiedSync]);
 
   useEffect(() => {
     applyUnifiedTheme(resolvedThemeMode);
@@ -317,6 +594,59 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
               </div>
             </div>
           </header>
+        )}
+        {!fullBleed && activeWorkspaceGroup && (
+          <div
+            data-unified-mode-bar={activeWorkspaceGroup.id}
+            className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-1.5 lg:px-6"
+          >
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                {activeWorkspaceGroup.title}
+              </span>
+              {activeWorkspaceGroup.tabs.map((tab) => {
+                const active = isModeTabActive(pathname, tab.url);
+                return (
+                  <Link
+                    key={tab.id}
+                    href={tab.url}
+                    prefetch={false}
+                    title={tab.subtitle}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium text-xs transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-xs"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                    )}
+                  >
+                    <span>{tab.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              {activeWorkspaceGroup.tabs.map((tab) =>
+                isModeTabActive(pathname, tab.url) ? (
+                  <span key={tab.id} className="hidden text-muted-foreground text-xs lg:inline">
+                    {tab.subtitle}
+                  </span>
+                ) : null,
+              )}
+              {activeWorkspaceGroup.showSyncButton && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2.5 text-xs"
+                  disabled={syncing}
+                  onClick={() => void runUnifiedSync(false)}
+                >
+                  <RefreshCwIcon className={cn("size-3.5", syncing && "animate-spin")} />
+                  <span>{syncing ? "Syncing…" : "Sync Recon & Findings"}</span>
+                </Button>
+              )}
+            </div>
+          </div>
         )}
         {!isModuleRoute && children}
         {moduleSurfaces}

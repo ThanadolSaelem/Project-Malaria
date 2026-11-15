@@ -1348,7 +1348,7 @@ export default function ChatPage() {
   return (
     <div
       data-content-padding="false"
-      className="flex h-[calc(100svh-3rem)] min-w-0 flex-col overflow-hidden p-3 sm:p-4 md:h-[calc(100svh-4rem)] md:p-6"
+      className="flex h-[calc(100svh-5.75rem)] min-w-0 flex-col overflow-hidden p-3 sm:p-4 md:p-5"
     >
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(10rem,15rem)_minmax(0,1fr)] gap-3 md:grid-cols-[18rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] md:gap-4">
         {/* left: conversation list */}

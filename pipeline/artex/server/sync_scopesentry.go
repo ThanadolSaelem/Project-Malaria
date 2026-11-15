@@ -4,13 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/mcphttp"
+)
+
+const (
+	defaultScopeSentryMCPURL = "http://scope-sentry:8082/mcp"
+	defaultScopeSentryMCPKey = "ssk_project_malaria_scopesentry_mcp_key_2026"
 )
 
 // Asset sync (ScopeSentry data source).
@@ -71,11 +79,58 @@ func envHasValue(raw json.RawMessage) bool {
 
 // ---------- GET /api/sync/scopesentry/status ----------
 
+func (s *Server) ensureScopeSentryMCP(ctx context.Context) (*db.MCPServer, error) {
+	m, err := s.findMCPByName(scopeSentryMCPName)
+	if err != nil {
+		return nil, err
+	}
+	needsSave := false
+	if m == nil {
+		env, _ := json.Marshal(map[string]string{"X-API-Key": defaultScopeSentryMCPKey})
+		m = &db.MCPServer{
+			Name:           scopeSentryMCPName,
+			Transport:      "http",
+			URL:            defaultScopeSentryMCPURL,
+			Env:            env,
+			Enabled:        true,
+			TimeoutSeconds: 120,
+		}
+		needsSave = true
+	} else {
+		if strings.TrimSpace(m.URL) == "" {
+			m.URL = defaultScopeSentryMCPURL
+			needsSave = true
+		}
+		if !envHasValue(m.Env) {
+			env, _ := json.Marshal(map[string]string{"X-API-Key": defaultScopeSentryMCPKey})
+			m.Env = env
+			needsSave = true
+		}
+		if !m.Enabled && m.URL != "" && envHasValue(m.Env) {
+			m.Enabled = true
+			needsSave = true
+		}
+	}
+	if needsSave {
+		id, serr := s.m.pg.SaveMCP(m)
+		if serr != nil {
+			return nil, serr
+		}
+		m.ID = id
+		if m.Enabled {
+			dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			_ = s.discoverAndCacheMCP(dctx, m)
+			cancel()
+		}
+	}
+	return m, nil
+}
+
 func (s *Server) syncSSStatus(w http.ResponseWriter, r *http.Request) {
 	if s.pg(w) == nil {
 		return
 	}
-	m, err := s.findMCPByName(scopeSentryMCPName)
+	m, err := s.ensureScopeSentryMCP(r.Context())
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -124,7 +179,7 @@ func (s *Server) syncSSDatasource(w http.ResponseWriter, r *http.Request) {
 		URL    string `json:"url"`
 		APIKey string `json:"api_key"`
 	}
-	_ = decode(r, &body) // empty body = just create the placeholder
+	_ = decode(r, &body) // empty body = auto-configure with Project-Malaria defaults
 	body.URL = strings.TrimSpace(body.URL)
 	body.APIKey = strings.TrimSpace(body.APIKey)
 
@@ -134,13 +189,25 @@ func (s *Server) syncSSDatasource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m == nil {
-		m = &db.MCPServer{Name: scopeSentryMCPName, Transport: "http", Env: json.RawMessage(`{"X-API-Key":""}`)}
+		env, _ := json.Marshal(map[string]string{"X-API-Key": defaultScopeSentryMCPKey})
+		m = &db.MCPServer{
+			Name:           scopeSentryMCPName,
+			Transport:      "http",
+			URL:            defaultScopeSentryMCPURL,
+			Env:            env,
+			TimeoutSeconds: 120,
+		}
 	}
 	if body.URL != "" {
 		m.URL = body.URL
+	} else if strings.TrimSpace(m.URL) == "" {
+		m.URL = defaultScopeSentryMCPURL
 	}
 	if body.APIKey != "" {
 		env, _ := json.Marshal(map[string]string{"X-API-Key": body.APIKey})
+		m.Env = env
+	} else if !envHasValue(m.Env) {
+		env, _ := json.Marshal(map[string]string{"X-API-Key": defaultScopeSentryMCPKey})
 		m.Env = env
 	}
 	// Enable only once it can actually be used.
@@ -510,4 +577,311 @@ func queryInt(r *http.Request, key string, def int) int {
 		}
 	}
 	return def
+}
+
+type createFindingReq struct {
+	Title       string         `json:"title"`
+	Severity    string         `json:"severity"`
+	VulnClass   string         `json:"vuln_class"`
+	Status      string         `json:"status"`
+	TaskID      int64          `json:"task_id"`
+	TaskDesc    string         `json:"task_desc"`
+	Target      string         `json:"target"`
+	Description string         `json:"description"`
+	Evidence    string         `json:"evidence"`
+	Remediation string         `json:"remediation"`
+	Details     map[string]any `json:"details"`
+}
+
+func normalizeFindingSeverity(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "critical", "crit":
+		return "critical"
+	case "high":
+		return "high"
+	case "medium", "med", "moderate":
+		return "medium"
+	case "low", "info", "informational":
+		return "low"
+	default:
+		return "medium"
+	}
+}
+
+func normalizeFindingStatus(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "open", "confirmed", "fixed", "false_positive", "ignored":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "open"
+	}
+}
+
+func (s *Server) upsertFindingReq(req createFindingReq, existingTitles map[string]bool) (*db.DBFinding, bool, error) {
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		return nil, false, fmt.Errorf("title is required")
+	}
+	key := strings.ToLower(title)
+	if existingTitles != nil && existingTitles[key] {
+		return nil, false, nil
+	}
+
+	worker := strings.TrimSpace(req.TaskDesc)
+	if worker == "" {
+		worker = "deep-agent-ide"
+	}
+
+	var assetIDs []int64
+	if target := strings.TrimSpace(req.Target); target != "" {
+		if as := s.assetStore(); as != nil {
+			if scheme, host, port, ok := parseTarget(target); ok && host != "" {
+				if net.ParseIP(host) != nil {
+					if id, err := as.UpsertIP(db.UpsertIPReq{IP: host, TaskID: req.TaskID}); err == nil && id > 0 {
+						assetIDs = append(assetIDs, id)
+					}
+				} else if scheme == "http" || scheme == "https" {
+					u := scheme + "://" + host
+					if !(scheme == "https" && port == 443) && !(scheme == "http" && port == 80) {
+						u += ":" + strconv.Itoa(port)
+					}
+					if id, err := as.UpsertHTTPService(db.UpsertHTTPServiceReq{URL: u, TaskID: req.TaskID}); err == nil && id > 0 {
+						assetIDs = append(assetIDs, id)
+					}
+				} else {
+					if id, err := as.UpsertSubdomain(db.UpsertSubdomainReq{Domain: host, TaskID: req.TaskID}); err == nil && id > 0 {
+						assetIDs = append(assetIDs, id)
+					}
+				}
+			}
+		}
+	}
+
+	vulnClass := strings.TrimSpace(req.VulnClass)
+	if vulnClass == "" {
+		if vc, ok := req.Details["vuln_class"].(string); ok {
+			vulnClass = strings.TrimSpace(vc)
+		}
+	}
+	if vulnClass == "" {
+		vulnClass = "Vulnerability"
+	}
+
+	summary := strings.TrimSpace(req.Description)
+	if summary == "" {
+		if desc, ok := req.Details["description"].(string); ok {
+			summary = strings.TrimSpace(desc)
+		}
+	}
+	if summary == "" {
+		summary = title
+	}
+
+	evidence := strings.TrimSpace(req.Evidence)
+	if evidence == "" {
+		if ev, ok := req.Details["evidence"].(string); ok {
+			evidence = strings.TrimSpace(ev)
+		}
+	}
+
+	sev := normalizeFindingSeverity(req.Severity)
+	id, err := s.m.pg.AddFinding(req.TaskID, 0, vulnClass, title, sev, summary, evidence, worker, assetIDs)
+	if err != nil {
+		return nil, false, err
+	}
+	if existingTitles != nil {
+		existingTitles[key] = true
+	}
+	dbf, _ := s.m.pg.GetFinding(id)
+	if dbf == nil {
+		dbf = &db.DBFinding{
+			ID:        id,
+			VulnClass: vulnClass,
+			Name:      title,
+			Severity:  sev,
+			Summary:   summary,
+			Evidence:  evidence,
+			Worker:    worker,
+			AssetIDs:  assetIDs,
+			Status:    db.FindingPending,
+			CreatedAt: time.Now(),
+		}
+	}
+	return dbf, true, nil
+}
+
+// POST /api/exploration/findings — allows AI Pentest Studio (Deep Agent IDE) or external
+// workflows to push findings directly into Malaria's unified Findings & Dashboard store.
+func (s *Server) createFinding(w http.ResponseWriter, r *http.Request) {
+	if s.pg(w) == nil {
+		return
+	}
+	var req createFindingReq
+	if err := decode(r, &req); err != nil {
+		writeErr(w, 400, "invalid JSON: "+err.Error())
+		return
+	}
+	existing, _ := s.m.pg.ListFindings(1000)
+	existingTitles := map[string]bool{}
+	for _, f := range existing {
+		existingTitles[strings.ToLower(strings.TrimSpace(f.Name))] = true
+	}
+	dbf, created, err := s.upsertFindingReq(req, existingTitles)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if !created {
+		for _, f := range existing {
+			if strings.EqualFold(strings.TrimSpace(f.Name), strings.TrimSpace(req.Title)) {
+				assets := s.resolveAssetIDs(f.AssetIDs)
+				writeJSON(w, 200, findingFromDB(f, assets))
+				return
+			}
+		}
+	}
+	assets := s.resolveAssetIDs(dbf.AssetIDs)
+	writeJSON(w, 201, findingFromDB(dbf, assets))
+}
+
+// syncReportsDir scans /reports for JSON finding files written by Deep Agent IDE (/ai)
+// and imports any new findings into the unified PostgreSQL findings table.
+func (s *Server) syncReportsDir() int {
+	entries, err := os.ReadDir("/reports")
+	if err != nil {
+		return 0
+	}
+	existing, _ := s.m.pg.ListFindings(1000)
+	existingTitles := map[string]bool{}
+	for _, f := range existing {
+		existingTitles[strings.ToLower(strings.TrimSpace(f.Name))] = true
+	}
+	imported := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join("/reports", entry.Name()))
+		if err != nil || len(raw) == 0 {
+			continue
+		}
+		var single createFindingReq
+		if err := json.Unmarshal(raw, &single); err == nil && strings.TrimSpace(single.Title) != "" {
+			if _, ok, _ := s.upsertFindingReq(single, existingTitles); ok {
+				imported++
+			}
+			continue
+		}
+		var batch struct {
+			Findings []createFindingReq `json:"findings"`
+		}
+		if err := json.Unmarshal(raw, &batch); err == nil && len(batch.Findings) > 0 {
+			for _, item := range batch.Findings {
+				if _, ok, _ := s.upsertFindingReq(item, existingTitles); ok {
+					imported++
+				}
+			}
+			continue
+		}
+		var list []createFindingReq
+		if err := json.Unmarshal(raw, &list); err == nil && len(list) > 0 {
+			for _, item := range list {
+				if _, ok, _ := s.upsertFindingReq(item, existingTitles); ok {
+					imported++
+				}
+			}
+		}
+	}
+	return imported
+}
+
+// POST /api/sync/unified — 1-click & background auto-sync across ScopeSentry, Deep Agent IDE, and Malaria Core.
+func (s *Server) syncUnified(w http.ResponseWriter, r *http.Request) {
+	if s.pg(w) == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+
+	synced := map[string]int{"subdomain": 0, "app": 0, "service": 0, "ip": 0}
+	var companies []string
+	var warnings []string
+
+	_, _ = s.ensureScopeSentryMCP(ctx)
+	as := s.assetStore()
+	cs := s.companyStore()
+
+	if cl, err := s.scopeSentryClient(ctx); err == nil {
+		defer cl.Close()
+		var projectIDs []string
+		if text, cerr := cl.Call(ctx, "list_projects_data", map[string]any{"pageIndex": 1, "pageSize": 50}); cerr == nil {
+			var env struct {
+				Result map[string][]struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"result"`
+			}
+			if json.Unmarshal([]byte(text), &env) == nil {
+				for _, p := range env.Result["All"] {
+					if p.ID != "" {
+						projectIDs = append(projectIDs, p.ID)
+					}
+				}
+			}
+		}
+
+		madeCompany := false
+		for _, pid := range projectIDs {
+			filter := map[string]any{"project": []string{pid}}
+			if cs != nil {
+				if name, roots, perr := s.ssProjectMeta(ctx, cl, pid); perr == nil && name != "" {
+					if cid, cerr := cs.UpsertByName(name); cerr == nil {
+						companies = append(companies, name)
+						madeCompany = true
+						if len(roots) > 0 {
+							cs.AddScope(cid, roots, "scopesentry:"+name)
+						}
+					}
+				}
+			}
+			if as != nil {
+				for _, at := range []string{"subdomain", "service", "app"} {
+					ssType := map[string]string{"subdomain": "subdomain", "service": "asset", "app": "app"}[at]
+					if items, _, ferr := s.ssPageAll(ctx, cl, ssType, filter, syncDefaultPage); ferr == nil {
+						for _, raw := range items {
+							_ = s.ssIngest(as, at, raw, synced)
+						}
+					}
+				}
+			}
+		}
+
+		// Also pull unscoped assets if no project filter matched any assets yet
+		if as != nil && len(projectIDs) == 0 {
+			for _, at := range []string{"subdomain", "service", "app"} {
+				ssType := map[string]string{"subdomain": "subdomain", "service": "asset", "app": "app"}[at]
+				if items, _, ferr := s.ssPageAll(ctx, cl, ssType, map[string]any{}, syncDefaultPage); ferr == nil {
+					for _, raw := range items {
+						_ = s.ssIngest(as, at, raw, synced)
+					}
+				}
+			}
+		}
+		if madeCompany && cs != nil {
+			_ = cs.RecomputeAttribution()
+		}
+	} else {
+		warnings = append(warnings, "ScopeSentry MCP: "+err.Error())
+	}
+
+	findingsImported := s.syncReportsDir()
+	go s.discoverEmptyMCPsOnStartup()
+
+	writeJSON(w, 200, map[string]any{
+		"ok":              true,
+		"synced":          synced,
+		"companies":       companies,
+		"findings_synced": findingsImported,
+		"warnings":        warnings,
+	})
 }

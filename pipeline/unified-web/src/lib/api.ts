@@ -1173,6 +1173,14 @@ export const api = {
       warnings: string[] | null;
       errors: string[] | null;
     }>("/sync/scopesentry/sync", body),
+  syncUnified: () =>
+    post<{
+      ok: boolean;
+      synced: Record<string, number>;
+      companies: string[] | null;
+      findings_synced: number;
+      warnings: string[] | null;
+    }>("/sync/unified", {}),
 
   // ---- skills (file system) ----
   skills: () => get<{ skills: SkillItem[] }>("/skills").then((r) => arr(r.skills)),

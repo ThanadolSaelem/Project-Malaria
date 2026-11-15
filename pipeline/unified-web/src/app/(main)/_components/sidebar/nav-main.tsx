@@ -101,7 +101,23 @@ export function NavMain({ items }: NavMainProps) {
       return item.subItems.some((sub) => path.startsWith(sub.url));
     }
 
-    return path === item.url;
+    if (item.matchUrls?.length) {
+      return item.matchUrls.some((u) => {
+        if (u === "/ai") {
+          return (
+            path === "/ai" ||
+            path.startsWith("/ai/s/") ||
+            path.startsWith("/ai/session")
+          );
+        }
+        if (u === "/system/intercept") {
+          return path === "/system/intercept";
+        }
+        return path === u || path.startsWith(`${u}/`);
+      });
+    }
+
+    return path === item.url || path.startsWith(`${item.url}/`);
   };
 
   const isSubItemActive = (url: string) => {

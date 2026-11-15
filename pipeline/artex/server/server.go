@@ -244,6 +244,19 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			log.Printf("[retester] seed: %v", err)
 		}
 		go s.evidenceStore().RunGC(s.ctx)
+		go func() {
+			t := time.NewTicker(30 * time.Second)
+			defer t.Stop()
+			s.syncReportsDir()
+			for {
+				select {
+				case <-s.ctx.Done():
+					return
+				case <-t.C:
+					s.syncReportsDir()
+				}
+			}
+		}()
 		s.seedPythonInterpreter()     // custom script tool: detect the python interpreter at boot and store it (only when empty)
 		go newScheduler(s).Run(s.ctx) // P3 trigger scheduling (scheduled/finding/goal events), custom agents only
 		// Vulnerability IM push delivery engine. Sits beside the Scheduler but independent: push latency demands (3s)
@@ -798,6 +811,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/exploration/findings/{id}/retests", s.listFindingRetests)
 	mux.HandleFunc("GET /api/exploration/findings/retests/active", s.listActiveFindingRetests)
 	mux.HandleFunc("POST /api/exploration/findings/{id}/retests", s.startFindingRetest)
+	mux.HandleFunc("POST /api/exploration/findings", s.createFinding)
 	mux.HandleFunc("PATCH /api/exploration/findings/{id}", s.patchFinding)
 	mux.HandleFunc("DELETE /api/exploration/findings/{id}", s.deleteFinding)
 	mux.HandleFunc("GET /api/exploration/intents", s.intents)
@@ -910,6 +924,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/sync/scopesentry/projects", s.syncSSProjects)
 	mux.HandleFunc("GET /api/sync/scopesentry/tasks", s.syncSSTasks)
 	mux.HandleFunc("POST /api/sync/scopesentry/sync", s.syncSSRun)
+	mux.HandleFunc("POST /api/sync/unified", s.syncUnified)
 	// Skill CRUD (filesystem)
 	mux.HandleFunc("GET /api/skills", s.fsListSkills)
 	mux.HandleFunc("POST /api/skills", s.fsCreateSkill)

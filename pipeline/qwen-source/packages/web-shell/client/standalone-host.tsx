@@ -296,6 +296,7 @@ function FocusedHostWorkspaceProvider({
   );
   const pageOrigin =
     typeof window === 'undefined' ? '' : window.location.origin;
+
   return (
     <DaemonWorkspaceProvider
       key={activeOrigin || 'default'}
@@ -342,6 +343,13 @@ export function StandaloneHost({
     }),
     [],
   );
+
+  const cleanPath = (path || '/').split('?')[0].split('#')[0];
+  const isSessionRoute =
+    cleanPath === '/' ||
+    cleanPath.startsWith('/s/') ||
+    cleanPath.startsWith('/session/') ||
+    cleanPath.startsWith('/sessions');
 
   return (
     <div
@@ -401,14 +409,16 @@ export function StandaloneHost({
                               uiActivity: { active, portalContainer },
                               onSessionIdChange,
                               sidebar: {
-                                enabled: true,
-                                showLive: true,
-                                primaryNav: { items: DEFAULT_PRIMARY_NAV_ITEMS },
-                                footer: { items: DEFAULT_FOOTER_ITEMS },
+                                enabled: isSessionRoute,
+                                branding: false,
+                                showLive: false,
+                                showSessionSourceSwitch: false,
+                                primaryNav: { items: ['newTask'] },
+                                footer: { items: ['collapse'] },
                               },
                               showToolCalls: true,
                               header: {
-                                showMobileAccess: true,
+                                showMobileAccess: false,
                                 items: [
                                   'title',
                                   'environment',
