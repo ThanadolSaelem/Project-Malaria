@@ -92,11 +92,69 @@ const adaptGeneratedMapJavaScript = (source, relativePath) => {
   return source.replace(ROOT_NAMESPACE_RE, '$1/scopesentry-api/$2')
 }
 
+const MAP_EMBED_OVERRIDES = `
+[data-scopesentry-map] {
+  width: 100% !important;
+  height: calc(100dvh - 3.25rem) !important;
+  min-height: 540px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  transform: translateZ(0);
+  contain: layout style paint;
+}
+[data-scopesentry-map][data-scopesentry-map] .fes-layout,
+[data-scopesentry-map][data-scopesentry-map] .fes-layout-content,
+[data-scopesentry-map][data-scopesentry-map] .main-layout,
+[data-scopesentry-map][data-scopesentry-map] .asset-map-container {
+  position: relative !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+[data-scopesentry-map][data-scopesentry-map] .domain-input-container {
+  position: absolute !important;
+  top: 20px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 30 !important;
+  max-width: calc(100% - 32px) !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.14) !important;
+  backdrop-filter: blur(8px) !important;
+}
+[data-scopesentry-map][data-scopesentry-map] .domain-input {
+  height: 36px !important;
+  border-radius: 7px !important;
+}
+[data-scopesentry-map][data-scopesentry-map] .domain-button {
+  height: 36px !important;
+  border-radius: 7px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+}
+[data-scopesentry-map][data-scopesentry-map] .subdomain-info-panel,
+[data-scopesentry-map][data-scopesentry-map] .control-panel {
+  position: absolute !important;
+  top: 20px !important;
+  right: 20px !important;
+  max-height: calc(100% - 40px) !important;
+  z-index: 31 !important;
+}
+`
+
 const copyPreparedFile = async (sourcePath, targetPath, relativePath) => {
   await mkdir(dirname(targetPath), { recursive: true })
   if (relativePath.endsWith('.css')) {
     const source = await readFile(sourcePath, 'utf8')
-    await writeFile(targetPath, scopeMapStylesheet(source))
+    const scoped = scopeMapStylesheet(source)
+    const shouldAppendOverrides =
+      relativePath.startsWith('css/index.') || relativePath.startsWith('css/assetMap.')
+    await writeFile(targetPath, shouldAppendOverrides ? `${scoped}\n${MAP_EMBED_OVERRIDES}` : scoped)
     return
   }
   if (relativePath.endsWith('.js')) {

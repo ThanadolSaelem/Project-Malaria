@@ -226,20 +226,12 @@ const downloadFile = async (id, name) => {
 
 <template>
   <ContentWrap>
-    <ElRow :gutter="60">
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <ElButton type="primary" @click="openCreateDialog">{{ t('common.new') }}</ElButton>
-        </div>
-      </ElCol>
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
-            {{ t('common.delete') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
+    <div class="ss-action-bar">
+      <ElButton type="primary" @click="openCreateDialog">{{ t('common.new') }}</ElButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
+        {{ t('common.delete') }}
+      </BaseButton>
+    </div>
     <Table
       :columns="nodeColums"
       :data="dataList"

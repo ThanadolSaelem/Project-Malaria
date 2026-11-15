@@ -84,6 +84,10 @@ setDefaultTheme()
   padding: 0 !important;
   margin: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   .size;
   isolation: isolate;
 }

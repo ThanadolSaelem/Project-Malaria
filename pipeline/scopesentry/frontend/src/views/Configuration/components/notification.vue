@@ -242,38 +242,30 @@ const delSelect = async () => {
 <template>
   <ElCard shadow="never" class="mb-20px">
     <template #header>
-      <ElRow>
-        <ElCol :span="3" style="height: 100%">
-          <span>{{ t('configuration.noticeConfig') }}</span>
-        </ElCol>
-      </ElRow>
+      <div class="flex items-center justify-between gap-4">
+        <span class="font-medium whitespace-nowrap">{{ t('configuration.noticeConfig') }}</span>
+      </div>
     </template>
-    <ElRow>
-      <ElCol style="position: relative; top: 16px">
-        <div class="mb-10px">
-          <BaseButton type="primary" @click="addNotification">{{
-            t('configuration.newWebhookConfig')
-          }}</BaseButton>
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
-            {{ t('common.delete') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
-    <div style="position: relative; top: 12px">
-      <Table
-        :data="dataList"
-        :columns="taskColums"
-        stripe
-        :border="true"
-        :resizable="true"
-        maxHeight="200"
-        :style="{
-          fontFamily:
-            '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
-        }"
-      />
+    <div class="ss-action-bar">
+      <BaseButton type="primary" @click="addNotification">{{
+        t('configuration.newWebhookConfig')
+      }}</BaseButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
+        {{ t('common.delete') }}
+      </BaseButton>
     </div>
+    <Table
+      :data="dataList"
+      :columns="taskColums"
+      stripe
+      :border="true"
+      :resizable="true"
+      maxHeight="200"
+      :style="{
+        fontFamily:
+          '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
+      }"
+    />
     <ElDivider />
     <ElForm
       :model="notificationConfigForm"

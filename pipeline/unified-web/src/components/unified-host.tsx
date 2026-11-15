@@ -363,7 +363,7 @@ function ModuleSurface({
     <section
       aria-hidden={!active}
       data-unified-module={id}
-      className={active ? "block min-h-[calc(100dvh-2.5rem)]" : "hidden"}
+      className={active ? "flex min-h-[calc(100dvh-3rem)] w-full min-w-0 flex-1 flex-col" : "hidden"}
     >
       <Module active={active} theme={theme} path={path} onNavigate={onNavigate} />
     </section>
@@ -565,7 +565,7 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
           !isModuleRoute && "[html[data-content-layout=centered]_&>*]:max-w-screen-2xl",
           "peer-data-[variant=inset]:border",
           "[--dashboard-header-height:--spacing(12)]",
-          "min-w-0 overflow-x-hidden",
+          "min-w-0 overflow-x-clip",
         )}
       >
         {!fullBleed && (
@@ -575,16 +575,16 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
               "[html[data-navbar-style=sticky]_&]:sticky [html[data-navbar-style=sticky]_&]:top-0 [html[data-navbar-style=sticky]_&]:z-50 [html[data-navbar-style=sticky]_&]:overflow-hidden [html[data-navbar-style=sticky]_&]:rounded-t-[inherit] [html[data-navbar-style=sticky]_&]:bg-background/50 [html[data-navbar-style=sticky]_&]:backdrop-blur-md",
             )}
           >
-            <div className="flex w-full items-center justify-between px-4 lg:px-6">
-              <div className="flex items-center gap-1 lg:gap-2">
-                <SidebarTrigger className="-ml-1" />
+            <div className="flex w-full min-w-0 items-center justify-between gap-2 px-4 lg:px-6">
+              <div className="flex min-w-0 items-center gap-1 lg:gap-2">
+                <SidebarTrigger className="-ml-1 shrink-0" />
                 <Separator
                   orientation="vertical"
                   className="mx-2 data-[orientation=vertical]:h-4 data-[orientation=vertical]:self-center"
                 />
                 <SearchDialog />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 {version && (
                   <span className="font-medium text-muted-foreground text-xs tabular-nums">Version · {version}</span>
                 )}

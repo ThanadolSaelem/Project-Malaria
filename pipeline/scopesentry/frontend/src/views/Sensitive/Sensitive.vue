@@ -44,12 +44,12 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'color',
     label: t('sensitiveInformation.sensitiveColor'),
-    minWidth: 20
+    minWidth: 100
   },
   {
     field: 'state',
     label: t('common.state'),
-    minWidth: 40,
+    minWidth: 100,
     formatter: (_: Recordable, __: TableColumn, stateValue: boolean) => {
       if (stateValue == null) {
         return <div></div>
@@ -60,35 +60,31 @@ const nodeColums = reactive<TableColumn[]>([
         color = '#2eb98a'
         flag = t('common.on')
       } else {
-        color = 'red'
+        color = '#ef4444'
         flag = t('common.off')
       }
       return (
-        <ElRow gutter={20}>
-          <ElCol span={1}>
-            <Icon icon="clarity:circle-solid" color={color} size={10} />
-          </ElCol>
-          <ElCol span={5}>
-            <ElText type="info">{flag}</ElText>
-          </ElCol>
-        </ElRow>
+        <div class="inline-flex items-center gap-2 whitespace-nowrap">
+          <Icon icon="clarity:circle-solid" color={color} size={10} />
+          <ElText type={stateValue ? 'success' : 'danger'}>{flag}</ElText>
+        </div>
       )
     }
   },
   {
     field: 'action',
     label: t('tableDemo.action'),
-    minWidth: 40,
+    minWidth: 150,
     formatter: (row, __: TableColumn, _: number) => {
       return (
-        <>
-          <BaseButton type="primary" onClick={() => edit(row)}>
+        <div class="ss-table-actions">
+          <BaseButton size="small" type="primary" onClick={() => edit(row)}>
             {t('common.edit')}
           </BaseButton>
-          <BaseButton type="danger" onClick={() => del(row)}>
+          <BaseButton size="small" type="danger" onClick={() => del(row)}>
             {t('common.delete')}
           </BaseButton>
-        </>
+        </div>
       )
     }
   }
@@ -188,45 +184,27 @@ const updateState = async (state) => {
 
 <template>
   <ContentWrap>
-    <ElRow :gutter="20" style="margin-bottom: 15px">
-      <ElCol :span="1">
-        <ElText class="mx-1" style="position: relative; top: 8px; left: 30%"
-          >{{ t('sensitiveInformation.sensitiveName') }} :</ElText
-        >
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5">
-        <ElButton type="primary" :icon="searchicon" style="height: 38px" @click="handleSearch"
-          >Search</ElButton
-        >
-      </ElCol>
-    </ElRow>
-    <ElRow :gutter="60">
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <ElButton type="primary" @click="addSensitive">{{ t('common.new') }}</ElButton>
-        </div>
-      </ElCol>
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <ElButton type="success" @click="updateState(true)">{{ t('common.on') }}</ElButton>
-        </div>
-      </ElCol>
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <ElButton type="danger" @click="updateState(false)">{{ t('common.off') }}</ElButton>
-        </div>
-      </ElCol>
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
-            {{ t('common.delete') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('sensitiveInformation.sensitiveName') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
+    </div>
+    <div class="ss-action-bar">
+      <ElButton type="primary" @click="addSensitive">{{ t('common.new') }}</ElButton>
+      <ElButton type="success" @click="updateState(true)">{{ t('common.on') }}</ElButton>
+      <ElButton type="danger" @click="updateState(false)">{{ t('common.off') }}</ElButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
+        {{ t('common.delete') }}
+      </BaseButton>
+    </div>
     <Table
       v-model:pageSize="pageSize"
       v-model:currentPage="currentPage"

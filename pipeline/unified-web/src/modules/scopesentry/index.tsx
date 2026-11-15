@@ -108,7 +108,10 @@ export default function ScopeSentryModuleView({
       aria-hidden={!active}
       style={{
         width: "100%",
-        height: "100%",
+        flex: "1 1 auto",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
         visibility: active ? "visible" : "hidden",
         pointerEvents: active ? "auto" : "none",
       }}

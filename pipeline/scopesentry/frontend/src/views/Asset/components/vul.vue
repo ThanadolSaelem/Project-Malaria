@@ -137,14 +137,10 @@ const crudSchemas = reactive<CrudSchema[]>([
         flag = t('poc.unknown')
       }
       return (
-        <ElRow gutter={20} style="width: 80%">
-          <ElCol span={1}>
-            <Icon icon="clarity:circle-solid" color={color} />
-          </ElCol>
-          <ElCol span={5}>
-            <ElText type="info">{flag}</ElText>
-          </ElCol>
-        </ElRow>
+        <div class="inline-flex items-center gap-2 whitespace-nowrap">
+          <Icon icon="clarity:circle-solid" color={color} size={10} />
+          <ElText type="info">{flag}</ElText>
+        </div>
       )
     },
     filters: [

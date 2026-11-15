@@ -140,64 +140,58 @@ const submitAddPageMonitForm = async () => {
 
 <template>
   <ContentWrap>
-    <ElRow>
-      <ElCol :span="1">
-        <ElText class="mx-1" style="position: relative; top: 8px">URL:</ElText>
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 16px">
-        <ElButton type="primary" :icon="searchicon" style="height: 100%" @click="handleSearch"
-          >Search</ElButton
-        >
-      </ElCol>
-    </ElRow>
-    <ElRow>
-      <ElCol style="position: relative; top: 16px">
-        <div class="mb-10px">
-          <BaseButton type="primary" @click="addPageMonit">{{ t('task.addURL') }}</BaseButton>
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
-            {{ t('task.delURL') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
-    <div style="position: relative; top: 12px">
-      <Table
-        :tooltip-options="{
-          offset: 1,
-          showArrow: false,
-          effect: 'dark',
-          enterable: false,
-          showAfter: 0,
-          popperOptions: {},
-          popperClass: 'test',
-          placement: 'bottom',
-          hideAfter: 0,
-          disabled: true
-        }"
-        v-model:pageSize="pageSize"
-        v-model:currentPage="currentPage"
-        :columns="taskColums"
-        :data="dataList"
-        stripe
-        :border="true"
-        :loading="loading"
-        :max-height="maxHeight"
-        :resizable="true"
-        :pagination="{
-          total: total,
-          pageSizes: [20, 30, 50, 100, 200, 500, 1000]
-        }"
-        @register="tableRegister"
-        :headerCellStyle="tableHeaderColor"
-        :style="{
-          fontFamily:
-            '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
-        }"
-      />
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">URL:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
     </div>
+    <div class="ss-action-bar">
+      <BaseButton type="primary" @click="addPageMonit">{{ t('task.addURL') }}</BaseButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
+        {{ t('task.delURL') }}
+      </BaseButton>
+    </div>
+    <Table
+      :tooltip-options="{
+        offset: 1,
+        showArrow: false,
+        effect: 'dark',
+        enterable: false,
+        showAfter: 0,
+        popperOptions: {},
+        popperClass: 'test',
+        placement: 'bottom',
+        hideAfter: 0,
+        disabled: true
+      }"
+      v-model:pageSize="pageSize"
+      v-model:currentPage="currentPage"
+      :columns="taskColums"
+      :data="dataList"
+      stripe
+      :border="true"
+      :loading="loading"
+      :max-height="maxHeight"
+      :resizable="true"
+      :pagination="{
+        total: total,
+        pageSizes: [20, 30, 50, 100, 200, 500, 1000]
+      }"
+      @register="tableRegister"
+      :headerCellStyle="tableHeaderColor"
+      :style="{
+        fontFamily:
+          '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
+      }"
+    />
   </ContentWrap>
   <Dialog
     v-model="dialogVisible"

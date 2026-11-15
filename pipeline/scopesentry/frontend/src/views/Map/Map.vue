@@ -276,6 +276,7 @@ const mountNativeMap = async (signal: AbortSignal): Promise<void> => {
     if (signal.aborted) return
     await lifecycle.mount(props)
     if (signal.aborted) return
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
   } catch (error) {
     if (signal.aborted) return
     mapError.value = error instanceof Error ? error.message : 'ScopeSentry Map failed to mount.'
@@ -327,15 +328,19 @@ onBeforeUnmount(() => {
 <style scoped lang="less">
 .scope-sentry-map-embed {
   position: relative;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
-  min-height: 0;
+  height: calc(100dvh - 3.25rem);
+  min-height: 540px;
   overflow: hidden;
   isolation: isolate;
+  transform: translateZ(0);
+  contain: layout style paint;
   background: #111;
 }
 
 .scope-sentry-map-native {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;

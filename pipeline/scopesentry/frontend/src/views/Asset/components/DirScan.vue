@@ -105,19 +105,10 @@ const crudSchemas = reactive<CrudSchema[]>([
         color = '#ff5252'
       }
       return (
-        <ElRow gutter={1}>
-          <ElCol span={1}>
-            <Icon
-              icon="clarity:circle-solid"
-              color={color}
-              size={10}
-              style={'transform: translateY(8%)'}
-            />
-          </ElCol>
-          <ElCol span={2}>
-            <ElText>{statusValue}</ElText>
-          </ElCol>
-        </ElRow>
+        <div class="inline-flex items-center gap-2 whitespace-nowrap">
+          <Icon icon="clarity:circle-solid" color={color} size={10} />
+          <ElText>{statusValue}</ElText>
+        </div>
       )
     },
     filters: [

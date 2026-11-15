@@ -28,29 +28,32 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'selection',
     type: 'selection',
-    minWidth: 55
+    width: 48
   },
   {
     field: 'name',
-    label: t('task.templateName')
+    label: t('task.templateName'),
+    minWidth: 180
   },
   {
     field: 'id',
-    label: 'ID'
+    label: 'ID',
+    minWidth: 220
   },
   {
     field: 'action',
     label: t('tableDemo.action'),
+    minWidth: 160,
     formatter: (row, __: TableColumn, _: number) => {
       return (
-        <>
-          <BaseButton type="success" onClick={() => editTemplate(row.id)}>
+        <div class="ss-table-actions">
+          <BaseButton size="small" type="success" onClick={() => editTemplate(row.id)}>
             {t('common.edit')}
           </BaseButton>
-          <BaseButton type="danger" onClick={() => confirmDelete(row)}>
+          <BaseButton size="small" type="danger" onClick={() => confirmDelete(row)}>
             {t('common.delete')}
           </BaseButton>
-        </>
+        </div>
       )
     }
   }
@@ -154,66 +157,58 @@ const editTemplate = async (data) => {
 
 <template>
   <ContentWrap>
-    <ElRow>
-      <ElCol :span="1">
-        <ElText class="mx-1" style="position: relative; top: 8px">
-          {{ t('task.templateName') }}:
-        </ElText>
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 16px">
-        <ElButton type="primary" :icon="searchicon" style="height: 100%" @click="handleSearch"
-          >Search</ElButton
-        >
-      </ElCol>
-    </ElRow>
-    <ElRow>
-      <ElCol style="position: relative; top: 16px">
-        <div class="mb-10px">
-          <BaseButton type="primary" @click="addTemplate">{{ t('task.addTemplate') }}</BaseButton>
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
-            {{ t('task.deleteTemplate') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
-    <div style="position: relative; top: 12px">
-      <Table
-        :tooltip-options="{
-          offset: 1,
-          showArrow: false,
-          effect: 'dark',
-          enterable: false,
-          showAfter: 0,
-          popperOptions: {},
-          popperClass: 'test',
-          placement: 'bottom',
-          hideAfter: 0,
-          disabled: true
-        }"
-        v-model:pageSize="pageSize"
-        v-model:currentPage="currentPage"
-        :columns="taskColums"
-        :data="dataList"
-        stripe
-        :border="true"
-        :loading="loading"
-        :max-height="maxHeight"
-        :resizable="true"
-        :pagination="{
-          total: total,
-          pageSizes: [20, 30, 50, 100, 200, 500, 1000]
-        }"
-        @register="tableRegister"
-        :headerCellStyle="tableHeaderColor"
-        :style="{
-          fontFamily:
-            '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
-        }"
-      />
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('task.templateName') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
     </div>
+    <div class="ss-action-bar">
+      <BaseButton type="primary" @click="addTemplate">{{ t('task.addTemplate') }}</BaseButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
+        {{ t('task.deleteTemplate') }}
+      </BaseButton>
+    </div>
+    <Table
+      :tooltip-options="{
+        offset: 1,
+        showArrow: false,
+        effect: 'dark',
+        enterable: false,
+        showAfter: 0,
+        popperOptions: {},
+        popperClass: 'test',
+        placement: 'bottom',
+        hideAfter: 0,
+        disabled: true
+      }"
+      v-model:pageSize="pageSize"
+      v-model:currentPage="currentPage"
+      :columns="taskColums"
+      :data="dataList"
+      stripe
+      :border="true"
+      :loading="loading"
+      :max-height="maxHeight"
+      :resizable="true"
+      :pagination="{
+        total: total,
+        pageSizes: [20, 30, 50, 100, 200, 500, 1000]
+      }"
+      @register="tableRegister"
+      :headerCellStyle="tableHeaderColor"
+      :style="{
+        fontFamily:
+          '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
+      }"
+    />
   </ContentWrap>
   <ElDrawer v-model="dialogVisible" :title="DialogTitle" direction="rtl" size="80%">
     <DetailTemplate :closeDialog="closeDialog" :getList="getList" :id="templateId" />

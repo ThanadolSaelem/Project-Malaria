@@ -29,7 +29,7 @@ const handleClickOutside = () => {
 const renderLayout = () => {
   if (isScopeSentryEmbedded()) {
     return (
-      <div class="w-full h-full min-h-full overflow-x-hidden">
+      <div class="w-full flex-1 min-h-full overflow-x-hidden flex flex-col">
         <AppView />
       </div>
     )
@@ -56,7 +56,7 @@ export default defineComponent({
   name: 'Layout',
   setup() {
     return () => (
-      <section class={[prefixCls, `${prefixCls}__${layout.value}`, 'w-[100%] h-[100%] relative']}>
+      <section class={[prefixCls, `${prefixCls}__${layout.value}`, 'w-full h-full flex-1 flex flex-col relative']}>
         {!isScopeSentryEmbedded() && mobile.value && !collapse.value ? (
           <div
             class="absolute top-0 left-0 w-full h-full opacity-30 z-99 bg-[var(--el-color-black)]"

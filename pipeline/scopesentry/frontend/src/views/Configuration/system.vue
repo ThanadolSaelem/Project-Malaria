@@ -59,11 +59,9 @@ const saveLoading = ref(false)
 <template>
   <ElCard shadow="never" class="mb-20px">
     <template #header>
-      <ElRow>
-        <ElCol :span="3" style="height: 100%">
-          <span>{{ t('configuration.system') }}</span>
-        </ElCol>
-      </ElRow>
+      <div class="flex items-center justify-between gap-4">
+        <span class="font-medium whitespace-nowrap">{{ t('configuration.system') }}</span>
+      </div>
     </template>
     <ElForm :model="form" label-width="auto" style="max-width: 600px">
       <ElFormItem :label="t('configuration.timezone')">
