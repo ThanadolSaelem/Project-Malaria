@@ -328,14 +328,30 @@ export function StandaloneHost({
   const language =
     providedLanguage ??
     normalizeLanguage(typeof navigator === 'undefined' ? 'en' : navigator.language);
-  const navigationOptions = useMemo(
-    () => ({ path, onNavigate }) satisfies DaemonTargetNavigation,
-    [onNavigate, path],
-  );
+  const [pendingNav, setPendingNav] = useState<{
+    fromPath: string;
+    targetPath: string;
+  } | null>(null);
+  useEffect(() => {
+    setPendingNav(null);
+  }, [path]);
   const pathRef = useRef(path);
   pathRef.current = path;
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const navigationOptions = useMemo(
+    () =>
+      ({
+        path,
+        onNavigate: (nextPath, replace) => {
+          if (nextPath !== pathRef.current) {
+            setPendingNav({ fromPath: pathRef.current, targetPath: nextPath });
+          }
+          onNavigateRef.current(nextPath, replace);
+        },
+      }) satisfies DaemonTargetNavigation,
+    [path],
+  );
   const pairingNavigation = useMemo<PairingNavigationOptions>(
     () => ({
       replaceUrl: (url: URL) =>
@@ -344,12 +360,18 @@ export function StandaloneHost({
     [],
   );
 
-  const cleanPath = (path || '/').split('?')[0].split('#')[0];
+  // Sync sidebar gate optimistically when Qwen triggers an in-app navigation so
+  // App.tsx's route guard allows the target page before the parent path updates.
+  const effectivePath =
+    pendingNav && pendingNav.fromPath === path ? pendingNav.targetPath : path;
+  const cleanPath = (effectivePath || '/').split('?')[0].split('#')[0];
   const isSessionRoute =
     cleanPath === '/' ||
     cleanPath.startsWith('/s/') ||
     cleanPath.startsWith('/session/') ||
     cleanPath.startsWith('/sessions');
+  const isLiveRoute =
+    cleanPath === '/live' || cleanPath.startsWith('/live/');
 
   return (
     <div
@@ -409,12 +431,20 @@ export function StandaloneHost({
                               uiActivity: { active, portalContainer },
                               onSessionIdChange,
                               sidebar: {
-                                enabled: isSessionRoute,
+                                enabled: isSessionRoute || isLiveRoute,
                                 branding: false,
-                                showLive: false,
+                                showLive: isLiveRoute,
                                 showSessionSourceSwitch: false,
-                                primaryNav: { items: ['newTask'] },
-                                footer: { items: ['collapse'] },
+                                primaryNav: {
+                                  items: isSessionRoute
+                                    ? ['newTask']
+                                    : DEFAULT_PRIMARY_NAV_ITEMS,
+                                },
+                                footer: {
+                                  items: isSessionRoute
+                                    ? ['collapse']
+                                    : DEFAULT_FOOTER_ITEMS,
+                                },
                               },
                               showToolCalls: true,
                               header: {

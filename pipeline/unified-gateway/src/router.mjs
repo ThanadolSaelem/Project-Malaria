@@ -21,6 +21,8 @@ export const DEFAULTS = Object.freeze({
   // supplies a loopback-only path.
   observerTarget: 'http://127.0.0.1:8005',
   observerEnabled: false,
+  controlPlaneTarget: 'http://127.0.0.1:8010',
+  controlPlaneEnabled: false,
 });
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
@@ -112,6 +114,14 @@ export function loadGatewayConfig(env = process.env) {
     env.OBSERVER_ALLOW_DOCKER_BRIDGE,
     false,
   );
+  const controlPlaneEnabled = parseBoolean(
+    env.CONTROL_PLANE_ENABLED,
+    DEFAULTS.controlPlaneEnabled,
+  );
+  const controlPlaneAllowBridge = parseBoolean(
+    env.CONTROL_PLANE_ALLOW_DOCKER_BRIDGE,
+    observerAllowBridge,
+  );
   const targets = {
     frontend: parseTarget(
       envValue(env, 'FRONTEND_TARGET', DEFAULTS.frontendTarget),
@@ -133,6 +143,10 @@ export function loadGatewayConfig(env = process.env) {
       envValue(env, 'OBSERVER_TARGET', DEFAULTS.observerTarget),
       'OBSERVER_TARGET',
     ),
+    controlPlane: parseTarget(
+      envValue(env, 'CONTROL_PLANE_TARGET', DEFAULTS.controlPlaneTarget),
+      'CONTROL_PLANE_TARGET',
+    ),
   };
 
   return Object.freeze({
@@ -144,6 +158,13 @@ export function loadGatewayConfig(env = process.env) {
       allowDockerBridge: observerAllowBridge,
       targetIsLiteralLoopback: isLiteralLoopbackHostname(targets.observer.hostname),
       targetIsHostOrLoopback: isHostOrLoopbackHostname(targets.observer.hostname),
+      listenerIsLiteralLoopback: isLiteralLoopbackHostname(envValue(env, 'BIND', DEFAULTS.bind)),
+    }),
+    controlPlane: Object.freeze({
+      enabled: controlPlaneEnabled,
+      allowDockerBridge: controlPlaneAllowBridge,
+      targetIsLiteralLoopback: isLiteralLoopbackHostname(targets.controlPlane.hostname),
+      targetIsHostOrLoopback: isHostOrLoopbackHostname(targets.controlPlane.hostname),
       listenerIsLiteralLoopback: isLiteralLoopbackHostname(envValue(env, 'BIND', DEFAULTS.bind)),
     }),
   });
@@ -295,6 +316,16 @@ export function routeRequest({ path, method = 'GET', search = '' }, config) {
     };
   }
 
+  const modelStudioSub = stripPrefix(path, '/model-studio-api');
+  if (modelStudioSub !== null) {
+    return {
+      kind: 'control-plane',
+      service: 'controlPlane',
+      nativePath: modelStudioSub === '/' ? '/api/model-studio/state' : `/api/model-studio${modelStudioSub}`,
+      enabled: config?.controlPlane?.enabled === true,
+    };
+  }
+
   // A module-local API alias is unambiguous and helps legacy embedded Vue/ARTEX
   // code migrate without making the root /api path choose a credential domain.
   // Map itself is a full native application mounted through the Vue route in
@@ -334,6 +365,8 @@ export function routeRequest({ path, method = 'GET', search = '' }, config) {
     path === '/favicon.ico' ||
     path.startsWith('/dashboard') ||
     path.startsWith('/chat') ||
+    path === '/models' ||
+    path.startsWith('/models/') ||
     path.startsWith('/function/') ||
     path.startsWith('/system/') ||
     path === '/login' ||
@@ -404,6 +437,21 @@ export function observerRequestAllowed(config, remoteAddress) {
   return (
     config.observer.targetIsLiteralLoopback === true &&
     config.observer.listenerIsLiteralLoopback === true &&
+    isLoopbackAddress(remoteAddress)
+  );
+}
+
+export function controlPlaneRequestAllowed(config, remoteAddress) {
+  if (config?.controlPlane?.enabled !== true) return false;
+
+  if (config.controlPlane.allowDockerBridge === true) {
+    const validTarget = config.controlPlane.targetIsLiteralLoopback || config.controlPlane.targetIsHostOrLoopback;
+    return validTarget && (isLoopbackAddress(remoteAddress) || isPrivateOrDockerAddress(remoteAddress));
+  }
+
+  return (
+    config.controlPlane.targetIsLiteralLoopback === true &&
+    config.controlPlane.listenerIsLiteralLoopback === true &&
     isLoopbackAddress(remoteAddress)
   );
 }

@@ -70,6 +70,8 @@ func (s *Server) orchestrationTools() []actool.CoreTool {
 		s.toolListTasks(),
 		s.toolListLLMProfiles(),
 		s.toolSpawnTask(),
+		s.toolStartTargetAssessment(),
+		s.toolSyncScopeSentryAssets(),
 		s.toolPauseTask(),
 		s.toolGetTaskGraph(),
 		s.toolListTaskFindings(),
@@ -81,6 +83,12 @@ func (s *Server) orchestrationTools() []actool.CoreTool {
 		s.toolUpdateFindingReport(),
 		s.toolGetFindingTraffic(),
 		s.toolBindFindingTraffic(),
+		s.toolListReportTemplates(),
+		s.toolGenerateTaskReport(),
+		s.toolSearchPlaybookMemory(),
+		s.toolSavePlaybookMemory(),
+		s.toolSandboxExec(),
+		s.toolSandboxManage(),
 	}
 }
 
@@ -243,10 +251,14 @@ func (s *Server) toolListLLMProfiles() actool.CoreTool {
 
 func (s *Server) toolSpawnTask() actool.CoreTool {
 	return wrTool("spawn_task",
-		"Create a subtask and start its exploration engine; returns task_id. Use it to spin one piece of work (e.g. a challenge/a goal) off into an independent task. parent_ref is optional: set the parent task id of the current orchestration to link parent and child.",
+		"Create a subtask and start its exploration engine; returns task_id. Use it to spin one piece of work (e.g. a challenge/a goal) off into an independent task. parent_ref is optional: set the parent task id of the current orchestration to link parent and child. Optionally pass target/company/company_id/scope so the task binds to Company Scope and Target Assets immediately.",
 		objSchema(map[string]any{
 			"description":            strParam("task description (short title)"),
 			"goal":                   strParam("task goal (what to achieve)"),
+			"target":                 strParam("optional: target URL, domain, IP, or CIDR to register in Company Scope & Assets and link to the task"),
+			"company":                strParam("optional: organization/company name for scope attribution (auto-derived from target when omitted)"),
+			"company_id":             map[string]any{"type": "integer", "description": "optional: existing company id to bind this task to"},
+			"scope":                  strParam("optional: extra scope rules (domains, IPs, CIDRs)"),
 			"parent_ref":             strParam("optional: parent task id (for parent-child linking)"),
 			"source_task_ids":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": fmt.Sprintf("optional: ids of source tasks to inherit read-only (at most %d). The subtask may read the assets/conclusions those tasks already explored as its starting point; unlike parent_ref's plain parent-child pointer, this is content inheritance.", db.MaxTaskSourceCount)},
 			"llm_profile_id":         map[string]any{"type": "integer", "description": "optional: the LLM profile id this subtask's planner/worker uses (see list_llm_profiles); empty inherits the parent task, then falls back to the global active profile"},
@@ -258,6 +270,10 @@ func (s *Server) toolSpawnTask() actool.CoreTool {
 			var a struct {
 				Description          string          `json:"description"`
 				Goal                 string          `json:"goal"`
+				Target               string          `json:"target"`
+				Company              string          `json:"company"`
+				CompanyID            json.RawMessage `json:"company_id"`
+				Scope                string          `json:"scope"`
 				ParentRef            string          `json:"parent_ref"`
 				SourceTaskIDs        []string        `json:"source_task_ids"`
 				LLMProfileID         json.RawMessage `json:"llm_profile_id"`
@@ -308,27 +324,32 @@ func (s *Server) toolSpawnTask() actool.CoreTool {
 			if pin != nil {
 				llmIDs = []int64{*pin}
 			}
-			// Target gate: a child spawned from a gated scope is gated too, and keeps
-			// the block rules of the calling task. Read from the caller's scope, never
-			// from parent_ref (optional and written by the model). Pins and allow rules
-			// are never copied. Gate-off caller or no scope: created as before.
-			var gate *bool
-			var blockRules []db.TaskInterceptRuleInput
-			if scope, ok := intercept.TargetScopeFromContext(ctx); ok && scope.Enabled != nil && scope.Enabled() {
-				on := true
-				gate = &on
-				if callerID, err := strconv.ParseInt(scope.TaskID, 10, 64); err == nil && callerID > 0 {
-					block, _, err := s.m.Assets().TaskInterceptRulesSplit(callerID)
-					if err != nil {
-						return actool.Errorf("read the block rules of the calling task: " + err.Error()), nil
-					}
-					for _, r := range block {
-						blockRules = append(blockRules, db.TaskInterceptRuleInput{Enabled: r.Enabled, Action: r.Action, Kind: r.Kind, Pattern: r.Pattern, Note: r.Note})
-					}
+			gate, blockRules, gerr := s.resolveInheritedGateRules(ctx)
+			if gerr != nil {
+				return actool.Errorf(gerr.Error()), nil
+			}
+
+			targets := splitTargets(a.Target, nil)
+			explicitCID := parseProfileID(a.CompanyID)
+			hasTargetMeta := len(targets) > 0 || strings.TrimSpace(a.Company) != "" || explicitCID > 0 || strings.TrimSpace(a.Scope) != ""
+			var companyID int64
+			var finalCompany string
+			var companyIDs []int64
+			if hasTargetMeta && s.assetStore() != nil && s.companyStore() != nil {
+				cid, cname, _, cerr := s.registerCompanyScopeAndAssets(targets, a.Company, explicitCID, a.Scope, 0, "spawn_task:"+a.Description)
+				if cerr != nil {
+					return actool.Errorf("company/scope registration failed: " + cerr.Error()), nil
+				}
+				companyID = cid
+				finalCompany = cname
+				if companyID > 0 {
+					companyIDs = []int64{companyID}
 				}
 			}
+
 			t, err := s.m.CreateTaskWithOptions(a.Description, a.Goal, db.TaskCreateOptions{
 				SourceTaskIDs:        sourceIDs,
+				CompanyIDs:           companyIDs,
 				LLMProfileIDs:        llmIDs,
 				TimeoutSeconds:       a.TimeoutSeconds,
 				PlanHeartbeatSeconds: a.PlanHeartbeatSeconds,
@@ -344,11 +365,42 @@ func (s *Server) toolSpawnTask() actool.CoreTool {
 					_ = s.m.PG().SetParentRef(id, a.ParentRef)
 				}
 			}
+			tid, _ := strconv.ParseInt(t.ID, 10, 64)
+			var assetIDs []int64
+			var linkedAssets int64
+			if tid > 0 && hasTargetMeta {
+				assetIDs = s.seedTargetAssets(s.assetStore(), targets, tid)
+				if s.m.pg != nil {
+					linkedAssets, _ = s.m.pg.SyncTaskCompanyAssets(tid)
+				}
+			}
+			if convID := intercept.ConvIDFromContext(ctx); convID > 0 && s.m.pg != nil && tid > 0 {
+				var cidPtr *int64
+				if companyID > 0 {
+					cidPtr = &companyID
+				}
+				_ = s.m.pg.UpsertConversationLink(db.ConversationLink{
+					ConversationID: convID,
+					TaskID:         &tid,
+					CompanyID:      cidPtr,
+					Target:         strings.TrimSpace(a.Target),
+				})
+			}
 			// Shared post-create flow: HTTP task creation (server.go createTask) reuses this same launchTask:
 			// seed + a visibly-in-background goal decomposition (round 0 / LLM steps / per-goal) + engine.Run.
 			// seed_first_intent defaults to false (the standard plan-then-execute flow); simple tasks may enable it to issue one work test directly.
 			s.launchTask(t, a.Description+" "+a.Goal, a.SeedFirstIntent)
-			return actool.Text(fmt.Sprintf("task created: %s", t.ID)), nil
+			if !hasTargetMeta {
+				return actool.Text(fmt.Sprintf("task created: %s", t.ID)), nil
+			}
+			meta, _ := json.Marshal(map[string]any{
+				"task_id":            t.ID,
+				"company_id":         companyID,
+				"company_name":       finalCompany,
+				"asset_ids":          assetIDs,
+				"task_assets_linked": linkedAssets,
+			})
+			return actool.Text(fmt.Sprintf("task created: %s\n%s", t.ID, meta)), nil
 		})
 }
 
@@ -478,14 +530,19 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 				return actool.Errorf(fmt.Sprintf("invalid poe_level %d (want 0-4)", poe)), nil
 			}
 			notFound := actool.Errorf(fmt.Sprintf("no vulnerability record found for finding_id=%d (register it with report_finding first)", nodeID))
+			var findingID int64
+			var n int64
 			findingID, err := s.m.pg.FindingIDByNodeID(nodeID)
-			if errors.Is(err, sql.ErrNoRows) {
-				return notFound, nil
+			if err == nil {
+				n, err = s.m.pg.SetFindingReportVersionByNodeID(ctx, nodeID, a.Report, a.EvidenceVersion)
+			} else if errors.Is(err, sql.ErrNoRows) {
+				if f, ferr := s.m.pg.GetFinding(nodeID); ferr == nil && f != nil {
+					findingID = f.ID
+					n, err = s.m.pg.SetFindingReportVersionByFindingID(ctx, findingID, a.Report, a.EvidenceVersion)
+				} else {
+					return notFound, nil
+				}
 			}
-			if err != nil {
-				return actool.Errorf(err.Error()), nil
-			}
-			n, err := s.m.pg.SetFindingReportVersionByNodeID(ctx, nodeID, a.Report, a.EvidenceVersion)
 			if err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
@@ -529,11 +586,15 @@ func (s *Server) seedOrchestrationTools() {
 	// task-op + platform tools default-bind to the built-in Auto agent (it exists to
 	// operate the platform). SeedTool takes effect on first insert; rows already seeded in old DBs get the binding backfilled by seedAutoDefaultBindings.
 	autoAgents, _ := json.Marshal([]string{"auto"})
+	pipelineAgents, _ := json.Marshal([]string{"auto", "pentest"})
 	for _, t := range s.orchestrationTools() {
 		schema, _ := json.Marshal(t.InputSchema())
 		bindings := autoAgents
-		if t.Name() == "bind_finding_traffic" {
+		switch t.Name() {
+		case "bind_finding_traffic":
 			bindings = json.RawMessage(`["reporter"]`)
+		case "start_target_assessment", "sync_scopesentry_assets":
+			bindings = pipelineAgents
 		}
 		_ = s.m.PG().SeedTool(t.Name(), t.Description(), schema, bindings)
 	}
@@ -572,6 +633,13 @@ func (s *Server) seedOrchestrationTools() {
 	s.seedFindingVerificationSchema() // S1: poe_level / evidence_quotes on update_finding_report, added once per DB
 	s.seedFindingEvidenceSchema()     // optional counterevidence / confidence_rationale on report_finding, added once per DB
 	s.seedFactSourceSchema()          // source enum on record_fact, added once per DB
+	s.seedProjectMalariaTrafficBinding()
+	s.migratePipelineToolsAndPrompts()
+	s.migratePipelineToolsAndPromptsV2()
+	s.migratePipelineToolsV3()
+	s.migratePipelineToolsV4()
+	s.seedProjectMalariaWebSearch()
+	s.migratePromptsCompletenessV3()
 	// Note: pentest's default tool bindings need no migration — BuiltinToolSeeds already seeds
 	// list_assets/insert_assets/report_finding/list_findings/list_companies together with
 	// pentest at fresh initialization (no old DBs exist in this project, so no migration).
@@ -618,7 +686,7 @@ WHERE key='record_fact' AND system AND NOT(COALESCE(schema->'properties','{}'::j
 // reaches an old DB otherwise. Preserves each tool's agent binding + enabled flag.
 // Bump the flag whenever these tools' schemas/descriptions change in code.
 func (s *Server) refreshBuiltinToolSchemas() {
-	const flag = "tool_schema_refresh_v7_list_facts_paging"
+	const flag = "tool_schema_refresh_v8_pipeline_tools"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
@@ -629,14 +697,13 @@ func (s *Server) refreshBuiltinToolSchemas() {
 			log.Printf("[tools] refresh %s schema failed: %v", t.Name(), err)
 		}
 	}
-	// Also refresh some built-in agent tools to the code defaults:
-	//   - goal_met: the description seeded in old DBs carries the misleading "end this planning round", making the planner treat it as
-	//     a way to "end an empty round" and wrongly declare the whole task done right after start.
-	//   - insert_assets: new related param (marks whether the asset relates to the current task and decides whether it counts toward coverage),
-	//     SeedTool is first-insert-only, so schemas already seeded in old DBs would otherwise miss this new param.
-	//   - list_facts: now paginated with new limit/before/q params; the empty schema already seeded in old DBs would otherwise
-	//     show "no parameters" on the tools page, and the model would never see those param descriptions.
-	refreshBuiltin := map[string]bool{"goal_met": true, "insert_assets": true, "list_facts": true}
+	refreshBuiltin := map[string]bool{
+		"goal_met":       true,
+		"insert_assets":  true,
+		"list_facts":     true,
+		"report_finding": true,
+		"list_findings":  true,
+	}
 	for _, sd := range agent.BuiltinToolSeeds() {
 		if !refreshBuiltin[sd.Key] {
 			continue
@@ -647,7 +714,177 @@ func (s *Server) refreshBuiltinToolSchemas() {
 		}
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
-	log.Printf("[tools] refreshed orchestration/platform tool schemas to code defaults (one-time)")
+	log.Printf("[tools] refreshed orchestration/platform/pipeline tool schemas to code defaults (one-time)")
+}
+
+// migratePipelineToolsAndPrompts upgrades existing DBs ONCE so Auto & Pentest
+// agents receive the pipeline orchestration prompts (keeping previous prompt
+// versions in history) and the bindings for start_target_assessment,
+// sync_scopesentry_assets, add_company_scope, and list_findings.
+func (s *Server) migratePipelineToolsAndPrompts() {
+	const flag = "pipeline_integration_auto_pentest_v1"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+
+	seeds := agent.BuiltinPromptSeeds()
+	for _, key := range []string{"auto", "pentest"} {
+		tmpl := seeds[key]
+		if tmpl == "" {
+			continue
+		}
+		a, err := s.m.pg.GetAgentByKey(key)
+		if err != nil || a == nil {
+			continue
+		}
+		if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
+			continue
+		}
+		if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
+			log.Printf("[prompts] failed to refresh %s pipeline prompt: %v", key, err)
+		} else {
+			log.Printf("[prompts] %s prompt: appended pipeline integration default version", key)
+		}
+	}
+
+	_ = s.m.pg.AddAgentToToolBinding("auto", []string{
+		"start_target_assessment", "sync_scopesentry_assets", "list_findings", "report_finding",
+		"insert_assets", "add_company_scope", "list_assets", "spawn_task",
+	})
+	_ = s.m.pg.AddAgentToToolBinding("pentest", []string{
+		"start_target_assessment", "sync_scopesentry_assets", "add_company_scope",
+		"insert_assets", "list_assets", "report_finding", "list_findings", "list_companies",
+	})
+	log.Printf("[pipeline] bound end-to-end pipeline tools onto auto & pentest (one-time)")
+}
+
+// migratePipelineToolsAndPromptsV2 upgrades existing DBs ONCE so Auto & Pentest
+// prompts include [System Auto-Onboard Pipeline] awareness, Skill(...) usage, and
+// 401/429 sleep-loop prevention.
+func (s *Server) migratePipelineToolsAndPromptsV2() {
+	const flag = "pipeline_integration_skills_onboard_v2"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+
+	seeds := agent.BuiltinPromptSeeds()
+	for _, key := range []string{"auto", "pentest"} {
+		tmpl := seeds[key]
+		if tmpl == "" {
+			continue
+		}
+		a, err := s.m.pg.GetAgentByKey(key)
+		if err != nil || a == nil {
+			continue
+		}
+		if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
+			continue
+		}
+		if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
+			log.Printf("[prompts] failed to upgrade %s prompt v2: %v", key, err)
+		} else {
+			log.Printf("[prompts] %s prompt: appended skills + auto-onboard integration version", key)
+		}
+	}
+}
+
+// migratePipelineToolsV3 binds Report Studio tools (list_report_templates,
+// generate_task_report) onto auto, pentest, and reporter agents once.
+func (s *Server) migratePipelineToolsV3() {
+	const flag = "pipeline_integration_report_studio_v3"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+
+	reportTools := []string{"list_report_templates", "generate_task_report"}
+	for _, key := range []string{"auto", "pentest", "reporter"} {
+		_ = s.m.pg.AddAgentToToolBinding(key, reportTools)
+	}
+	log.Printf("[pipeline] bound Report Studio tools onto auto, pentest & reporter (one-time)")
+}
+
+// migratePipelineToolsV4 binds pgvector Semantic Playbook Memory and Per-Task
+// Ephemeral Kali Sandbox tools onto execution and orchestration agents once.
+func (s *Server) migratePipelineToolsV4() {
+	const flag = "pipeline_integration_pentagi_v4"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+
+	pentagiTools := []string{
+		"search_playbook_memory",
+		"save_playbook_memory",
+		"sandbox_exec",
+		"sandbox_manage",
+	}
+	for _, key := range []string{"worker", "pentest", "retester", "auto", "mainagent"} {
+		_ = s.m.pg.AddAgentToToolBinding(key, pentagiTools)
+	}
+	log.Printf("[pipeline] bound pgvector playbook memory & per-task Kali sandbox tools onto agents (one-time)")
+}
+
+// seedProjectMalariaWebSearch enables keyless web search (ddgs fallback if
+// unset) and sets web_search=true on core pentest/orchestration agents ONCE
+// (guarded by a settings flag) so newly discovered tech stacks, WAFs, and
+// CVEs can be researched dynamically while respecting later user toggles.
+func (s *Server) seedProjectMalariaWebSearch() {
+	const flag = "project_malaria_web_search_v1"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+
+	if _, ok, _ := s.m.pg.GetSetting(settingWebSearchOn); !ok {
+		_, backend, _, _, _ := s.m.WebSearch()
+		if err := s.m.SetWebSearch(true, backend, nil, nil, nil); err != nil {
+			log.Printf("[web_search] failed to enable global web_search_enabled default: %v", err)
+		} else {
+			log.Printf("[web_search] enabled global web_search_enabled=true (backend=%s) by default", backend)
+		}
+	}
+	for _, key := range []string{"worker", "planner", "pentest", "auto", "mainagent"} {
+		if a, err := s.m.pg.GetAgentByKey(key); err == nil && a != nil && !a.WebSearch {
+			if serr := s.m.pg.SetAgentWebSearch(key, true); serr != nil {
+				log.Printf("[web_search] failed to enable web_search for %s: %v", key, serr)
+			}
+		}
+	}
+	log.Printf("[web_search] enabled default web_search=true on worker/planner/pentest/auto/mainagent (one-time)")
+}
+
+// migratePromptsCompletenessV3 upgrades planner, worker, and pentest prompts
+// ONCE on existing DBs to enforce untested-asset checks before prove_goal,
+// dynamic web_search/CVE research, and asset_ids anchoring on facts.
+func (s *Server) migratePromptsCompletenessV3() {
+	const flag = "pipeline_completeness_hardening_v3"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+
+	seeds := agent.BuiltinPromptSeeds()
+	for _, key := range []string{"planner", "worker", "pentest"} {
+		tmpl := seeds[key]
+		if tmpl == "" {
+			continue
+		}
+		a, err := s.m.pg.GetAgentByKey(key)
+		if err != nil || a == nil {
+			continue
+		}
+		if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
+			continue
+		}
+		if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
+			log.Printf("[prompts] failed to upgrade %s completeness prompt v3: %v", key, err)
+		} else {
+			log.Printf("[prompts] %s prompt: appended completeness & web_search v3 version", key)
+		}
+	}
 }
 
 // unbindGoalMetDefault removes goal_met's default "planner" binding ONCE (guarded by

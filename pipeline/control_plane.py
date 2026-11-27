@@ -53,6 +53,9 @@ for _extra_p in ("/opt/homebrew/bin", "/usr/local/bin", "/Applications/Docker.ap
         os.environ["PATH"] = f"{_extra_p}:{os.environ.get('PATH', '')}"
 
 sys.path.insert(0, str(HERE))
+import model_studio
+import report_studio
+import sandbox_manager
 _LOCK = threading.Lock()
 
 
@@ -113,26 +116,60 @@ def sync_litellm_config(cfg: dict) -> str:
                 lines.append(f'      api_key: "{api_key}"')
             lines.append("")
 
+    # Auto-build local Primary (cyber-model :8091) <-> Secondary (orchestrator :8090) fallbacks
+    # so role separation works with 2 models running AND seamlessly degrades when only 1 model is loaded.
+    orch_cfg = models.get("gpt-oss-120b") or {}
+    spec_cfg = models.get("cyber-tiel") or {}
+    orch_aliases = (orch_cfg.get("aliases") or [orch_cfg.get("alias") or "orchestrator"]) if orch_cfg.get("enabled", True) else []
+    spec_aliases = (spec_cfg.get("aliases") or [spec_cfg.get("alias") or "cyber-model"]) if spec_cfg.get("enabled", True) else []
+    primary_alias = spec_aliases[0] if spec_aliases else ""
+    secondary_alias = orch_aliases[0] if orch_aliases else ""
+
+    fb_map: dict[str, list[str]] = {}
+    for fb in (gw.get("fallbacks") or []):
+        if isinstance(fb, dict):
+            for src, targets in fb.items():
+                if src and targets:
+                    fb_map[str(src)] = [str(t) for t in targets if t]
+
+    if primary_alias and secondary_alias:
+        for a in orch_aliases:
+            fb_map.setdefault(a, [primary_alias])
+        for a in spec_aliases:
+            fb_map.setdefault(a, [secondary_alias])
+    if (models.get("summarizer") or {}).get("enabled", True):
+        sum_targets = [x for x in (secondary_alias, primary_alias) if x]
+        if sum_targets:
+            for a in ((models.get("summarizer") or {}).get("aliases") or ["summarizer"]):
+                fb_map.setdefault(a, sum_targets)
+    if (models.get("vision") or {}).get("enabled", True) and primary_alias:
+        for a in ((models.get("vision") or {}).get("aliases") or ["vision"]):
+            fb_map.setdefault(a, [primary_alias])
+
     lines.extend([
         "general_settings:",
         "  dangerously_permit_weak_or_unset_master_key: true",
         "",
         "litellm_settings:",
         f"  drop_params: {drop_params}",
+    ])
+    if fb_map:
+        lines.append("  fallbacks:")
+        for src, targets in fb_map.items():
+            t_list = ", ".join(f'"{t}"' for t in targets)
+            lines.append(f'    - "{src}": [{t_list}]')
+
+    lines.extend([
         "",
         "router_settings:",
         f"  timeout: {timeout}",
         f"  num_retries: {retries}",
     ])
-
-    fallbacks = gw.get("fallbacks") or []
-    if fallbacks:
+    if fb_map:
         lines.append("  fallbacks:")
-        for fb in fallbacks:
-            if isinstance(fb, dict):
-                for src, targets in fb.items():
-                    t_list = ", ".join(f'"{t}"' for t in targets)
-                    lines.append(f"    - {src}: [{t_list}]")
+        for src, targets in fb_map.items():
+            t_list = ", ".join(f'"{t}"' for t in targets)
+            lines.append(f'    - "{src}": [{t_list}]')
 
     content = "\n".join(lines) + "\n"
     with open(LITELLM_CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -226,16 +263,25 @@ def sync_cordis_patch(cfg: dict) -> str:
 
 def sync_qwen_settings(cfg: dict) -> str:
     qw = (cfg.get("harnesses") or {}).get("qwen-code") or {}
-    default_model = qw.get("default_model", "flint")
-    connected_mcps = qw.get("connected_mcps") or ["hexstrike", "rea", "cve", "memory", "search", "specialist"]
+    default_model = qw.get("default_model", "orchestrator")
+    connected_mcps = qw.get("connected_mcps") or [
+        "hexstrike",
+        "rea",
+        "cve",
+        "memory",
+        "search",
+        "specialist",
+        "scopesentry",
+        "artex",
+    ]
     models = cfg.get("models") or {}
     mcps = cfg.get("mcp_servers") or {}
 
     openai_models = []
-    seen_ids = {"flint", "orchestrator", "gpt-oss-120b"}
+    seen_ids = {"orchestrator", "gpt-oss-120b", "flint"}
 
     orch_m = models.get("gpt-oss-120b") or {}
-    orch_name = orch_m.get("dsh_display_name") or orch_m.get("label") or "Orchestrator (Coding & Synthesis)"
+    orch_name = orch_m.get("dsh_display_name") or orch_m.get("label") or "Orchestrator (Inkling-2-Mini :8090)"
     openai_models.append({
         "id": default_model,
         "name": orch_name,
@@ -265,10 +311,17 @@ def sync_qwen_settings(cfg: dict) -> str:
         if m and not m.get("enabled", True):
             continue
         url = (m.get("internal_url") if m else None) or f"http://{mcp_id}-mcp:{m.get('port', 8001) if m else 8001}/mcp"
-        mcp_servers[mcp_id] = {
+        entry: dict = {
             "httpUrl": url,
             "trust": True,
         }
+        header_auth = (m.get("header_auth") if m else None) or ""
+        if header_auth:
+            env_name = (m.get("api_key_env") if m else None) or ""
+            api_key = (os.environ.get(env_name) if env_name else "") or (m.get("default_api_key") if m else "") or ""
+            if api_key:
+                entry["headers"] = {header_auth: api_key}
+        mcp_servers[mcp_id] = entry
 
     settings = {
         "$schema": "https://json.schemastore.org/qwen-settings.json",
@@ -285,6 +338,32 @@ def sync_qwen_settings(cfg: dict) -> str:
             "defaultBackground": False
         },
         "mcpServers": mcp_servers,
+        "hooks": {
+            "UserPromptSubmit": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "name": "artex-shared-context",
+                            "command": "node /app/hooks/artex-context-hook.mjs prompt",
+                            "timeout": 8000,
+                        }
+                    ]
+                }
+            ],
+            "Stop": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "name": "artex-sync-reply",
+                            "command": "node /app/hooks/artex-context-hook.mjs stop",
+                            "timeout": 8000,
+                        }
+                    ]
+                }
+            ],
+        },
         "security": {
             "auth": {
                 "selectedType": "openai"
@@ -305,7 +384,7 @@ def sync_qwen_settings(cfg: dict) -> str:
 
     ws_qwen = HERE / "dsh-workspace" / ".qwen" / "settings.json"
     if ws_qwen.parent.exists():
-        ws_settings = {k: v for k, v in settings.items() if k != "mcpServers"}
+        ws_settings = {k: v for k, v in settings.items() if k not in ("mcpServers", "hooks")}
         with open(ws_qwen, "w", encoding="utf-8") as f:
             json.dump(ws_settings, f, ensure_ascii=False, indent=2)
 
@@ -2185,7 +2264,7 @@ class ControlPlaneHandler(BaseHTTPRequestHandler):
                     {"id": "n8n-dual-brain", "object": "model", "owned_by": "project-malaria"},
                     {"id": "n8n-canvas-runner", "object": "model", "owned_by": "project-malaria"},
                     {"id": "orchestrator", "object": "model", "owned_by": "project-malaria"},
-                    {"id": "flint", "object": "model", "owned_by": "project-malaria"},
+                    {"id": "inkling-2-mini", "object": "model", "owned_by": "project-malaria"},
                     {"id": "cyber-model", "object": "model", "owned_by": "project-malaria"},
                     {"id": "qwen2.5-coder-32b", "object": "model", "owned_by": "project-malaria"},
                     {"id": "qwen2.5-coder-14b", "object": "model", "owned_by": "project-malaria"},
@@ -2211,6 +2290,87 @@ class ControlPlaneHandler(BaseHTTPRequestHandler):
             node_id = (qs.get("id") or ["mcp:hexstrike"])[0]
             lines = int((qs.get("lines") or ["100"])[0])
             self._send_json(fetch_node_logs(node_id, lines))
+            return
+
+        if path == "/api/model-studio/state":
+            self._send_json(model_studio.get_full_state())
+            return
+
+        if path == "/api/model-studio/ggufs":
+            self._send_json({"ok": True, "ggufs": model_studio.scan_gguf_files()})
+            return
+
+        if path == "/api/model-studio/logs":
+            slot_id = (qs.get("slot") or ["orchestrator"])[0]
+            lines = int((qs.get("lines") or ["120"])[0])
+            self._send_json(model_studio.get_slot_logs(slot_id, lines))
+            return
+
+        if path == "/api/model-studio/fs":
+            dir_path = (qs.get("dir") or [""])[0]
+            filter_mode = (qs.get("filter") or [".gguf"])[0]
+            self._send_json(model_studio.list_directory(dir_path, filter_mode))
+            return
+
+        if path == "/api/model-studio/inspect":
+            file_path = (qs.get("path") or [""])[0]
+            self._send_json(model_studio.inspect_gguf_path(file_path))
+            return
+
+        if path == "/api/model-studio/reports/templates":
+            self._send_json(report_studio.list_templates())
+            return
+
+        if path == "/api/model-studio/reports/list":
+            raw_tid = (qs.get("task_id") or [""])[0].strip()
+            tid = int(raw_tid) if raw_tid.isdigit() else None
+            self._send_json(report_studio.list_generated_reports(tid))
+            return
+
+        if path == "/api/model-studio/reports/job":
+            job_id = (qs.get("job_id") or [""])[0].strip()
+            self._send_json(report_studio.get_job(job_id))
+            return
+
+        if path == "/api/model-studio/reports/jobs":
+            raw_tid = (qs.get("task_id") or [""])[0].strip()
+            tid = int(raw_tid) if raw_tid.isdigit() else None
+            self._send_json(report_studio.list_jobs(tid))
+            return
+
+        if path == "/api/model-studio/reports/mapping":
+            raw_tid = (qs.get("task_id") or ["0"])[0].strip()
+            tid = int(raw_tid) if raw_tid.isdigit() else 0
+            self._send_json(report_studio.get_task_standards_mapping(tid))
+            return
+
+        if path == "/api/model-studio/sandboxes":
+            raw_tid = (qs.get("task_id") or [""])[0].strip()
+            tid = int(raw_tid) if raw_tid.isdigit() else None
+            self._send_json(sandbox_manager.list_sandboxes(tid))
+            return
+
+        if path == "/api/model-studio/reports/content":
+            rpt_id = (qs.get("id") or [""])[0].strip()
+            self._send_json(report_studio.get_report_content(rpt_id))
+            return
+
+        if path == "/api/model-studio/reports/download":
+            rpt_id = (qs.get("id") or [""])[0].strip()
+            fmt = (qs.get("format") or ["docx"])[0].strip()
+            resolved = report_studio.resolve_report_download(rpt_id, fmt)
+            if not resolved:
+                self._send_json({"ok": False, "error": "Report file not found"}, status=404)
+                return
+            fpath, mime, dl_name = resolved
+            raw_bytes = fpath.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Disposition", f'attachment; filename="{dl_name}"')
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(raw_bytes)))
+            self.end_headers()
+            self.wfile.write(raw_bytes)
             return
 
         self._send_json({"error": f"Not found: {path}"}, status=404)
@@ -2285,6 +2445,98 @@ class ControlPlaneHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/bridge/"):
             tool_group = path.split("/api/bridge/", 1)[1].strip("/")
             self._send_json(handle_bridge_call(tool_group, body))
+            return
+
+        if path == "/api/model-studio/slot/save":
+            self._send_json(model_studio.save_slot(str(body.get("id") or ""), body.get("config") or {}))
+            return
+
+        if path == "/api/model-studio/slot/action":
+            self._send_json(model_studio.slot_action(str(body.get("id") or ""), str(body.get("action") or "")))
+            return
+
+        if path == "/api/model-studio/slot/test":
+            self._send_json(model_studio.test_slot(str(body.get("id") or ""), body.get("prompt")))
+            return
+
+        if path == "/api/model-studio/slot/preset":
+            self._send_json(
+                model_studio.slot_preset(
+                    str(body.get("id") or ""),
+                    str(body.get("action") or ""),
+                    str(body.get("name") or ""),
+                    body.get("config"),
+                )
+            )
+            return
+
+        if path == "/api/model-studio/cloud/save":
+            self._send_json(model_studio.save_cloud_model(body))
+            return
+
+        if path == "/api/model-studio/cloud/delete":
+            self._send_json(model_studio.delete_cloud_model(str(body.get("id") or "")))
+            return
+
+        if path == "/api/model-studio/pick-file":
+            filter_mode = str(body.get("filter") or ".gguf")
+            self._send_json(model_studio.pick_native_file(filter_mode))
+            return
+
+        if path == "/api/model-studio/reports/templates/upload":
+            res = report_studio.upload_template(body)
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if path == "/api/model-studio/reports/templates/delete":
+            res = report_studio.delete_template(str(body.get("id") or ""))
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if path == "/api/model-studio/reports/templates/default":
+            res = report_studio.set_default_template(str(body.get("id") or ""))
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if path == "/api/model-studio/reports/generate":
+            res = report_studio.generate_report(body)
+            self._send_json(res, status=200 if res.get("ok") else 500)
+            return
+
+        if path == "/api/model-studio/reports/enrich-cve":
+            res = report_studio.enrich_cves_endpoint(body)
+            self._send_json(res, status=200)
+            return
+
+        if path == "/api/model-studio/reports/summarize-item":
+            res = report_studio.summarize_item_endpoint(body)
+            self._send_json(res, status=200 if res.get("ok") else 500)
+            return
+
+        if path == "/api/model-studio/sandboxes/spawn":
+            res = sandbox_manager.spawn_sandbox(
+                int(body.get("task_id") or 0),
+                int(body.get("ttl_minutes") or 90),
+            )
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if path == "/api/model-studio/sandboxes/exec":
+            res = sandbox_manager.exec_in_sandbox(
+                int(body.get("task_id") or 0),
+                str(body.get("command") or ""),
+                int(body.get("timeout_sec") or 120),
+                str(body.get("workdir") or "/sandbox"),
+            )
+            self._send_json(res, status=200 if res.get("ok") else 500)
+            return
+
+        if path == "/api/model-studio/sandboxes/destroy":
+            res = sandbox_manager.destroy_sandbox(
+                int(body.get("task_id") or 0),
+                bool(body.get("wipe_files", False)),
+            )
+            self._send_json(res, status=200 if res.get("ok") else 400)
             return
 
         self._send_json({"ok": False, "error": f"Not found: {path}"}, status=404)

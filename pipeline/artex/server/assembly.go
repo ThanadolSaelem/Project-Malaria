@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Autumn-27/artex/agent"
@@ -182,13 +183,50 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			}
 		}
 		def := agent.DeferredInfo{
-			Deferred:    allNames,
-			GlobalNames: globalNames,
-			Unlock:      unlock,
-			UnlockSkill: unlockSkill,
+			SkillGuidance: buildSkillGuidance(reg),
+			Deferred:      allNames,
+			GlobalNames:   globalNames,
+			Unlock:        unlock,
+			UnlockSkill:   unlockSkill,
 		}
 		return extra, def, cleanup
 	}
+}
+
+func buildSkillGuidance(reg *skill.Registry) string {
+	if reg == nil {
+		return ""
+	}
+	skills := reg.List()
+	if len(skills) == 0 {
+		return ""
+	}
+	sort.Slice(skills, func(i, j int) bool {
+		return skills[i].Name < skills[j].Name
+	})
+	var sb strings.Builder
+	sb.WriteString("\n\n**Available Skills (`Skill` tool)**: when a task involves any domain below, call `Skill(name=\"<name>\")` first to load its step-by-step playbook (and unlock any skill-gated tools) instead of improvising:")
+	for _, s := range skills {
+		name := s.Name
+		if name == "" && s.Dir != "" {
+			name = filepath.Base(s.Dir)
+		}
+		if name == "" {
+			continue
+		}
+		desc := strings.TrimSpace(strings.ReplaceAll(s.Description, "\n", " "))
+		if len(desc) > 160 {
+			desc = desc[:157] + "..."
+		}
+		sb.WriteString("\n- `")
+		sb.WriteString(name)
+		sb.WriteString("`")
+		if desc != "" {
+			sb.WriteString(": ")
+			sb.WriteString(desc)
+		}
+	}
+	return sb.String()
 }
 
 func idSet(ids []int64) map[int64]bool {
@@ -346,21 +384,26 @@ func contains(ss []string, v string) bool {
 }
 
 // buildDomainReg builds a name→CoreTool registry from a server-level ToolSet
-// (real AssetStore, nil ExplorationStore, taskID=0). Used by ToolResolve to inject
-// domain tools into agents (Auto, custom) that don't own a per-task ToolSet.
-// nil as → returns nil (no injection, graceful degradation).
-//
-// The nil ExplorationStore is deliberate — these instances are task-less by
-// construction — so every tool here must tolerate it. Asset/company tools do
-// (they only need the AssetStore); the exploration-graph tools refuse with a
-// clear message via ToolSet.needExploration. Binding one of them to a task-less
-// agent in the tools table is therefore a useless tool, not a crash.
-func buildDomainReg(as *db.AssetStore) map[string]actool.CoreTool {
-	if as == nil {
+// (real AssetStore, DB handle, FindingRecorder, nil ExplorationStore, taskID=0).
+// Used by ToolResolve to inject domain tools into agents (Auto, Pentest, custom)
+// that don't own a per-task ToolSet.
+func buildDomainReg(pg *db.DB, as *db.AssetStore, fr agent.FindingRecorder, onStandalone func(int64, *db.RecordedFinding, db.RecordFindingInput)) map[string]actool.CoreTool {
+	if as == nil && pg == nil {
 		return nil
 	}
 	serverTS := agent.NewToolSet(nil, "")
-	serverTS.SetAssetStore(as, as.Companies())
+	if as != nil {
+		serverTS.SetAssetStore(as, as.Companies())
+	}
+	if pg != nil {
+		serverTS.SetDB(pg)
+	}
+	if fr != nil {
+		serverTS.SetFindingRecorder(fr)
+	}
+	if onStandalone != nil {
+		serverTS.SetOnStandaloneFinding(onStandalone)
+	}
 	reg := make(map[string]actool.CoreTool)
 	for _, t := range serverTS.AllDomainTools() {
 		reg[t.Name()] = t

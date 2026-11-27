@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -102,10 +103,11 @@ type Engine struct {
 	// quiet-mode (#79): open-goal fingerprint recorded at the end of the last
 	// completed planning round, per task. Edge-triggered rounds are skipped
 	// while it is unchanged and work is still in flight.
-	goalFP   sync.Map // taskID -> string (sorted open-goal ids joined)
-	paused   sync.Map // taskID -> bool, user-paused (planner + workers idle but loops alive)
-	deleting sync.Map // taskID -> bool, delete barrier (no new task-owned writes)
-	dropCnt  sync.Map // taskID -> *int64, running count of dropped (unpersistable) activity records
+	goalFP          sync.Map // taskID -> string (sorted open-goal ids joined)
+	paused          sync.Map // taskID -> bool, user-paused (planner + workers idle but loops alive)
+	deleting        sync.Map // taskID -> bool, delete barrier (no new task-owned writes)
+	dropCnt         sync.Map // taskID -> *int64, running count of dropped (unpersistable) activity records
+	emptyPlanRounds sync.Map // taskID -> int, consecutive planner rounds ending !met with 0 active intents
 
 	// deleteMu makes installing the delete barrier atomic with registering a new
 	// task operation. Once BeginDelete returns, every admitted writer is reflected
@@ -154,8 +156,12 @@ type Engine struct {
 	resolveAuthoritative bool
 	// readiness reports whether a global LLM provider is configured — the signal behind
 	// Ready()/the llm_configured indicator. Wired once at startup; nil → not ready.
-	readiness func() bool
+	readiness      func() bool
+	onTaskComplete func(taskID string)
 }
+
+// SetOnTaskComplete installs a post-completion callback (used by Enterprise Control-Plane Gate).
+func (e *Engine) SetOnTaskComplete(fn func(taskID string)) { e.onTaskComplete = fn }
 
 type taskRuntime struct {
 	ctx    context.Context
@@ -909,6 +915,9 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		// what fired this round (worker done / finding; may be several — debounce
 		// coalesces a burst; empty for time/heartbeat wakes).
 		triggers := t.drainTriggers()
+		if triggersHaveProgress(triggers) {
+			e.emptyPlanRounds.Delete(t.ID)
+		}
 		taskIDInt, _ := strconv.ParseInt(t.ID, 10, 64)
 		pctx := e.plannerGateContext(ectx, t, intercept.DefaultTargetWaitBound)
 		e.BeginLLMCall(t.ID)
@@ -918,17 +927,11 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		case err != nil && ectx.Err() == nil:
 			log.Printf("[planner] task %s planning error: %v", t.ID, err)
 		case met:
-			log.Printf("[planner] task %s judged all goals met: %s", t.ID, reason)
-			// All goals met → persist the task state as done (the frontend DTO shows this terminal state first).
-			if err := e.m.SetTaskStatus(t.ID, "done"); err != nil {
-				log.Printf("[planner] task %s failed to persist completion: %v", t.ID, err)
-			}
-			// Task judged complete → cancel the running workers at once: whatever their
-			// in-flight intents produce no longer matters. The next worker-loop pass claims
-			// nothing new at the terminal gate; the cancelled ones take the "task completed" branch below and end up stopped (not blocked).
-			e.cancelExec(t.ID, agent.AbortGoalMet)
+			e.emptyPlanRounds.Delete(t.ID)
+			e.setTaskGoalMet(t, reason)
 		default:
 			log.Printf("[planner] task %s planning finished", t.ID)
+			e.enforcePlannerHardFloor(ectx, t, taskIDInt, planner, emit)
 		}
 		// Record the post-round open-goal fingerprint for quiet-mode (#79):
 		// goals opened or closed by this round change it, so a later edge can
@@ -952,6 +955,176 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		// Re-arm the heartbeat after every wake-up (edge or heartbeat): any planning trigger restarts this idle timer.
 		resetPlannerTimer(heartbeat, interval)
 	}
+}
+
+func triggersHaveProgress(evs []agent.TriggerEvent) bool {
+	for _, ev := range evs {
+		switch ev.Kind {
+		case "finding", "goal", "goal_edited", "hint":
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Engine) setTaskGoalMet(t *Task, reason string) {
+	log.Printf("[planner] task %s judged all goals met: %s", t.ID, reason)
+	// All goals met → persist the task state as done (the frontend DTO shows this terminal state first).
+	if err := e.m.SetTaskStatus(t.ID, "done"); err != nil {
+		log.Printf("[planner] task %s failed to persist completion: %v", t.ID, err)
+	}
+	// Task judged complete → cancel the running workers at once: whatever their
+	// in-flight intents produce no longer matters. The next worker-loop pass claims
+	// nothing new at the terminal gate; the cancelled ones take the "task completed" branch below and end up stopped (not blocked).
+	e.cancelExec(t.ID, agent.AbortGoalMet)
+	if e.onTaskComplete != nil {
+		e.onTaskComplete(t.ID)
+	}
+}
+
+// enforcePlannerHardFloor closes the silent gap where Planner.Plan finishes
+// !met while open goals remain AND frontier_open == 0 && running == 0 (no active
+// intents). Instead of sleeping for MinPlanHeartbeatSeconds (600s), it triggers
+// one immediate corrective planner round and, if still empty with untested
+// scope assets remaining, deterministically queues a follow-up exploration intent.
+func (e *Engine) enforcePlannerHardFloor(ectx context.Context, t *Task, taskIDInt int64, planner *agent.Planner, emit func(db.Activity)) {
+	if ectx.Err() != nil || e.IsDeleting(t.ID) || e.IsPaused(t.ID) || e.isSettling(t.ID) || isTerminalStatus(t.lifecycleSnapshot().Status) {
+		return
+	}
+	if open, err := t.Store.HasOpenGoal(); err != nil || !open {
+		e.emptyPlanRounds.Delete(t.ID)
+		return
+	}
+	if active, err := t.Store.HasActiveIntent(); err != nil || active {
+		e.emptyPlanRounds.Delete(t.ID)
+		return
+	}
+
+	prev := 0
+	if v, ok := e.emptyPlanRounds.Load(t.ID); ok {
+		prev, _ = v.(int)
+	}
+	attempt := prev + 1
+	e.emptyPlanRounds.Store(t.ID, attempt)
+
+	var untested []db.CoverageAsset
+	var totalUntested int
+	if e.m != nil && e.m.assets != nil && taskIDInt > 0 && e.m.assets.CoverageEnabled(taskIDInt) {
+		untested, totalUntested, _ = e.m.assets.ListUntestedAssetsWithSources(taskIDInt, "", 8, 0)
+	}
+
+	if attempt == 1 {
+		detail := "Open goals remain and 0 open/running intents exist. Either dispatch concrete exploration intents via add_intent (use web_search/cve research on discovered tech stacks, test untested attack paths, or deepen partial findings) OR close proven goals via prove_goal."
+		if totalUntested > 0 {
+			samples := make([]string, 0, len(untested))
+			for _, a := range untested {
+				label := a.Label
+				if label == "" {
+					label = "(unnamed)"
+				}
+				samples = append(samples, fmt.Sprintf("#%d [%s] %s", a.ID, a.Type, label))
+			}
+			detail = fmt.Sprintf("Open goals remain, 0 active intents exist, and %d in-scope untested asset(s) remain (%s). Dispatch intents with add_intent(asset_ids=[...]) to cover them or verify deeper attack chains before attempting prove_goal.", totalUntested, strings.Join(samples, ", "))
+		}
+		log.Printf("[planner] task %s hard floor triggered (open goals + 0 active intents, untested=%d) -> immediate continuation round", t.ID, totalUntested)
+		e.emitActivity(t, db.Activity{Worker: "planner", Kind: "round",
+			Summary: fmt.Sprintf("Planning round %d (hard-floor continuation)", e.nextPlannerRound(t.ID))})
+		pctx := e.plannerGateContext(ectx, t, intercept.DefaultTargetWaitBound)
+		e.BeginLLMCall(t.ID)
+		met, reason, err := planner.Plan(pctx, taskIDInt, e.m.assets, t.Store, t.Goal, []agent.TriggerEvent{{Kind: "hard_floor", Detail: detail}}, t.TargetGuard.Hooks(), emit)
+		e.EndLLMCall(t.ID)
+		if err != nil && ectx.Err() == nil {
+			log.Printf("[planner] task %s hard-floor continuation error: %v", t.ID, err)
+		} else if met {
+			e.emptyPlanRounds.Delete(t.ID)
+			e.setTaskGoalMet(t, reason)
+			return
+		}
+		if open, oerr := t.Store.HasOpenGoal(); oerr != nil || !open {
+			e.emptyPlanRounds.Delete(t.ID)
+			return
+		}
+		if active, aerr := t.Store.HasActiveIntent(); aerr != nil || active {
+			e.emptyPlanRounds.Delete(t.ID)
+			return
+		}
+	}
+
+	if totalUntested > 0 && taskIDInt > 0 && e.m != nil && e.m.assets != nil {
+		if synthesized, serr := e.synthesizeFloorIntent(t, taskIDInt); serr != nil {
+			log.Printf("[planner] task %s floor synthesis failed: %v", t.ID, serr)
+		} else if synthesized {
+			e.emptyPlanRounds.Store(t.ID, 0)
+			return
+		}
+	}
+	log.Printf("[planner] task %s still has open goals with 0 active intents (attempt=%d, untested=%d); awaiting next trigger/heartbeat", t.ID, attempt, totalUntested)
+}
+
+func (e *Engine) synthesizeFloorIntent(t *Task, taskIDInt int64) (bool, error) {
+	untested, _, err := e.m.assets.ListUntestedAssetsWithSources(taskIDInt, "", 16, 0)
+	if err != nil || len(untested) == 0 {
+		return false, err
+	}
+	const maxFloorAttemptsPerAsset = 2
+	attempts := map[int64]int{}
+	if intents, lerr := t.Store.ListByKind(db.KindIntent, 300); lerr == nil {
+		for _, n := range intents {
+			if n.State != "done" && n.State != "blocked" && n.State != "exhausted" {
+				continue
+			}
+			var p struct {
+				AssetIDs []int64 `json:"asset_ids"`
+			}
+			if json.Unmarshal(n.Payload, &p) == nil {
+				for _, aid := range p.AssetIDs {
+					attempts[aid]++
+				}
+			}
+		}
+	}
+
+	const batchCap = 3
+	var selected []db.CoverageAsset
+	var assetIDs []int64
+	var labels []string
+	for _, a := range untested {
+		if attempts[a.ID] >= maxFloorAttemptsPerAsset {
+			continue
+		}
+		if hits, herr := e.m.assets.CheckAssetsIntercept(taskIDInt, []int64{a.ID}); herr != nil || len(hits) > 0 {
+			continue
+		}
+		selected = append(selected, a)
+		assetIDs = append(assetIDs, a.ID)
+		label := a.Label
+		if label == "" {
+			label = fmt.Sprintf("asset #%d", a.ID)
+		}
+		labels = append(labels, fmt.Sprintf("[%s] %s", a.Type, label))
+		if len(selected) >= batchCap {
+			break
+		}
+	}
+	if len(selected) == 0 {
+		return false, nil
+	}
+
+	summary := fmt.Sprintf("Investigate and actively test untouched in-scope target assets (%s) — enumerate entry points/technologies, research applicable CVEs or bypasses via web_search/cve MCP, probe for real vulnerabilities, and record observed facts with matching asset_ids.", strings.Join(labels, ", "))
+	id, err := t.Store.AddIntent(map[string]any{
+		"summary":   summary,
+		"asset_ids": assetIDs,
+	}, 6, assetIDs, "engine_floor")
+	if err != nil {
+		return false, err
+	}
+	if origin, _ := t.Store.OriginFactID(); origin > 0 {
+		_ = t.Store.Link(origin, db.RelDerivedFrom, id)
+	}
+	log.Printf("[planner] task %s hard-floor synthesized follow-up intent #%d for %d untested asset(s)", t.ID, id, len(selected))
+	e.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
+		Summary: fmt.Sprintf("Hard floor auto-dispatched follow-up intent #%d covering untested assets: %s", id, strings.Join(labels, ", "))})
+	return true, nil
 }
 
 // claimSweepLoop periodically returns this task's expired intent claims (no

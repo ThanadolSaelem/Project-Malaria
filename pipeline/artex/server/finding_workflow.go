@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
@@ -169,4 +170,66 @@ func (s *Server) toolBindFindingTraffic() actool.CoreTool {
 			}
 			return jsonResult(trafficSummary(list))
 		})
+}
+
+// seedProjectMalariaTrafficBinding enables automatic agent traffic binding once
+// for Project-Malaria installations when no explicit setting exists yet, and gives
+// reporter read access to list_findings for standalone chat findings.
+func (s *Server) seedProjectMalariaTrafficBinding() {
+	const flag = "project_malaria_traffic_binding_v1"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "done" {
+		return
+	}
+	if _, hasExplicit, _ := s.m.pg.GetSetting(settingAgentTrafficBinding); !hasExplicit {
+		if err := s.m.pg.SetBool(settingAgentTrafficBinding, true); err != nil {
+			log.Printf("[evidence] default agent_traffic_binding failed: %v", err)
+			return
+		}
+	}
+	_ = s.m.pg.AddAgentToToolBinding("reporter", []string{"list_findings"})
+	_ = s.m.pg.SetSetting(flag, "done")
+}
+
+// notifyReporterForStandaloneFinding mirrors task-mode tool triggers when /chat
+// agents (auto/pentest) persist a confirmed finding directly via report_finding.
+func (s *Server) notifyReporterForStandaloneFinding(taskID int64, recorded *db.RecordedFinding, input db.RecordFindingInput) {
+	if s == nil || s.m == nil || s.m.pg == nil || recorded == nil || recorded.FindingID <= 0 {
+		return
+	}
+	triggers, err := s.m.pg.ListTriggersFor("reporter")
+	if err != nil {
+		return
+	}
+	var active *db.AgentTrigger
+	for _, tr := range triggers {
+		if tr != nil && tr.Enabled && tr.OnToolCall && containsFold(tr.ToolNames, "report_finding") {
+			active = tr
+			break
+		}
+	}
+	if active == nil {
+		return
+	}
+	var taskDesc, taskGoal string
+	if taskID > 0 {
+		if t, ok := s.m.Task(strconv.FormatInt(taskID, 10)); ok && t != nil {
+			taskDesc, taskGoal = t.Description, t.Goal
+		} else {
+			_ = s.m.pg.QueryRow(`SELECT description, goal FROM tasks WHERE id=$1`, taskID).Scan(&taskDesc, &taskGoal)
+		}
+	}
+	evPreview := strings.TrimSpace(input.Evidence)
+	if len(evPreview) > 1500 {
+		evPreview = evPreview[:1500] + "…"
+	}
+	targetHandle := recorded.NodeID
+	if targetHandle <= 0 {
+		targetHandle = recorded.FindingID
+	}
+	msg := active.ToolCallMessage + fmt.Sprintf(
+		"\n\n[Triggered from /chat standalone report_finding]\nStandalone finding_id: %d\nExploration finding_node_id: %d\nTask ID: %d\nVulnClass: %s\nName: %s\nSeverity: %s\nSummary: %s\nEvidence: %s\nNote: If finding_node_id is 0, there is no exploration node — inspect traffic via get_finding_traffic(finding_id=%d), verify/bind matching HTTP traffic if auto-binding is on, and save the report with update_finding_report(finding_id=%d, report=..., evidence_version=..., poe_level=..., evidence_quotes=...).",
+		recorded.FindingID, recorded.NodeID, taskID, input.VulnClass, input.Name, input.Severity, input.Summary, evPreview, recorded.FindingID, targetHandle,
+	)
+	title := fmt.Sprintf("Tool trigger · report_finding · finding#%d", recorded.FindingID)
+	s.StartTriggeredRun("reporter", title, msg, taskID, true, taskDesc, taskGoal)
 }

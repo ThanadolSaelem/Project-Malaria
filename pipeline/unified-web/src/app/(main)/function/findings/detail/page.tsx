@@ -346,7 +346,7 @@ function FindingDetailInner() {
                       <ArrowUpRightIcon className="size-3 shrink-0" />
                     </Link>
                   ) : (
-                    <span className="text-muted-foreground">— (task deleted)</span>
+                    <span className="text-muted-foreground">— (standalone / unassigned)</span>
                   )}
                 </FieldRow>
 

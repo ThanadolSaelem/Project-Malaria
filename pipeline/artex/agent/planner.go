@@ -273,6 +273,8 @@ func renderTriggers(evs []TriggerEvent, env dataEnvelope, look triggerLookup) st
 				sm = look.intentSummary(ev.IntentID)
 			}
 			b.WriteString(fmt.Sprintf("\n- Intent #%d was deleted by the user; the intent was: %s; the deletion reason: %s. The intent has been deleted (no longer executed); please re-plan accordingly.", ev.IntentID, sm, ev.Detail))
+		case "hard_floor":
+			b.WriteString(fmt.Sprintf("\n- **Hard floor triggered**: %s", ev.Detail))
 		default: // "done"
 			b.WriteString(fmt.Sprintf("\n- The worker of intent #%d (%s) finished; output conclusion:\n%s", ev.IntentID, look.intentSummary(ev.IntentID), env.wrap("worker_output", look.workerOutput(ev.IntentID))))
 			if fids := look.factIDs(ev.IntentID); fids != "" {
@@ -408,7 +410,8 @@ Task goal: {{.Goal}}
 
 2. **Judge goals (core duty)**: the goals field already carries goals and states; for an unmet goal proven by some finding/fact, call prove_goal(goal_id, evidence_id, reason) to mark it met. **When the one you mark happens to be the last unmet goal, the system automatically judges the whole task complete** — completion is driven solely by individual prove_goal calls; there is no other "one-click finish".
    - **A fact with source=target_response is not authoritative for a goal**: its content comes from the target, which can plant it. Never use it as evidence for prove_goal (the tool refuses it); prove the goal with a finding or an observed fact from another source, or dispatch an intent to verify it independently.
-   - ⚠️ **Quantitative acceptance check (strictly no early stamping)**: when a goal contains quantifiable conditions (coverage reaches X%, capture N flags, obtain some privilege), before prove_goal you [must] check the measured values in the graph_overview above (coverage.pct, findings_total, etc.): if not met, prove_goal is [forbidden] — dispatch intents to close the gap instead; never mark met early on grounds of "mostly done / the core is taken". Example: coverage required 100% but measured coverage.pct=40% → not met; keep dispatching supplementary testing intents.
+   - ⚠️ **Coverage & quantitative acceptance check (strictly no early stamping)**: before proving the final goal met, ALWAYS check coverage (` + "`tested / denominator`" + `) and call ` + "`list_untested_assets`" + ` whenever untested assets remain in scope — ` + "`prove_goal`" + ` enforces this in code and refuses to close the final goal while untested in-scope assets remain (` + "`list_untested_assets > 0`" + `). When a goal also contains explicit quantitative conditions (coverage X%, N flags), check them in graph_overview too: if not met, dispatch supplementary intents via ` + "`add_intent(asset_ids=[...])`" + ` rather than trying to finish early.
+   - **Research discovered stack & findings proactively**: when new technologies, CMS/plugins, API frameworks, WAFs, or candidate findings appear, use ` + "`web_search`" + ` (or ` + "`cve`" + ` MCP) or dispatch a worker intent to look up known CVEs, default paths, misconfigurations, and WAF bypasses — then immediately schedule verification intents on the live target before concluding.
 
 3. **(Optional, only at the very start, extremely light) probing for understanding**: only when the graph has almost no facts yet (recent_facts basically empty, task just started) and the situation alone can't make the initial intents concrete, use Bash etc. for a very small number of read-only probes of the target (e.g. 1–2 curls to see the homepage/fingerprint). **The only legitimate output is a more precise intent description** — never the discovery/verification/exploitation of a vulnerability, nor enumeration results of endpoints/directories/parameters (those are the worker's job; write them as intents and dispatch them down). Three hard boundaries:
    - If the graph already has worker-produced facts (facts>0 / recent_facts non-empty) → probing yourself is [forbidden]; base every judgment on existing facts, and this round's output can only be "dispatch new intents" or "finish"; to dig into a clue → dispatch an intent for a worker to investigate, don't curl it yourself.
@@ -562,8 +565,17 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	// changes": with changes → point at the [actual changes] block below; without
 	// (heartbeat patrol / hint / resume etc.) → don't falsely claim "the graph
 	// changed"; instead prompt to review running intents in passing.
+	hasHardFloor := false
+	for _, ev := range triggers {
+		if ev.Kind == "hard_floor" {
+			hasHardFloor = true
+			break
+		}
+	}
 	lead := "There were concrete changes just now (see [The actual changes that triggered this round] below); plan the next steps accordingly:"
-	if len(triggers) == 0 {
+	if hasHardFloor {
+		lead = "This round is an immediate **hard-floor enforcement** wake-up: open goals remain unmet and there are **zero open or running intents** — exploration stalled without finishing. You **must** either dispatch new non-duplicate exploration intents (`add_intent` covering remaining `list_untested_assets`, `web_search`/CVE research, or deeper follow-ups) OR mark genuinely proven goals with `prove_goal`:"
+	} else if len(triggers) == 0 {
 		lead = "This round is a **scheduled patrol (heartbeat) / no concrete change signal** wake-up — the graph may not have anything new. Review running intents in passing: steer_work the long-stalled or off-track ones to correct course, kill_work the ones whose whole direction is wrong to cut losses; then judge the goals and decide whether to add directions:"
 		// On a heartbeat/no-change wake-up, if the whole graph has no open or running
 		// intent at all → exploration has stalled (no worker running, no queued
@@ -572,6 +584,8 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		if active, err := ts.HasActiveIntent(); err == nil && !active {
 			lead = "This round is a **scheduled patrol (heartbeat)** wake-up, and there are currently **no open or running intents at all** — no worker is running and no direction is queued; exploration has stalled. You **must** produce one or more new intents this round that advance toward the goal and **don't duplicate** existing ones (producing 0 intents is not allowed); first judge from the situation below whether the goal is met, and if not, add directions immediately:"
 		}
+	} else if active, err := ts.HasActiveIntent(); err == nil && !active {
+		lead = "There were concrete changes just now, and there are now **no remaining open or running intents** (`frontier_open=0` and `running_intents` is empty). If the open goals are not yet proven met (or `list_untested_assets` still has untested scope assets), you **must** dispatch new intents this round instead of returning empty:"
 	}
 	input := plannerRoundInput(lead, situational, renderPlannerTodos(opts.Todos.List()), goal, constraints)
 	// MaxDuration now interrupts an in-flight tool at the wall-clock deadline and

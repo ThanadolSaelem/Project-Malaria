@@ -55,41 +55,41 @@ const handleTabClick = (tab: any) => {
 
 <template>
   <ElTabs type="border-card" @tab-click="handleTabClick">
-    <ElTabPane :label="t('asset.assetName')"
+    <ElTabPane :label="t('asset.assetName')" lazy
       ><AssetInfo2 :projectList="projectList" :taskList="taskList"
     /></ElTabPane>
-    <ElTabPane label="IP"><IP :projectList="projectList" :taskList="taskList" /></ElTabPane>
-    <ElTabPane :label="t('rootDomain.rootDomainName')">
+    <ElTabPane label="IP" lazy><IP :projectList="projectList" :taskList="taskList" /></ElTabPane>
+    <ElTabPane :label="t('rootDomain.rootDomainName')" lazy>
       <RootDomain :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
-    <ElTabPane :label="t('subdomain.subdomainName')">
+    <ElTabPane :label="t('subdomain.subdomainName')" lazy>
       <Subdomain :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
-    <ElTabPane :label="t('task.subdomainTakeover')">
+    <ElTabPane :label="t('task.subdomainTakeover')" lazy>
       <SubdomainTakeover :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
-    <ElTabPane :label="t('app.appName')">
+    <ElTabPane :label="t('app.appName')" lazy>
       <APP :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
-    <ElTabPane :label="t('miniProgram.miniProgramName')">
+    <ElTabPane :label="t('miniProgram.miniProgramName')" lazy>
       <MP :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
-    <ElTabPane :label="t('URL.URLName')"
+    <ElTabPane :label="t('URL.URLName')" lazy
       ><URL :projectList="projectList" :taskList="taskList"
     /></ElTabPane>
-    <ElTabPane :label="t('crawler.crawlerName')"
+    <ElTabPane :label="t('crawler.crawlerName')" lazy
       ><Crawler :projectList="projectList" :taskList="taskList"
     /></ElTabPane>
-    <ElTabPane :label="t('sensitiveInformation.sensitiveInformationName')">
+    <ElTabPane :label="t('sensitiveInformation.sensitiveInformationName')" lazy>
       <SensitiveInformation :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
-    <ElTabPane :label="t('dirScan.dirScanName')"
+    <ElTabPane :label="t('dirScan.dirScanName')" lazy
       ><DirScan :projectList="projectList" :taskList="taskList"
     /></ElTabPane>
-    <ElTabPane :label="t('vulnerability.vulnerabilityName')">
+    <ElTabPane :label="t('vulnerability.vulnerabilityName')" lazy>
       <vul :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
-    <ElTabPane :label="t('PageMonitoring.pageMonitoringName')">
+    <ElTabPane :label="t('PageMonitoring.pageMonitoringName')" lazy>
       <PageMonitoring :projectList="projectList" :taskList="taskList" />
     </ElTabPane>
     <ElTabPane label="Map" name="map" />

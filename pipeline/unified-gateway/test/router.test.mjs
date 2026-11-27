@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  controlPlaneRequestAllowed,
   isForwardedHeader,
   isHopByHopHeader,
   isLoopbackAddress,
@@ -91,4 +92,21 @@ test('native Map API, scripts and styles use the ScopeSentry namespace', () => {
       { kind: 'proxy', service: 'scopesentry', nativePath },
     );
   }
+});
+
+test('model-studio-api routes to controlPlane when enabled with Docker bridge', () => {
+  const config = loadGatewayConfig({
+    CONTROL_PLANE_ENABLED: '1',
+    CONTROL_PLANE_ALLOW_DOCKER_BRIDGE: '1',
+    CONTROL_PLANE_TARGET: 'http://host.docker.internal:8010',
+  });
+  const route = routeRequest({ path: '/model-studio-api/state', method: 'GET', search: '' }, config);
+  assert.deepEqual(route, {
+    kind: 'control-plane',
+    service: 'controlPlane',
+    nativePath: '/api/model-studio/state',
+    enabled: true,
+  });
+  assert.equal(controlPlaneRequestAllowed(config, '172.18.0.1'), true);
+  assert.equal(controlPlaneRequestAllowed(config, '8.8.8.8'), false);
 });

@@ -12,12 +12,21 @@ cd /workspace
 # in workspace-scope (/workspace/.qwen/settings.json) triggers Qwen Code's
 # isGatedMcpScope() check and forces manual approval after every recreate.
 if [ -f /config/settings.json ]; then
-  cp /config/settings.json /root/.qwen/settings.json
   mkdir -p /workspace/.qwen
   node -e '
     const fs = require("node:fs");
     const cfg = JSON.parse(fs.readFileSync("/config/settings.json", "utf8"));
+    const artexKey = (process.env.ARTEX_MCP_KEY || "").trim();
+    if (artexKey && cfg.mcpServers && cfg.mcpServers.artex) {
+      cfg.mcpServers.artex.headers = { ...(cfg.mcpServers.artex.headers || {}), "X-API-Key": artexKey };
+    }
+    const ssKey = (process.env.SCOPESENTRY_API_KEY || "").trim();
+    if (ssKey && cfg.mcpServers && cfg.mcpServers.scopesentry) {
+      cfg.mcpServers.scopesentry.headers = { ...(cfg.mcpServers.scopesentry.headers || {}), "X-API-Key": ssKey };
+    }
+    fs.writeFileSync("/root/.qwen/settings.json", JSON.stringify(cfg, null, 2));
     delete cfg.mcpServers;
+    delete cfg.hooks;
     fs.writeFileSync("/workspace/.qwen/settings.json", JSON.stringify(cfg, null, 2));
   '
   echo "entrypoint: synced settings.json -> /root/.qwen/settings.json (full) and /workspace/.qwen/settings.json (no gated mcpServers)"
@@ -130,7 +139,7 @@ patch_qwen_lan_candidates || true
 # ── Configure LLM endpoints for LiteLLM ─────────────────────────────────────
 export OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://litellm:4000/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-${LITELLM_KEY:-sk-local}}"
-export OPENAI_MODEL="${OPENAI_MODEL:-flint}"
+export OPENAI_MODEL="${OPENAI_MODEL:-orchestrator}"
 export QWEN_SERVER_TOKEN="${QWEN_SERVER_TOKEN:-malaria-qwen-token}"
 export QWEN_CODE_ENABLE_AGENT_TEAM="${QWEN_CODE_ENABLE_AGENT_TEAM:-0}"
 
@@ -149,13 +158,13 @@ fi
 echo "Model: ${OPENAI_MODEL} via ${OPENAI_BASE_URL}"
 echo "============================================================================="
 
-# Wait briefly for slow-starting MCP servers (hexstrike-mcp & scope-sentry) so
+# Wait briefly for slow-starting MCP servers (hexstrike-mcp, scope-sentry, artex) so
 # initial Qwen Code MCP discovery succeeds on first boot.
 node - <<'EOF' || true
 const http = require("node:http");
-function checkPort(host, port) {
+function checkPort(host, port, path) {
   return new Promise((resolve) => {
-    const req = http.request({ host, port, path: "/mcp", method: "GET", timeout: 1500 }, (res) => {
+    const req = http.request({ host, port, path, method: "GET", timeout: 1500 }, (res) => {
       res.resume();
       resolve(true);
     });
@@ -166,11 +175,12 @@ function checkPort(host, port) {
 }
 (async () => {
   for (let i = 0; i < 20; i++) {
-    const [okHex, okSS] = await Promise.all([
-      checkPort("hexstrike-mcp", 8001),
-      checkPort("scope-sentry", 8082),
+    const [okHex, okSS, okArtex] = await Promise.all([
+      checkPort("hexstrike-mcp", 8001, "/mcp"),
+      checkPort("scope-sentry", 8082, "/mcp"),
+      checkPort("artex", 8787, "/api/health"),
     ]);
-    if (okHex && okSS) break;
+    if (okHex && okSS && okArtex) break;
     await new Promise((r) => setTimeout(r, 1000));
   }
 })();

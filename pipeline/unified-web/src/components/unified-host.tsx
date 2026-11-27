@@ -5,10 +5,11 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCwIcon } from "lucide-react";
+import { CopyIcon, MessageSquareIcon, NetworkIcon, RefreshCwIcon, ShieldAlertIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import type { UnifiedModuleProps } from "@/modules/types";
+import type { SharedContextResponse } from "@/lib/types";
 import { AccountSwitcher } from "@/app/(main)/_components/sidebar/account-switcher";
 import { AppSidebar } from "@/app/(main)/_components/sidebar/app-sidebar";
 import { LayoutControls } from "@/app/(main)/_components/sidebar/layout-controls";
@@ -648,10 +649,181 @@ function UnifiedHostInner({ children }: { children: ReactNode }) {
             </div>
           </div>
         )}
+        {!fullBleed && (
+          <SharedTaskContextBar active={isModeTabActive(pathname, "/ai")} pathname={pathname} />
+        )}
         {!isModuleRoute && children}
         {moduleSurfaces}
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function SharedTaskContextBar({ active, pathname }: { active: boolean; pathname: string }) {
+  const router = useRouter();
+  const [ctx, setCtx] = useState<SharedContextResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
+
+  const loadContext = useCallback(async () => {
+    if (!auth.getToken()) return;
+    setLoading(true);
+    try {
+      const res = await api.sharedContext();
+      setCtx(res);
+    } catch {
+      /* best-effort context strip */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    void loadContext();
+    const timer = setInterval(() => void loadContext(), 8000);
+    return () => clearInterval(timer);
+  }, [active, pathname, loadContext]);
+
+  if (!active) return null;
+
+  const taskId = ctx?.task_id ?? 0;
+  const tasks = ctx?.recent_tasks ?? [];
+
+  async function selectTask(nextId: number) {
+    try {
+      const picked = tasks.find((t) => t.id === nextId);
+      const next = await api.setSharedContext({
+        task_id: nextId,
+        target: picked?.target || "",
+        source: "ai-bar",
+      });
+      setCtx(next);
+      toast.success(nextId > 0 ? `Shared ARTEX Task switched to #${nextId}` : "Cleared active shared task");
+    } catch (e) {
+      toast.error(`Failed to switch task: ${(e as Error).message}`);
+    }
+  }
+
+  async function openGraphChat() {
+    if (taskId <= 0) {
+      router.push("/chat");
+      return;
+    }
+    setOpeningChat(true);
+    try {
+      const res = await api.ensureTaskChat(taskId);
+      router.push(`/chat?c=${res.conversation_id}`);
+    } catch (e) {
+      toast.error(`Failed to open Graph Chat: ${(e as Error).message}`);
+    } finally {
+      setOpeningChat(false);
+    }
+  }
+
+  async function copyTaskHandoff() {
+    const label =
+      taskId > 0
+        ? `Continue ARTEX Task #${taskId}${ctx?.target ? ` (${ctx.target})` : ""} using artex MCP (get_active_context)`
+        : "Start shared ARTEX assessment via artex MCP (start_target_assessment)";
+    try {
+      await navigator.clipboard.writeText(label);
+      toast.success("Copied ARTEX task handoff instruction");
+    } catch {
+      toast.info(label);
+    }
+  }
+
+  return (
+    <div
+      data-shared-task-bar
+      className="flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-background/80 px-4 py-1 text-xs lg:px-6"
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+          <TerminalIcon className="size-3.5 text-emerald-500" />
+          Shared ARTEX Task:
+        </span>
+        <select
+          aria-label="Select shared ARTEX task"
+          value={taskId}
+          onChange={(e) => void selectTask(Number(e.target.value))}
+          className="h-6 max-w-64 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value={0}>None selected (pick or start in chat)</option>
+          {tasks.map((t) => (
+            <option key={t.id} value={t.id}>
+              #{t.id} · {t.name || t.description} ({t.asset_count}a / {t.finding_count}f)
+            </option>
+          ))}
+        </select>
+        {taskId > 0 && ctx ? (
+          <span className="hidden items-center gap-2 text-muted-foreground sm:inline-flex">
+            {ctx.company_name && <span className="font-medium text-foreground">{ctx.company_name}</span>}
+            {ctx.task_status && (
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{ctx.task_status}</span>
+            )}
+            <span className="tabular-nums">
+              {ctx.asset_count} assets · {ctx.finding_count} findings · {ctx.node_count} nodes
+            </span>
+          </span>
+        ) : (
+          <span className="hidden text-muted-foreground sm:inline">
+            Uses artex MCP automatically when starting or picking a task
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 px-1.5 text-xs"
+          onClick={() => void loadContext()}
+          disabled={loading}
+          title="Refresh shared ARTEX task context"
+        >
+          <RefreshCwIcon className={cn("size-3", loading && "animate-spin")} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-6 gap-1 px-2 text-[11px]"
+          onClick={() => void copyTaskHandoff()}
+          title="Copy shared task handoff instruction to paste into Deep Agent"
+        >
+          <CopyIcon className="size-3" />
+          <span className="hidden sm:inline">Copy Prompt</span>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-6 gap-1 px-2 text-[11px]"
+          onClick={() => void openGraphChat()}
+          disabled={openingChat}
+          title="Switch to Graph Chat (/chat) on this exact task"
+        >
+          <MessageSquareIcon className="size-3 text-sky-500" />
+          <span>{taskId > 0 ? "Graph Chat" : "Open Graph Chat"}</span>
+        </Button>
+        {taskId > 0 && (
+          <Button asChild variant="outline" size="sm" className="h-6 gap-1 px-2 text-[11px]">
+            <Link href={`/function/tasks/detail?id=${taskId}`} title="View Task & Exploration Graph">
+              <NetworkIcon className="size-3 text-violet-500" />
+              <span>Task #{taskId} Graph</span>
+            </Link>
+          </Button>
+        )}
+        <Button asChild variant="outline" size="sm" className="h-6 gap-1 px-2 text-[11px]">
+          <Link href="/function/findings" title="Open Unified Findings">
+            <ShieldAlertIcon className="size-3 text-amber-500" />
+            <span>Findings</span>
+          </Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 

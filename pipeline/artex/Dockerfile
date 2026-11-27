@@ -18,7 +18,7 @@ WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY web/ ./
-RUN npm run build:static
+RUN npm run build:static || NEXT_EXPORT=1 npx next build --webpack
 
 # ------------------------------------------------------------- Go binary ---
 # Pinned to the Go 1.26 line (matches go.mod and the release binaries job). The

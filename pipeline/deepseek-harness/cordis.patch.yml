@@ -13,33 +13,19 @@
         baseURL: http://litellm:4000/v1
         models:
           - id: orchestrator
-            name: "Orchestrator (Coding & Synthesis)"
-            limit:
-              context: 16384
-              output: 8192
+            name: "Inkling-2-Mini-abliterated-Mix-12G (:8090)"
+            input: [text, image]
           - id: cyber-model
             name: "Cyber-Model (Cyber Security)"
             input: [text, image]
-            limit:
-              context: 16384
-              output: 8192
           - id: vision
             name: "Vision (Qwen2.5-VL)"
             input: [text, image]
-            limit:
-              context: 16384
-              output: 4096
           - id: nim
-            name: "NIM (Nemotron VL Cloud)"
+            name: "NVIDIA NIM (Nemotron VL 120B Cloud)"
             input: [text, image]
-            limit:
-              context: 131072
-              output: 8192
-          - id: or-glm
-            name: "OpenRouter GLM-5.3 (Cloud)"
-            limit:
-              context: 131072
-              output: 8192
+          - id: or-nemo
+            name: "OpenRouter (GLM-5.3 Cloud)"
         compat:
           supportsDeveloperRole: false
           maxTokensField: max_tokens
@@ -48,4 +34,5 @@
   name: "@deepseek-ai/dsh-agent-default-model"
   config:
     provider: litellm-local
-    model: cyber-model
+    model: cybermodel
+

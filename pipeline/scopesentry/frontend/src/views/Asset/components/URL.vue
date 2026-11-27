@@ -1,8 +1,8 @@
 <script setup lang="tsx">
 import { useI18n } from '@/hooks/web/useI18n'
 import { h, nextTick, reactive, Ref, ref } from 'vue'
-import { onMounted } from 'vue'
 import { useTable } from '@/hooks/web/useTable'
+import { useViewportMaxHeight } from '@/hooks/web/useViewportMaxHeight'
 import {
   ElCard,
   ElPagination,
@@ -342,22 +342,13 @@ pageSize.value = 20
 function tableHeaderColor() {
   return { background: 'var(--el-fill-color-light)' }
 }
-onMounted(() => {
-  setMaxHeight()
-  window.addEventListener('resize', setMaxHeight)
-})
+const { maxHeight } = useViewportMaxHeight()
 const sortBy = reactive<{ [key: string]: any }>({})
 const sortChange = async (column: any) => {
   const key = column.prop
   const value = column.order
   sortBy[key] = value
   getList()
-}
-const maxHeight = ref(0)
-
-const setMaxHeight = () => {
-  const screenHeight = window.innerHeight || document.documentElement.clientHeight
-  maxHeight.value = screenHeight * 0.7
 }
 const filter = reactive<{ [key: string]: any }>({})
 const handleFilterSearch = (data: any, newFilters: any) => {

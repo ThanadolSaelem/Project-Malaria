@@ -59,4 +59,21 @@ pipeline/artex/server/webui/dist/
 pipeline/scopesentry/.env
 pipeline/scopesentry/data/
 
+# node / next build artifacts (IDE local install)
+**/node_modules/
+**/.next/
+
+# host runtime logs, per-machine Model Studio state, and ephemeral Kali sandboxes
+mac/
+pipeline/model-studio.json
+pipeline/mac/llama.studio.env
+pipeline/sandboxes/
+
+# runtime threat-intel caches & user-uploaded TLP:AMBER / retained DOCX templates
+pipeline/reporting/*_cache.json
+pipeline/reporting/templates/
+pipeline/skills/thai-cyber-report/assets/*.docx
+pipeline/artex/skills/thai-cyber-report/assets/*.docx
+
+
 

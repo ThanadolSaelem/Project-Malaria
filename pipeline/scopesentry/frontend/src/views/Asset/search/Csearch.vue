@@ -138,11 +138,10 @@ const loadColumnConfig = () => {
 // 初始化加载配置
 loadColumnConfig()
 watch(
-  () => props.crudSchemas,
+  () => props.crudSchemas.map((column) => column.hidden),
   () => {
     saveColumnConfig()
-  },
-  { deep: true }
+  }
 )
 const getHelp = () => {
   dialogVisible.value = true

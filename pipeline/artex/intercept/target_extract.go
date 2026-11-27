@@ -31,6 +31,7 @@ var noTargetTools = toolSet(
 	"save_task_credential", "list_task_credentials",
 	// cross-task orchestration, findings and retests (server)
 	"list_tasks", "list_llm_profiles", "spawn_task", "pause_task", "get_task_graph",
+	"start_target_assessment", "sync_scopesentry_assets",
 	"list_task_findings", "add_task_hint", "get_task_worker_trace",
 	"list_task_worker_traces", "search_task_worker_traces", "get_task_node_detail",
 	"update_finding_report", "get_finding_traffic", "bind_finding_traffic",
@@ -63,6 +64,14 @@ func toolSet(names ...string) map[string]bool {
 // undeclared connection.
 func ExtractTargets(toolName string, input []byte) []Target {
 	return extractDeclared(toolName, input).targets
+}
+
+// ExtractTextTargets extracts normalized network targets and raw URLs from
+// free-form operator messages using the same conservative rules as command scans.
+func ExtractTextTargets(text string) (targets []Target, urls []string) {
+	var out targetList
+	out.scan(text)
+	return out.targets, out.urls
 }
 
 // extractDeclared reads what a tool call declares: its targets, as

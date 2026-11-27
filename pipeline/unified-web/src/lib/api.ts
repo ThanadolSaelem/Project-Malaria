@@ -28,6 +28,8 @@ import type {
   CompanyScopeMutation,
   CompanyScopeRule,
   Conversation,
+  ConversationLink,
+  ConversationPipelineSyncResponse,
   ConvTokenSummary,
   CoverageAssetRefs,
   CoverageGraphData,
@@ -77,6 +79,7 @@ import type {
   SessionTokenUsage,
   Settings,
   Severity,
+  SharedContextResponse,
   SkillCall,
   SkillItem,
   SSProject,
@@ -936,6 +939,312 @@ export const api = {
     if (!r.ok) throw new Error(`Upload failed: ${r.status} ${await r.text()}`);
     return r.json() as Promise<{ attachments: ChatAttachment[] }>;
   },
+  chatUploadFolder: async (scope: "task" | "session" | "staging", id: string, folderName: string, files: File[]) => {
+    const fd = new FormData();
+    fd.append("folder_name", folderName);
+    for (const f of files) {
+      const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+      fd.append("relpath", rel);
+      fd.append("file", f);
+    }
+    const token = getToken();
+    const r = await fetch(artexPath(`/chat/upload?scope=${scope}&id=${encodeURIComponent(id)}`), {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: fd,
+    });
+    if (!r.ok) throw new Error(`Folder upload failed: ${r.status} ${await r.text()}`);
+    return r.json() as Promise<{ attachments: ChatAttachment[]; workspace_path?: string }>;
+  },
+  listChatWorkspaces: () =>
+    get<{
+      ok: boolean;
+      active_workspace_path?: string;
+      folders: { name: string; path: string; group: string; file_count: number; total_bytes: number }[];
+    }>("/chat/workspaces"),
+  attachChatWorkspace: (path: string, conversationId?: number) =>
+    post<{ ok: boolean; attachment: ChatAttachment; workspace_path: string }>("/chat/attach-workspace", {
+      path,
+      conversation_id: conversationId ?? 0,
+    }),
+
+  // ---- Enterprise AppScan-Inspired Governance ----
+  enterpriseTaskOverview: (taskId: string | number) =>
+    get<{
+      ok: boolean;
+      task_id: number;
+      gate: {
+        task_id: number;
+        gate_status: string;
+        exit_code: string;
+        exit_reason: string;
+        checks: { name: string; passed: boolean; detail: string }[];
+        evaluated_by: string;
+        evaluated_at: string;
+      } | null;
+      profile: {
+        task_id: number;
+        scan_mode: string;
+        baseline_task_id?: number;
+        bundle_id?: number;
+        is_reference_baseline: boolean;
+      } | null;
+      correlation: {
+        task_id: number;
+        baseline_task_id?: number;
+        total: number;
+        new_count: number;
+        open_count: number;
+        in_progress_count: number;
+        reopened_count: number;
+        noise_count: number;
+        fixed_count: number;
+        auto_suppressed_noise: number;
+        auto_marked_fixed: number;
+        fix_group_count: number;
+      } | null;
+      fix_groups: {
+        fix_group_key: string;
+        type: string;
+        subject: string;
+        highest_severity: string;
+        total_count: number;
+        active_count: number;
+        noise_count: number;
+        fixed_count: number;
+        cves?: string[];
+        finding_ids: number[];
+        vuln_classes: string[];
+        remediation_hint: string;
+      }[];
+      findings: {
+        id: number;
+        task_id?: number;
+        vulnclass: string;
+        name: string;
+        severity: string;
+        summary: string;
+        evidence: string;
+        status: string;
+        fingerprint: string;
+        triage_status: string;
+        triage_note: string;
+        fix_group_key: string;
+        fix_group_type: string;
+        fix_group_subject: string;
+        vex_status: string;
+        vex_justification: string;
+        seen_count: number;
+        cves?: string[];
+        created_at: string;
+      }[];
+      bundle: {
+        id: number;
+        name: string;
+        target_pattern: string;
+        auth_type: string;
+        auth_config: Record<string, unknown>;
+        openapi_path: string;
+        postman_path: string;
+        test_policy: string;
+        exclude_paths: string[];
+        rate_limit_rps: number;
+        notes: string;
+      } | null;
+      baselines: {
+        task_id: number;
+        name: string;
+        description: string;
+        scan_mode: string;
+        asset_count: number;
+        finding_count: number;
+      }[];
+      bundles: {
+        id: number;
+        name: string;
+        target_pattern: string;
+        auth_type: string;
+        auth_config: Record<string, unknown>;
+        openapi_path: string;
+        postman_path: string;
+        test_policy: string;
+        exclude_paths: string[];
+        rate_limit_rps: number;
+        notes: string;
+      }[];
+    }>(`/enterprise/tasks/${encodeURIComponent(String(taskId))}/overview`),
+  enterpriseEvaluateGate: (taskId: string | number) =>
+    post<{ ok: boolean }>(`/enterprise/tasks/${encodeURIComponent(String(taskId))}/gate/evaluate`, {}),
+  enterpriseOverrideGate: (taskId: string | number, body: { gate_status: string; exit_code?: string; exit_reason?: string }) =>
+    post<{ ok: boolean }>(`/enterprise/tasks/${encodeURIComponent(String(taskId))}/gate/override`, body),
+  enterpriseCorrelateTask: (taskId: string | number) =>
+    post<{ ok: boolean }>(`/enterprise/tasks/${encodeURIComponent(String(taskId))}/correlate`, {}),
+  enterpriseTriageFinding: (
+    findingId: number,
+    body: {
+      triage_status?: string;
+      triage_note?: string;
+      vex_status?: string;
+      vex_justification?: string;
+      fix_group_key?: string;
+    },
+  ) => patch<{ ok: boolean }>(`/enterprise/findings/${findingId}/triage`, body),
+  enterpriseUpdateScanProfile: (
+    taskId: string | number,
+    body: { scan_mode?: string; baseline_task_id?: number; bundle_id?: number; is_reference_baseline?: boolean },
+  ) => post<{ ok: boolean; baseline_assets_inherited?: number }>(`/enterprise/tasks/${encodeURIComponent(String(taskId))}/scan-profile`, body),
+  enterpriseRunScanOperation: (
+    taskId: string | number,
+    body: { operation: string; baseline_task_id?: number; bundle_id?: number },
+  ) => post<{ ok: boolean; message?: string }>(`/enterprise/tasks/${encodeURIComponent(String(taskId))}/operation`, body),
+  enterpriseListBundles: () =>
+    get<{
+      ok: boolean;
+      bundles: {
+        id: number;
+        name: string;
+        target_pattern: string;
+        auth_type: string;
+        auth_config: Record<string, unknown>;
+        openapi_path: string;
+        postman_path: string;
+        test_policy: string;
+        exclude_paths: string[];
+        rate_limit_rps: number;
+        notes: string;
+      }[];
+    }>("/enterprise/bundles"),
+  enterpriseSaveBundle: (body: Record<string, unknown>) => post<{ ok: boolean; id: number }>("/enterprise/bundles", body),
+  enterpriseDeleteBundle: (id: number) => del<{ ok: boolean }>(`/enterprise/bundles/${id}`),
+  enterpriseUploadBundleSpec: async (kind: string, file: File) => {
+    const fd = new FormData();
+    fd.append("kind", kind);
+    fd.append("file", file);
+    const token = getToken();
+    const r = await fetch(artexPath("/enterprise/bundles/upload-spec"), {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: fd,
+    });
+    if (!r.ok) throw new Error(`Spec upload failed: ${r.status} ${await r.text()}`);
+    return r.json() as Promise<{ ok: boolean; path: string; name: string; size: number }>;
+  },
+  enterpriseAttachBundle: (body: { bundle_id: number; task_id?: number; conversation_id?: number }) =>
+    post<{ ok: boolean; bundle_id: number }>("/enterprise/bundles/attach", body),
+  enterpriseListPlaybooks: (params?: { q?: string; task_id?: string | number }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.task_id) sp.set("task_id", String(params.task_id));
+    return get<{
+      ok: boolean;
+      total_store: number;
+      playbooks: {
+        id: number;
+        fingerprint: string;
+        title: string;
+        tech_tags: string[];
+        vuln_class: string;
+        tactic: string;
+        playbook_text: string;
+        source_kind: string;
+        source_task_id?: number;
+        similarity?: number;
+        updated_at: string;
+      }[];
+    }>(`/enterprise/playbooks?${sp}`);
+  },
+  enterpriseSavePlaybook: (body: {
+    title: string;
+    playbook_text: string;
+    vuln_class?: string;
+    tactic?: string;
+    tech_tags?: string[];
+    task_id?: number;
+  }) => post<{ ok: boolean; total_store: number }>("/enterprise/playbooks", body),
+  enterpriseSyncPlaybooks: (task_id = 0) =>
+    post<{ ok: boolean; synced: number; total_store: number }>("/enterprise/playbooks/sync", { task_id }),
+  enterpriseDeletePlaybook: (id: number) =>
+    del<{ ok: boolean; deleted_id: number; total_store: number }>(`/enterprise/playbooks/${id}`),
+  sandboxStatus: async (taskId: string | number) => {
+    const r = await fetch(`/model-studio-api/sandboxes?task_id=${encodeURIComponent(String(taskId))}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`Sandbox status failed: ${r.status}`);
+    return r.json() as Promise<{
+      ok: boolean;
+      sandbox: {
+        task_id: number;
+        container: string;
+        running: boolean;
+        status: string;
+        image: string;
+        limits: { cpus: string; memory: string; pids: number };
+        sandbox_dir: string;
+        scratch_files: number;
+        idle_minutes?: number;
+        ttl_minutes: number;
+        exec_count?: number;
+        last_command?: string;
+      };
+    }>;
+  },
+  sandboxSpawn: async (taskId: string | number, ttlMinutes = 90) => {
+    const r = await fetch("/model-studio-api/sandboxes/spawn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: Number(taskId) || 0, ttl_minutes: ttlMinutes }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  sandboxExec: async (taskId: string | number, command: string, timeoutSec = 60) => {
+    const r = await fetch("/model-studio-api/sandboxes/exec", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: Number(taskId) || 0, command, timeout_sec: timeoutSec }),
+    });
+    return r.json() as Promise<{
+      ok: boolean;
+      exit_code?: number;
+      duration_ms?: number;
+      stdout?: string;
+      stderr?: string;
+      error?: string;
+      container?: string;
+    }>;
+  },
+  sandboxDestroy: async (taskId: string | number, wipeFiles = false) => {
+    const r = await fetch("/model-studio-api/sandboxes/destroy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: Number(taskId) || 0, wipe_files: wipeFiles }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  enterpriseEnrichCves: async (cves: string[], vexByCve?: Record<string, { status: string; justification: string }>) => {
+    const r = await fetch("/model-studio-api/reports/enrich-cve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cves, vex_by_cve: vexByCve ?? {} }),
+      cache: "no-store",
+    });
+    if (!r.ok) throw new Error(`CVE enrich failed: ${r.status}`);
+    return r.json() as Promise<{
+      ok: boolean;
+      items: {
+        cve: string;
+        epss: number | null;
+        epss_pct: number | null;
+        epss_percentile: number | null;
+        in_cisa_kev: boolean;
+        kev_due_date: string;
+        cvss: number | null;
+        cwe: string;
+        vex_status: string;
+        vex_justification: string;
+        risk_priority: string;
+      }[];
+    }>;
+  },
   stopChat: (taskId: string) => post<{ status: string }>(`/tasks/${taskId}/chat/stop`, {}),
   gc: (ttl = 86400) => post<{ removed: number }>(`/gc?ttl=${ttl}`, {}),
 
@@ -1072,6 +1381,9 @@ export const api = {
   sendConversationMessage: (id: number, message: string, attachments?: ChatAttachment[]) =>
     post<{ status: string }>(`/conversations/${id}/messages`, { message, attachments }),
   stopConversation: (id: number) => post<{ status: string }>(`/conversations/${id}/stop`, {}),
+  conversationLinks: (id: number, live = false) =>
+    get<{ links: ConversationLink[] }>(`/conversations/${id}/links${live ? "?live=1" : ""}`).then((r) => arr(r.links)),
+  syncConversationPipeline: (id: number) => post<ConversationPipelineSyncResponse>(`/conversations/${id}/sync`, {}),
   saveAgentPrompt: (key: string, template: string, note = "") =>
     put<{ version: number }>(`/agents/${key}/prompt`, { template, note }),
   resetAgentPrompt: (key: string) => post<{ version: number }>(`/agents/${key}/prompt/reset`, {}),
@@ -1172,6 +1484,8 @@ export const api = {
       companies: string[] | null;
       warnings: string[] | null;
       errors: string[] | null;
+      findings_synced?: number;
+      task_assets_linked?: number;
     }>("/sync/scopesentry/sync", body),
   syncUnified: () =>
     post<{
@@ -1181,6 +1495,16 @@ export const api = {
       findings_synced: number;
       warnings: string[] | null;
     }>("/sync/unified", {}),
+
+  // ---- shared cross-mode workspace context (/ai <-> /chat <-> /function/tasks) ----
+  sharedContext: () => get<SharedContextResponse>("/shared-context"),
+  setSharedContext: (body: { task_id: number; conversation_id?: number; target?: string; source?: string }) =>
+    put<SharedContextResponse>("/shared-context", body),
+  ensureTaskChat: (taskId: number | string, agentKey = "pentest") =>
+    post<{ ok: boolean; task_id: number; conversation_id: number; created: boolean }>(
+      "/shared-context/ensure-chat",
+      { task_id: Number(taskId), agent_key: agentKey },
+    ),
 
   // ---- skills (file system) ----
   skills: () => get<{ skills: SkillItem[] }>("/skills").then((r) => arr(r.skills)),

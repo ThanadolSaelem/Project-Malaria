@@ -757,6 +757,72 @@ export interface Conversation {
   updated_at: string;
 }
 
+export interface ConversationLink {
+  id: number;
+  conversation_id: number;
+  task_id?: number;
+  company_id?: number;
+  scopesentry_project_id?: string;
+  scopesentry_task_id?: string;
+  target?: string;
+  created_at: string;
+  company_name?: string;
+  company_asset_count: number;
+  task_description?: string;
+  task_status?: string;
+  task_asset_count: number;
+  task_finding_count: number;
+  task_node_count: number;
+  scopesentry_progress?: number;
+  scopesentry_status?: number;
+  scopesentry_task_name?: string;
+}
+
+export interface ConversationPipelineSyncResponse {
+  ok: boolean;
+  sync: {
+    synced: Record<string, number>;
+    companies?: string[];
+    warnings?: string[];
+    errors?: string[];
+    findings_synced: number;
+    task_assets_linked?: number;
+  };
+  links: ConversationLink[];
+}
+
+export interface SharedTaskSummary {
+  id: number;
+  name?: string;
+  description: string;
+  goal?: string;
+  status: string;
+  company_name?: string;
+  target?: string;
+  conversation_id?: number;
+  asset_count: number;
+  finding_count: number;
+  node_count: number;
+}
+
+export interface SharedContextResponse {
+  task_id: number;
+  conversation_id?: number;
+  target?: string;
+  source?: string;
+  updated_at?: string;
+  task_description?: string;
+  task_goal?: string;
+  task_status?: string;
+  company_name?: string;
+  asset_count: number;
+  finding_count: number;
+  node_count: number;
+  traffic_capture_enabled: boolean;
+  internal_proxy_url?: string;
+  recent_tasks: SharedTaskSummary[];
+}
+
 // ---- Backend logs (/logs page) ----
 export interface LogLine {
   seq: number;

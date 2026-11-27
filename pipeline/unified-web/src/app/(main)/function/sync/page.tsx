@@ -31,6 +31,7 @@ const ASSET_TYPES: { key: string; label: string }[] = [
   { key: "subdomain", label: "Subdomain" },
   { key: "service", label: "Service" },
   { key: "app", label: "App" },
+  { key: "vulnerability", label: "Vulnerability" },
 ];
 
 export default function AssetSyncPage() {
@@ -221,6 +222,7 @@ function SyncWorkbench() {
     subdomain: true,
     service: true,
     app: true,
+    vulnerability: true,
   });
   const [createCompany, setCreateCompany] = React.useState(true);
 
@@ -278,8 +280,15 @@ function SyncWorkbench() {
         create_company: dimension === "project" ? createCompany : false,
       });
       setResult(r);
-      const total = Object.values(r.synced ?? {}).reduce((a, b) => a + b, 0);
-      toast.success(`Sync finished; ${total} assets ingested in total`);
+      const vulnCount = r.findings_synced ?? r.synced?.vulnerability ?? 0;
+      const assetTotal = Object.entries(r.synced ?? {})
+        .filter(([k]) => k !== "vulnerability")
+        .reduce((a, [, b]) => a + b, 0);
+      toast.success(
+        vulnCount > 0
+          ? `Sync finished; ${assetTotal} assets and ${vulnCount} vulnerabilities ingested`
+          : `Sync finished; ${assetTotal} assets ingested in total`,
+      );
     } catch (e) {
       toast.error(`Sync failed: ${(e as Error).message}`);
     } finally {
@@ -453,7 +462,13 @@ function SyncWorkbench() {
 
 function SyncResult({ result }: { result: Awaited<ReturnType<typeof api.ssSync>> }) {
   const synced = result.synced ?? {};
-  const labels: Record<string, string> = { subdomain: "Subdomain", service: "Service", app: "App", ip: "IP" };
+  const labels: Record<string, string> = {
+    subdomain: "Subdomain",
+    service: "Service",
+    app: "App",
+    ip: "IP",
+    vulnerability: "Vulnerability",
+  };
   return (
     <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
       <div className="flex flex-wrap gap-3">

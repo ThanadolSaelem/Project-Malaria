@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/intercept"
 	acperm "github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -137,6 +138,7 @@ func compactIntents(ns []*db.Node, parentsOf, yieldsOf map[int64][]int64) []map[
 // ToolSet exposes the PG-backed dual graph (asset + exploration) to an LLM agent.
 // One ToolSet is created per planner/worker run; per-run signals live here.
 type ToolSet struct {
+	pg              *db.DB // optional PostgreSQL store for taskless finding persistence/queries
 	findingRecorder FindingRecorder
 	as              *db.AssetStore   // asset store (optional; nil = asset tools not available)
 	cs              *db.CompanyStore // company store (optional)
@@ -195,6 +197,15 @@ type ToolSet struct {
 	// Wired for the main agent + cross-task orchestration; nil elsewhere → falls back
 	// to the bare notify.
 	notifyHint func(origin string, texts []string)
+	// onStandaloneFinding, if set, notifies the server when report_finding writes
+	// outside a task exploration graph (/chat auto or pentest), so automated
+	// downstream triggers (such as the reporter agent) can run on it too.
+	onStandaloneFinding func(taskID int64, recorded *db.RecordedFinding, input db.RecordFindingInput)
+}
+
+// SetOnStandaloneFinding wires a post-persist hook for taskless report_finding calls.
+func (t *ToolSet) SetOnStandaloneFinding(fn func(taskID int64, recorded *db.RecordedFinding, input db.RecordFindingInput)) {
+	t.onStandaloneFinding = fn
 }
 
 // SetNotifyGoal wires the goal-add trigger callback (see ToolSet.notifyGoal). Set only
@@ -251,6 +262,11 @@ func (t *ToolSet) Writes() WriteCounts { return t.writes }
 func NewToolSet(ts *db.ExplorationStore, worker string) *ToolSet {
 	return &ToolSet{ts: ts, worker: worker}
 }
+
+// SetDB wires the PostgreSQL handle onto this ToolSet so taskless domain tools
+// (report_finding, list_findings) still persist/query standalone findings outside
+// an exploration graph.
+func (t *ToolSet) SetDB(pg *db.DB) { t.pg = pg }
 
 // SetTaskID sets the PG task id on this ToolSet so that report_finding can
 // dual-write to the standalone findings table (which survives task deletion).
@@ -650,7 +666,7 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 					m["denominator"] = cov.Denominator
 					m["tested"] = cov.Tested
 					m["by_type"] = cov.ByType
-					m["note"] = "coverage = asset test coverage (including endpoints and all kinds of related assets), a rough estimate for reference only: includes the current task's and directly related tasks' scopes and fact anchors; related scopes are read-only. Container-type assets/mass enumeration skew it low — don't take it as fully tested; use add_task_scope to extend this task's scope, list_untested_assets to see untested assets [usually no need to call list_untested_assets; just proceed with the task];"
+					m["note"] = "coverage = in-scope asset test coverage (including endpoints, subdomains, services, and related assets): includes the current task's and directly related tasks' scopes and fact anchors; related scopes are read-only. Before proving the final goal met, inspect remaining targets with list_untested_assets whenever tested < denominator, and use add_task_scope to extend this task's scope if needed."
 					if cov.Denominator == 0 {
 						m["pct"] = nil
 						m["status"] = "scope not anchored"
@@ -1038,9 +1054,41 @@ func compactFinding(n *db.Node) map[string]any {
 }
 
 func (t *ToolSet) listFindings() actool.CoreTool {
-	return t.readExpTool("list_findings", "List the [confirmed findings] of this task and directly related tasks (compact: id+task_id+intent_id+vulnclass+severity+summary+state). Related-task entries carry source_task_id/inherited=true and are read-only. Only findings here; for ordinary exploration facts use list_facts, for details node_detail(id).",
+	return t.readExpTool("list_findings", "List the [confirmed findings] of this task and directly related tasks (compact: id+task_id+intent_id+vulnclass+severity+summary+state). Outside a task context (/chat), lists recent platform findings from PostgreSQL. Related-task entries carry source_task_id/inherited=true and are read-only. Only findings here; for ordinary exploration facts use list_facts, for details node_detail(id).",
 		obj(map[string]any{}),
 		func(context.Context, json.RawMessage) (actool.Result, error) {
+			if t.ts == nil {
+				if t.pg == nil {
+					return actool.Errorf("list_findings requires a task context or database store"), nil
+				}
+				rows, err := t.pg.ListFindings(200)
+				if err != nil {
+					return actool.Errorf(err.Error()), nil
+				}
+				out := make([]map[string]any, 0, len(rows))
+				for _, f := range rows {
+					m := map[string]any{
+						"id":                  f.ID,
+						"finding_id":          f.ID,
+						"vulnclass":           f.VulnClass,
+						"name":                f.Name,
+						"severity":            f.Severity,
+						"summary":             f.Summary,
+						"status":              f.Status,
+						"verification_status": f.VerificationStatus,
+						"traffic_count":       f.TrafficCount,
+						"asset_ids":           f.AssetIDs,
+					}
+					if f.NodeID != nil && *f.NodeID > 0 {
+						m["finding_node_id"] = *f.NodeID
+					}
+					if f.TaskID != nil && *f.TaskID > 0 {
+						m["task_id"] = *f.TaskID
+					}
+					out = append(out, m)
+				}
+				return jsonResult(out)
+			}
 			f, _ := t.ts.ListByKindWithSources(db.KindFinding, 500)
 			if err := t.ts.PopulateFindingTrafficIDs(f); err != nil {
 				return actool.Errorf(err.Error()), nil
@@ -1301,6 +1349,44 @@ func (t *ToolSet) listGoals() actool.CoreTool {
 		})
 }
 
+// untestedAssetsRefusal returns an actionable refusal message when completing the
+// task (closing its final open goal or calling goal_met with goal nodes) while
+// in-scope untested assets remain and asset coverage is enabled.
+func (t *ToolSet) untestedAssetsRefusal(goals []*db.Node, closingGoalID int64) string {
+	if t.coverageDisabled || t.as == nil || t.ts == nil || t.taskID <= 0 || len(goals) == 0 {
+		return ""
+	}
+	if closingGoalID > 0 {
+		for _, g := range goals {
+			if g.ID != closingGoalID && g.State != "met" {
+				return ""
+			}
+		}
+	}
+	untested, total, err := t.as.ListUntestedAssetsWithSources(t.taskID, "", 10, 0)
+	if err != nil || total <= 0 {
+		return ""
+	}
+	covSummary := ""
+	if cov, cerr := t.as.TaskCoverageWithSources(t.taskID); cerr == nil && cov.Denominator > 0 {
+		pct := 0.0
+		if cov.Pct != nil {
+			pct = *cov.Pct * 100
+		}
+		covSummary = fmt.Sprintf(" (coverage: %d/%d = %.1f%%)", cov.Tested, cov.Denominator, pct)
+	}
+	samples := make([]string, 0, len(untested))
+	for _, a := range untested {
+		label := a.Label
+		if label == "" {
+			label = "(unnamed)"
+		}
+		samples = append(samples, fmt.Sprintf("#%d [%s] %s", a.ID, a.Type, label))
+	}
+	return fmt.Sprintf("%d in-scope untested asset(s) remain%s; call list_untested_assets and dispatch intents via add_intent (passing asset_ids so workers record observed facts against them) before closing the task. Sample untested assets: %s",
+		total, covSummary, strings.Join(samples, ", "))
+}
+
 func (t *ToolSet) proveGoal() actool.CoreTool {
 	return t.writeExpTool("prove_goal", "Call when you judge that a finding/fact proves a goal met: links the evidence node to the goal node and marks the goal met. A fact counts as evidence only when its confidence is observed and its source is not target_response; any other fact is refused and the goal stays open.",
 		obj(map[string]any{
@@ -1344,6 +1430,14 @@ func (t *ToolSet) proveGoal() actool.CoreTool {
 				// authoritative (#124, F4): the target could have planted it.
 				if source, _ := fp["source"].(string); strings.ToLower(strings.TrimSpace(source)) == factSourceTargetResponse {
 					return actool.Errorf(fmt.Sprintf("prove_goal refused: fact %d has source \"target_response\" (its content comes from the target, which could have planted it), and such a fact never proves a goal. Goal %d stays open: prove it with a finding or with an observed fact from another source.", ev, goal)), nil
+				}
+			}
+			// Enforce hard coverage completeness before marking the final open goal met:
+			// prevents early task completion while in-scope untested assets remain.
+			goals, goalsErr := t.ts.ListByKind(db.KindGoal, 1000)
+			if goalsErr == nil {
+				if refusal := t.untestedAssetsRefusal(goals, goal); refusal != "" {
+					return actool.Errorf(fmt.Sprintf("prove_goal refused for final goal %d (goal stays open): %s", goal, refusal)), nil
 				}
 			}
 			_ = t.ts.Link(ev, db.RelProves, goal)
@@ -1390,6 +1484,9 @@ func (t *ToolSet) goalMet() actool.CoreTool {
 			if open > 0 {
 				return actool.Errorf(fmt.Sprintf("goal_met refused: %d of %d goals of this task are still open; the task stays open. Prove each one with prove_goal(goal_id, evidence_id, reason): the task completes automatically when its last goal is marked met.", open, len(goals))), nil
 			}
+			if refusal := t.untestedAssetsRefusal(goals, 0); refusal != "" {
+				return actool.Errorf("goal_met refused: " + refusal), nil
+			}
 			t.GoalMet = true
 			t.Reason = a.Reason
 			return actool.Text("acknowledged: goal marked met"), nil
@@ -1399,8 +1496,10 @@ func (t *ToolSet) goalMet() actool.CoreTool {
 // --- worker write tools ---
 
 func (t *ToolSet) addFinding() actool.CoreTool {
-	return writeTool("report_finding", "Record a confirmed finding, with evidence providing verifiable proof such as command output and logs. In a task context, pass the current intent_id. The returned finding_id is the standalone finding record ID; finding_node_id is the exploration node ID (the first line keeps that node number).", obj(map[string]any{
+	return writeTool("report_finding", "Record a confirmed finding, with evidence providing verifiable proof such as command output and logs. In a task context, pass the current intent_id. Outside a task context (/chat), also saves directly into the unified findings store (pass target and/or asset_ids to link affected assets, and optional task_id to attribute to an existing task). The returned finding_id is the standalone finding record ID; finding_node_id is the exploration node ID (0 for standalone chat findings).", obj(map[string]any{
 		"vulnclass": str("vulnerability class"), "name": str("vulnerability name"), "severity": str("critical|high|medium|low"), "summary": str("finding summary"),
+		"target":    str("optional: affected target URL, domain, or IP (if asset_ids is empty, automatically creates/links the matching asset)"),
+		"task_id":   idp("optional when called from /chat outside a task: existing task id to associate with this finding"),
 		"intent_id": idp("the current task's intent id"), "asset_ids": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "affected asset ids"},
 		"evidence":         str("evidence/PoC text"),
 		"evidence_hint_id": idp("optional: the hint node ID in this task corresponding to this finding; automatically carries its structured traffic_refs; cannot reference an inherited hint or another finding's hint"),
@@ -1411,6 +1510,8 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 	}, "vulnclass", "severity", "summary"), func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
 		var a struct {
 			VulnClass, Name, Severity, Summary, Evidence string
+			Target                                       string            `json:"target"`
+			TaskID                                       json.RawMessage   `json:"task_id"`
 			Counterevidence                              string            `json:"counterevidence"`
 			ConfidenceRationale                          string            `json:"confidence_rationale"`
 			IntentID                                     json.RawMessage   `json:"intent_id"`
@@ -1421,9 +1522,6 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 		if err := json.Unmarshal(in, &a); err != nil {
 			return actool.Errorf(err.Error()), nil
 		}
-		if t.ts == nil {
-			return actool.Errorf("report_finding requires a task context; from a platform conversation, hand the finding to the corresponding task via add_task_hint with the existing traffic_refs in the hint, and let the task agent register it. Already-registered findings can be bound later via bind_finding_traffic."), nil
-		}
 		// Auto-binding off: ignore the evidence params instead of rejecting the call.
 		// stripTrafficParameters already removes them from the advertised schema, but
 		// models routinely emit fields anyway — failing here would discard a confirmed
@@ -1433,6 +1531,109 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 		if !findingTrafficBindingEnabled() {
 			a.TrafficRefs, a.EvidenceHintID = nil, nil
 		}
+
+		// Taskless execution (/chat or platform agent): persist directly as a
+		// standalone (or task-attributed) finding in PostgreSQL + evidence store.
+		if t.ts == nil {
+			if t.findingRecorder == nil && t.pg == nil {
+				return actool.Errorf("report_finding requires a task context or database store"), nil
+			}
+			taskID := t.taskID
+			var expID int64
+			if taskID == 0 {
+				if reqTID := pid(a.TaskID); reqTID > 0 {
+					if t.pg == nil {
+						return actool.Errorf("task_id lookup unavailable without database store"), nil
+					}
+					if err := t.pg.QueryRow(`SELECT exploration_id FROM tasks WHERE id=$1 AND deleted_at IS NULL`, reqTID).Scan(&expID); err != nil {
+						return actool.Errorf(fmt.Sprintf("task_id %d not found", reqTID)), nil
+					}
+					taskID = reqTID
+				} else if convID := intercept.ConvIDFromContext(ctx); convID > 0 && t.pg != nil {
+					var linkedTID, linkedExp int64
+					if err := t.pg.QueryRow(`
+						SELECT l.task_id, t.exploration_id
+						FROM conversation_links l
+						JOIN tasks t ON t.id = l.task_id
+						WHERE l.conversation_id = $1 AND l.task_id IS NOT NULL AND t.deleted_at IS NULL
+						ORDER BY l.created_at DESC, l.id DESC
+						LIMIT 1`, convID).Scan(&linkedTID, &linkedExp); err == nil && linkedTID > 0 {
+						taskID, expID = linkedTID, linkedExp
+					}
+				}
+			}
+			assetIDs := pidList(a.AssetIDs)
+			if len(assetIDs) == 0 && strings.TrimSpace(a.Target) != "" {
+				if id := t.upsertAssetFromTarget(a.Target, taskID); id > 0 {
+					assetIDs = []int64{id}
+				}
+			}
+			worker := strings.TrimSpace(t.worker)
+			if worker == "" {
+				worker = "chat-agent"
+			}
+			sev := strings.ToLower(strings.TrimSpace(a.Severity))
+			if !db.ValidSeverity(sev) {
+				sev = db.SeverityMedium
+			}
+			input := db.RecordFindingInput{
+				TaskID:              taskID,
+				ExplorationID:       expID,
+				VulnClass:           strings.TrimSpace(a.VulnClass),
+				Name:                strings.TrimSpace(a.Name),
+				Severity:            sev,
+				Summary:             strings.TrimSpace(a.Summary),
+				Evidence:            strings.TrimSpace(a.Evidence),
+				Worker:              worker,
+				AssetIDs:            assetIDs,
+				Counterevidence:     strings.TrimSpace(a.Counterevidence),
+				ConfidenceRationale: strings.TrimSpace(a.ConfidenceRationale),
+			}
+			var recorded *db.RecordedFinding
+			var err error
+			if t.findingRecorder != nil {
+				recorded, err = t.findingRecorder.Record(ctx, input, a.TrafficRefs)
+			} else if len(a.TrafficRefs) > 0 {
+				return actool.Errorf("traffic evidence store unavailable; the finding was NOT registered"), nil
+			} else {
+				fid, addErr := t.pg.AddFinding(taskID, 0, input.VulnClass, input.Name, input.Severity, input.Summary, input.Evidence, input.Worker, input.AssetIDs)
+				err = addErr
+				recorded = &db.RecordedFinding{FindingID: fid, NodeID: 0}
+			}
+			if err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			if t.onStandaloneFinding != nil && recorded != nil && recorded.FindingID > 0 {
+				t.onStandaloneFinding(taskID, recorded, input)
+			}
+			for i := range recorded.Traffic.Bindings {
+				recorded.Traffic.Bindings[i].Snapshot.ReqHead = ""
+				recorded.Traffic.Bindings[i].Snapshot.RespHead = ""
+			}
+			result := struct {
+				*db.RecordedFinding
+				TaskID         int64   `json:"task_id,omitempty"`
+				AssetIDs       []int64 `json:"asset_ids,omitempty"`
+				EvidenceStatus string  `json:"evidence_status"`
+				EvidenceNote   string  `json:"evidence_note,omitempty"`
+			}{
+				RecordedFinding: recorded,
+				TaskID:          taskID,
+				AssetIDs:        assetIDs,
+				EvidenceStatus:  "bound",
+			}
+			if len(recorded.Traffic.Bindings) == 0 {
+				result.EvidenceStatus = "not_bound"
+				result.EvidenceNote = "Finding saved to unified Findings store. You can view it at /function/findings or pass finding_id to update_finding_report / bind_finding_traffic."
+			}
+			raw, _ := json.Marshal(result)
+			firstID := recorded.NodeID
+			if firstID <= 0 {
+				firstID = recorded.FindingID
+			}
+			return actool.Text(fmt.Sprintf("finding recorded: %d\n%s", firstID, raw)), nil
+		}
+
 		if len(a.EvidenceHintID) > 0 && pid(a.EvidenceHintID) <= 0 {
 			return actool.Errorf("evidence_hint_id must be a valid hint node ID; omit it when there is no handover hint"), nil
 		}
@@ -1440,7 +1641,13 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 		if err != nil {
 			return actool.Errorf(err.Error()), nil
 		}
-		input := db.RecordFindingInput{TaskID: t.taskID, ExplorationID: t.ts.ID(), IntentID: pid(a.IntentID), VulnClass: a.VulnClass, Name: a.Name, Severity: a.Severity, Summary: a.Summary, Evidence: a.Evidence, Worker: t.worker, AssetIDs: pidList(a.AssetIDs), Counterevidence: a.Counterevidence, ConfidenceRationale: a.ConfidenceRationale}
+		assetIDs := pidList(a.AssetIDs)
+		if len(assetIDs) == 0 && strings.TrimSpace(a.Target) != "" {
+			if id := t.upsertAssetFromTarget(a.Target, t.taskID); id > 0 {
+				assetIDs = []int64{id}
+			}
+		}
+		input := db.RecordFindingInput{TaskID: t.taskID, ExplorationID: t.ts.ID(), IntentID: pid(a.IntentID), VulnClass: a.VulnClass, Name: a.Name, Severity: a.Severity, Summary: a.Summary, Evidence: a.Evidence, Worker: t.worker, AssetIDs: assetIDs, Counterevidence: a.Counterevidence, ConfidenceRationale: a.ConfidenceRationale}
 		var recorded *db.RecordedFinding
 		if t.findingRecorder != nil {
 			recorded, err = t.findingRecorder.Record(ctx, input, refs)
@@ -1553,14 +1760,23 @@ func (t *ToolSet) recordOneFact(it factItem, defaultIntent int64) (int64, error)
 	if intent <= 0 {
 		intent = defaultIntent
 	}
+	var intentNode *db.Node
 	if intent > 0 {
 		node, err := t.ts.GetNode(intent)
 		if err != nil || node == nil || node.Kind != db.KindIntent {
 			return 0, fmt.Errorf("intent_id must be an intent of this task (related-task intents are read-only)")
 		}
+		intentNode = node
+	}
+	assetIDs := pidList(it.AssetIDs)
+	// When a worker forgets to repeat asset_ids on an observed result for an
+	// asset-scoped intent, inherit the intent's target asset_ids so coverage tracks
+	// the tested assets instead of leaving them permanently untested.
+	if len(assetIDs) == 0 && intentNode != nil && strings.EqualFold(strings.TrimSpace(it.Confidence), "observed") {
+		assetIDs = intentAssetIDs(intentNode)
 	}
 	// a fact is its OWN node kind (distinct from a vuln finding).
-	id, err := t.ts.AddNode(db.KindFact, payload, 5, "confirmed", t.worker, pidList(it.AssetIDs))
+	id, err := t.ts.AddNode(db.KindFact, payload, 5, "confirmed", t.worker, assetIDs)
 	if err != nil {
 		return 0, err
 	}
@@ -1588,7 +1804,7 @@ func (t *ToolSet) recordFact() actool.CoreTool {
 			"evidence":   str("[one line] of key evidence: the command + the one or two most proving output lines. Keep it brief; don't paste large output blocks (details go in detail)."),
 			"confidence": str("observed (seen directly in output) | inferred (inferred from phenomena). Always label negative conclusions honestly."),
 			"source":     map[string]any{"type": "string", "enum": factSources, "description": "where the content came from: target_response | tool_output | third_party_intel | operator_input | inference (default when omitted)"},
-			"asset_ids":  map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "related asset ids (optional, 0/1/many): which assets this fact involves"},
+			"asset_ids":  map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "related asset ids (pass the tested target asset ids whenever known so asset coverage tracks tested targets accurately)"},
 		}),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			var a struct {

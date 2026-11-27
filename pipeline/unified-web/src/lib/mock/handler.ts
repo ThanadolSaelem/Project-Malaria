@@ -2384,6 +2384,10 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
   if (path === "/sync/scopesentry/projects") return { projects: [], tag: {} };
   if (path === "/sync/scopesentry/tasks") return { tasks: [] };
   if (path === "/sync/scopesentry/sync") return { synced: {}, companies: null, warnings: null, errors: null };
+  if (path === "/shared-context")
+    return { task_id: 0, asset_count: 0, finding_count: 0, node_count: 0, traffic_capture_enabled: false, recent_tasks: [] };
+  if (path === "/shared-context/ensure-chat")
+    return { ok: true, task_id: Number(b.task_id ?? 0), conversation_id: 1, created: false };
 
   // ── skills ──
   if (path === "/skills" && m === "GET") return { skills: D.skills };

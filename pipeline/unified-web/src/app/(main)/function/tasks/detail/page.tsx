@@ -5,7 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { ArchiveIcon, ArrowLeftIcon, BrainIcon, CheckIcon, CircleAlertIcon, PauseIcon, PlayIcon } from "lucide-react";
+import { ArchiveIcon, ArrowLeftIcon, BrainIcon, CheckIcon, CircleAlertIcon, Loader2Icon, MessageSquareIcon, PauseIcon, PlayIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -44,6 +44,7 @@ import { BroadcastTab } from "./_tabs/broadcast-tab";
 import { CoverageGraphTab } from "./_tabs/coverage-graph-tab";
 import { CredentialsTab } from "./_tabs/credentials-tab";
 import { FindingsTab } from "./_tabs/findings-tab";
+import { GovernanceTab } from "./_tabs/governance-tab";
 import { GraphTab } from "./_tabs/graph-tab";
 import { InterceptTab } from "./_tabs/intercept-tab";
 import { OverviewTab } from "./_tabs/overview-tab";
@@ -62,6 +63,7 @@ const TABS = [
   { value: "credentials", label: "Credentials" },
   { value: "coverage", label: "Asset coverage" },
   { value: "intercept", label: "Interception approval" },
+  { value: "governance", label: "Governance" },
   { value: "report", label: "Report" },
 ];
 
@@ -208,13 +210,19 @@ function TaskDetailInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
+  const urlTab = searchParams.get("tab") ?? "";
   const [task, setTask] = React.useState<Task | null>(null);
   const [paused, setPaused] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
-  const [tab, setTab] = React.useState("sessions");
+  const [tab, setTab] = React.useState(() => (TABS.some((t) => t.value === urlTab) ? urlTab : "sessions"));
+  React.useEffect(() => {
+    if (urlTab && TABS.some((t) => t.value === urlTab)) setTab(urlTab);
+  }, [urlTab]);
   const [interceptPendingCount, setInterceptPendingCount] = React.useState(0);
+  const [reportJobActive, setReportJobActive] = React.useState<{ completed_sections: number; total_sections: number } | null>(null);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [archiving, setArchiving] = React.useState(false);
+  const [switchingChat, setSwitchingChat] = React.useState(false);
 
   React.useEffect(() => {
     api
@@ -239,6 +247,34 @@ function TaskDetailInner() {
     return () => {
       alive = false;
       clearInterval(t);
+    };
+  }, [id]);
+
+  // Track background Report Studio job across tab switches so user sees live progress on the Report tab badge.
+  React.useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    const pollReportJob = () => {
+      fetch(`/model-studio-api/reports/jobs?task_id=${encodeURIComponent(id)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((res: { active_job?: { completed_sections?: number; total_sections?: number } | null } | null) => {
+          if (!alive) return;
+          if (res?.active_job) {
+            setReportJobActive({
+              completed_sections: Number(res.active_job.completed_sections ?? 0),
+              total_sections: Number(res.active_job.total_sections ?? 0),
+            });
+          } else {
+            setReportJobActive(null);
+          }
+        })
+        .catch(() => {});
+    };
+    pollReportJob();
+    const timer = setInterval(pollReportJob, 4000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
     };
   }, [id]);
 
@@ -367,6 +403,41 @@ function TaskDetailInner() {
             {task.id}
           </code>
           <Separator orientation="vertical" className="mx-1 hidden h-4 sm:block" />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={switchingChat}
+            onClick={() => {
+              setSwitchingChat(true);
+              void api
+                .ensureTaskChat(task.id)
+                .then((res) => router.push(`/chat?c=${res.conversation_id}`))
+                .catch((e) => toast.error("Failed to open Graph Chat: " + (e as Error).message))
+                .finally(() => setSwitchingChat(false));
+            }}
+            title="Switch to Graph Chat (/chat) linked to this task"
+          >
+            <MessageSquareIcon data-icon="inline-start" />
+            <span className="hidden md:inline">Graph Chat</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void api
+                .setSharedContext({
+                  task_id: Number(task.id),
+                  target: task.name || task.description,
+                  source: "task_detail",
+                })
+                .catch(() => {})
+                .finally(() => router.push("/ai"));
+            }}
+            title="Switch to Deep Agent IDE (/ai) sharing this task"
+          >
+            <TerminalIcon data-icon="inline-start" />
+            <span className="hidden md:inline">Deep Agent IDE</span>
+          </Button>
           <TaskLLMControl task={task} profiles={profiles} onUpdated={load} />
           <StatusBadge domain={terminal ? "task" : "engine"} value={terminal ? task.status : engineMode} dot />
           {canArchive ? (
@@ -411,6 +482,14 @@ function TaskDetailInner() {
                     {interceptPendingCount > 99 ? "99+" : interceptPendingCount}
                   </span>
                 )}
+                {t.value === "report" && reportJobActive && (
+                  <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-foreground px-1.5 py-0.5 font-mono text-[10px] leading-none text-background">
+                    <Loader2Icon className="size-2.5 animate-spin" />
+                    {reportJobActive.total_sections > 0
+                      ? `${reportJobActive.completed_sections}/${reportJobActive.total_sections}`
+                      : "…"}
+                  </span>
+                )}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -448,6 +527,9 @@ function TaskDetailInner() {
         </TabsContent>
         <TabsContent value="intercept" className="mt-0">
           <InterceptTab taskId={id} />
+        </TabsContent>
+        <TabsContent value="governance" className="mt-0">
+          <GovernanceTab taskId={id} onOpenReport={() => setTab("report")} />
         </TabsContent>
         <TabsContent value="report" className="mt-0">
           <ReportTab taskId={id} />

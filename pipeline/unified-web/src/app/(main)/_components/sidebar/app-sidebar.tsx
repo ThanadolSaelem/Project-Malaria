@@ -43,6 +43,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
               <Link prefetch={false} href="/dashboard">
+                <img src="/logo.svg" alt="Malaria" className="size-6 shrink-0 rounded-md" />
                 <span className="font-semibold text-base">{APP_CONFIG.name}</span>
               </Link>
             </SidebarMenuButton>

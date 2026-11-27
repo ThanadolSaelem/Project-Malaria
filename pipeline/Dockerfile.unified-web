@@ -88,12 +88,14 @@ WORKDIR /workspace
 COPY --from=qwen-builder /workspace/pipeline/qwen-source/packages/web-shell /workspace/pipeline/qwen-source/packages/web-shell
 COPY --from=qwen-builder /workspace/pipeline/qwen-source/packages/sdk-typescript /workspace/pipeline/qwen-source/packages/sdk-typescript
 
-# Keep package metadata separate for Docker layer reuse.
+# Keep package metadata separate for Docker layer reuse so UI edits don't re-run npm install.
 COPY pipeline/unified-web/package.json pipeline/unified-web/package-lock.json pipeline/unified-web/.npmrc /workspace/pipeline/unified-web/
-COPY pipeline/unified-web/ /workspace/pipeline/unified-web/
 
 WORKDIR /workspace/pipeline/unified-web
 RUN npm install --include=dev
+
+WORKDIR /workspace
+COPY pipeline/unified-web/ /workspace/pipeline/unified-web/
 
 # Copy every emitted ScopeSentry public asset before Next traces/builds the
 # application. This includes module.js, module.css, dynamic chunks, and assets.

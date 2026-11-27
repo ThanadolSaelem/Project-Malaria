@@ -301,6 +301,9 @@ ON CONFLICT (name) DO NOTHING`,
 	if err := d.seedProjectMalariaDefaults(); err != nil {
 		return fmt.Errorf("seed project-malaria defaults: %w", err)
 	}
+	if err := d.seedProjectMalariaInklingV1(); err != nil {
+		return fmt.Errorf("seed project-malaria inkling: %w", err)
+	}
 	// NOTE: the placeholder ScopeSentry data-source MCP (empty URL + empty X-API-Key,
 	// disabled) is seeded directly in schema.sql §F so a raw `psql < schema.sql` init
 	// also gets it. schema.sql is Exec'd on every startup, so it stays idempotent.
@@ -421,6 +424,7 @@ ON CONFLICT (name) DO UPDATE SET url = EXCLUDED.url, enabled = true`, m.name, m.
 		excl        bool
 	}{
 		{"LiteLLM Cyber-Model (Primary)", "cyber-model", 128, true, 100, false},
+		{"LiteLLM Inkling-2-Mini (Orchestrator)", "inkling", 64, false, 95, false},
 		{"LiteLLM Flint Orchestrator", "flint", 128, false, 90, false},
 		{"LiteLLM Vision (Qwen2.5-VL)", "vision", 128, false, 80, true},
 		{"LiteLLM Summarizer (Qwen2.5-3B)", "summarizer", 32, false, 70, true},
@@ -446,6 +450,21 @@ ON CONFLICT (agent_id, resource_kind, resource_id, mcp_tool_name) DO UPDATE SET 
 		return fmt.Errorf("seed mcp agent visibility: %w", err)
 	}
 	return d.SetSetting("project_malaria_defaults_v1", "done")
+}
+
+// seedProjectMalariaInklingV1 adds the Inkling-2-Mini orchestrator profile once
+// for existing databases where project_malaria_defaults_v1 already ran.
+func (d *DB) seedProjectMalariaInklingV1() error {
+	if v, _, _ := d.GetSetting("project_malaria_inkling_v1"); v == "done" {
+		return nil
+	}
+	if _, err := d.Exec(`
+INSERT INTO llm_profiles (name, format, base_url, model, api_key, api_key_hint, rate_per_second, rate_per_minute, context_window_k, is_default, priority, pool_exclude, streaming)
+SELECT 'LiteLLM Inkling-2-Mini (Orchestrator)', 'openai', 'http://litellm:4000/v1', 'inkling', 'sk-local', '…ocal', 0, 0, 64, false, 95, false, true
+WHERE NOT EXISTS (SELECT 1 FROM llm_profiles WHERE model = 'inkling')`); err != nil {
+		return fmt.Errorf("seed llm inkling: %w", err)
+	}
+	return d.SetSetting("project_malaria_inkling_v1", "done")
 }
 
 // seedBuiltinSkillVisibility binds the shipped built-in skills to their default

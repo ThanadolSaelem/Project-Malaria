@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import Link from "next/link";
+
 import {
   Loader2Icon,
   PlugZapIcon,
@@ -9,6 +11,7 @@ import {
   RefreshCwIcon,
   RotateCcwIcon,
   SaveIcon,
+  SlidersHorizontalIcon,
   StarIcon,
   Trash2Icon,
   ZapIcon,
@@ -902,6 +905,11 @@ export default function LLMPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <Link href="/models">
+              <SlidersHorizontalIcon /> Open Model Studio
+            </Link>
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setPoolOpen(true)}>
             <ZapIcon /> Pool settings
             {poolOn && (

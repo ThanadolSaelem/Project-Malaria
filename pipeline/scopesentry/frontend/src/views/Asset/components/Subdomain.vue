@@ -1,8 +1,8 @@
 <script setup lang="tsx">
 import { useI18n } from '@/hooks/web/useI18n'
 import { h, nextTick, reactive, Ref, ref } from 'vue'
-import { onMounted } from 'vue'
 import { useTable } from '@/hooks/web/useTable'
+import { useViewportMaxHeight } from '@/hooks/web/useViewportMaxHeight'
 import {
   ElCard,
   ElPagination,
@@ -55,16 +55,7 @@ const searchKeywordsData = [
     explain: t('searchHelp.project')
   }
 ]
-onMounted(() => {
-  setMaxHeight()
-  window.addEventListener('resize', setMaxHeight)
-})
-
-const maxHeight = ref(0)
-const setMaxHeight = () => {
-  const screenHeight = window.innerHeight || document.documentElement.clientHeight
-  maxHeight.value = screenHeight * 0.7
-}
+const { maxHeight } = useViewportMaxHeight()
 
 const searchParams = ref('')
 const handleSearch = (data: any) => {

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-11-11T10:12:07.950710+07:00",
+  "updated_at": "2026-11-27T10:34:44.103740+07:00",
   "harnesses": {
     "qwen-code": {
       "enabled": true,
@@ -8,7 +8,7 @@
       "service": "qwen-code",
       "port": 3080,
       "url": "http://localhost:3080",
-      "default_model": "flint",
+      "default_model": "orchestrator",
       "connected_mcps": [
         "hexstrike",
         "rea",
@@ -16,7 +16,8 @@
         "cve",
         "search",
         "specialist",
-        "scopesentry"
+        "scopesentry",
+        "artex"
       ]
     },
     "artex": {
@@ -33,7 +34,8 @@
         "cve",
         "search",
         "specialist",
-        "scopesentry"
+        "scopesentry",
+        "artex"
       ]
     }
   },
@@ -46,37 +48,134 @@
       "timeout": 1200,
       "num_retries": 1,
       "drop_params": true,
-      "fallbacks": []
+      "fallbacks": [
+        {
+          "orchestrator": [
+            "cyber-model"
+          ]
+        },
+        {
+          "inkling": [
+            "cyber-model"
+          ]
+        },
+        {
+          "inkling2": [
+            "cyber-model"
+          ]
+        },
+        {
+          "inkling-2-mini": [
+            "cyber-model"
+          ]
+        },
+        {
+          "Inkling-2-Mini": [
+            "cyber-model"
+          ]
+        },
+        {
+          "cybermodel": [
+            "cyber-model"
+          ]
+        },
+        {
+          "flint": [
+            "cyber-model"
+          ]
+        },
+        {
+          "gpt-oss-120b": [
+            "cyber-model"
+          ]
+        },
+        {
+          "big-brain": [
+            "cyber-model"
+          ]
+        },
+        {
+          "local-cybertiel": [
+            "cyber-model"
+          ]
+        },
+        {
+          "qwen2.5-coder-32b": [
+            "cyber-model"
+          ]
+        },
+        {
+          "qwen2.5-coder-14b": [
+            "cyber-model"
+          ]
+        },
+        {
+          "qwen2.5-coder": [
+            "cyber-model"
+          ]
+        },
+        {
+          "cyber-model": [
+            "orchestrator"
+          ]
+        },
+        {
+          "cyber-tiel": [
+            "orchestrator"
+          ]
+        },
+        {
+          "exploit-specialist": [
+            "orchestrator"
+          ]
+        },
+        {
+          "summarizer": [
+            "orchestrator",
+            "cyber-model"
+          ]
+        },
+        {
+          "vision": [
+            "cyber-model"
+          ]
+        }
+      ]
     }
   },
   "models": {
     "gpt-oss-120b": {
       "enabled": true,
-      "label": "Orchestrator (Coding :8090)",
+      "label": "Orchestrator (Coding & Agent)",
       "type": "local_llama",
       "alias": "orchestrator",
       "aliases": [
         "orchestrator",
-        "flint",
+        "inkling",
+        "inkling2",
+        "inkling-2-mini",
+        "Inkling-2-Mini",
+        "cybermodel",
         "qwen2.5-coder-32b",
         "qwen2.5-coder-14b",
         "qwen2.5-coder",
         "gpt-oss-120b",
-        "cybermodel",
         "big-brain",
-        "local-cybertiel"
+        "local-cybertiel",
+        "flint"
       ],
       "port": 8090,
       "api_base": "http://host.docker.internal:8090/v1",
       "api_key": "sk-local",
       "target_model": "openai/cybermodel",
       "expose_in_dsh": true,
-      "dsh_display_name": "Orchestrator (Coding & Synthesis)",
-      "sensitive_safe": true
+      "dsh_display_name": "Inkling-2-Mini-abliterated-Mix-12G (:8090)",
+      "sensitive_safe": true,
+      "supports_vision": true
     },
     "cyber-tiel": {
       "enabled": true,
-      "label": "Cyber-Model (Cyber Security Specialist :8091)",
+      "label": "Cyber-Model (Security Specialist)",
       "type": "local_llama",
       "alias": "cyber-model",
       "aliases": [
@@ -96,7 +195,7 @@
     },
     "summarizer": {
       "enabled": true,
-      "label": "Qwen2.5-3B (Observer Summarizer)",
+      "label": "Summarizer (Intent & Observer)",
       "type": "local_llama",
       "alias": "summarizer",
       "aliases": [
@@ -107,11 +206,12 @@
       "api_key": "sk-local",
       "target_model": "openai/summarizer",
       "expose_in_dsh": false,
-      "sensitive_safe": true
+      "sensitive_safe": true,
+      "supports_vision": false
     },
     "vision": {
       "enabled": true,
-      "label": "Qwen2.5-VL-7B (Vision & OCR)",
+      "label": "Vision & OCR (Multimodal)",
       "type": "local_llama",
       "alias": "vision",
       "aliases": [
@@ -139,22 +239,23 @@
       "target_model": "nvidia_nim/nvidia/nemotron-3.5-super-vl-120b-a12b",
       "supports_vision": true,
       "expose_in_dsh": true,
-      "dsh_display_name": "NIM (Nemotron VL Cloud)",
+      "dsh_display_name": "NVIDIA NIM (Nemotron VL 120B Cloud)",
       "sensitive_safe": false
     },
     "or-glm": {
       "enabled": true,
       "label": "OpenRouter (GLM-5.3 Cloud)",
       "type": "cloud",
-      "alias": "or-glm",
+      "alias": "or-nemo",
       "aliases": [
-        "or-glm"
+        "or-nemo"
       ],
       "api_key_env": "OPENROUTER_API_KEY",
-      "target_model": "openrouter/z-ai/glm-5.3",
+      "target_model": "nvidia/nemotron-3.5-super-vl:free",
       "expose_in_dsh": true,
-      "dsh_display_name": "OpenRouter GLM-5.3 (Cloud)",
-      "sensitive_safe": false
+      "dsh_display_name": "OpenRouter (GLM-5.3 Cloud)",
+      "sensitive_safe": false,
+      "supports_vision": false
     }
   },
   "mcp_servers": {
@@ -246,12 +347,25 @@
       "host_url": "http://localhost:8082/mcp",
       "header_auth": "X-API-Key",
       "api_key_env": "SCOPESENTRY_API_KEY",
+      "default_api_key": "ssk_project_malaria_scopesentry_mcp_key_2026",
       "timeout_ms": 60000,
       "tool_rag": true,
       "search_limit": 15,
       "repeat_limit": 3,
       "max_output_bytes": 20000,
       "disabled_tools": []
+    },
+    "artex": {
+      "enabled": true,
+      "label": "ARTEX Pentest Mission & Graph MCP",
+      "service": "artex",
+      "port": 8787,
+      "internal_url": "http://artex:8787/mcp",
+      "host_url": "http://localhost:8787/mcp",
+      "header_auth": "X-API-Key",
+      "api_key_env": "ARTEX_MCP_KEY",
+      "default_api_key": "ak_project_malaria_artex_mcp_key_2026",
+      "timeout_ms": 120000
     }
   },
   "plugins": {
@@ -309,5 +423,22 @@
       "model": "summarizer",
       "interval": 45
     }
+  },
+  "role_routing": {
+    "primary_model": "cyber-model",
+    "secondary_model": "orchestrator",
+    "orchestrator_roles": [
+      "goals",
+      "planner"
+    ],
+    "specialist_roles": [
+      "worker",
+      "pentest",
+      "retester",
+      "reporter",
+      "mainagent",
+      "auto"
+    ],
+    "auto_fallback": true
   }
 }

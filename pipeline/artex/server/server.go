@@ -234,8 +234,12 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
+		if err := m.pg.EnsurePipelineTables(); err != nil {
+			log.Printf("[pipeline] ensure tables: %v", err)
+		}
+		s.engine.SetOnTaskComplete(s.hookEnterpriseOnTaskComplete)
 		wireAgentAugment(m.pg, s.skillDir, s.hostTools) // wire visible skills/MCP + traffic/orchestration host tools into the agent toolset
-		domainReg := buildDomainReg(m.Assets())
+		domainReg := buildDomainReg(m.pg, m.Assets(), s.evidenceStore(), s.notifyReporterForStandaloneFinding)
 		wireTools(m.pg, domainReg)   // built-in tools table: filter per agent + override description/schema + inject defaults
 		seedPrompts(m.pg)            // seed built-in agent default prompt bodies into agent_prompts (only when empty)
 		warnBrokenSkills(s.skillDir) // surface skills whose frontmatter silently failed to parse
@@ -257,6 +261,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 				}
 			}
 		}()
+		go s.runScopeSentryTaskAutoSync(s.ctx)
 		s.seedPythonInterpreter()     // custom script tool: detect the python interpreter at boot and store it (only when empty)
 		go newScheduler(s).Run(s.ctx) // P3 trigger scheduling (scheduled/finding/goal events), custom agents only
 		// Vulnerability IM push delivery engine. Sits beside the Scheduler but independent: push latency demands (3s)
@@ -861,7 +866,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/report", s.getReport)
 	mux.HandleFunc("GET /api/chat/mentions", s.searchChatMentions)
 	mux.HandleFunc("POST /api/chat", s.chat)
-	mux.HandleFunc("POST /api/chat/upload", s.chatUpload) // upload method 1: files land in uploads/ under the conversation/task work dir
+	mux.HandleFunc("POST /api/chat/upload", s.chatUpload) // upload method 1: files land in uploads/ or /workspace/shared/<folder>
+	mux.HandleFunc("GET /api/chat/workspaces", s.listChatWorkspaces)
+	mux.HandleFunc("POST /api/chat/attach-workspace", s.attachChatWorkspace)
 	mux.HandleFunc("GET /api/tasks/{id}/chat/status", s.taskChatStatus)
 	mux.HandleFunc("POST /api/tasks/{id}/chat/stop", s.stopChat)
 
@@ -879,6 +886,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/conversations/{id}/messages", s.pgSendConversationMessage)
 	mux.HandleFunc("POST /api/conversations/{id}/stop", s.pgStopConversation)
 	mux.HandleFunc("GET /api/conversations/{id}/messages/{seq}", s.pgConversationMsgDetail)
+	mux.HandleFunc("GET /api/conversations/{id}/links", s.pgConversationLinks)
+	mux.HandleFunc("POST /api/conversations/{id}/sync", s.pgSyncConversationPipeline)
 	mux.HandleFunc("GET /api/conversations/{id}/target-pins", s.convListTargetPins)
 	mux.HandleFunc("POST /api/conversations/{id}/target-pins/{pid}/revoke", s.convRevokeTargetPin)
 
@@ -925,6 +934,30 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/sync/scopesentry/tasks", s.syncSSTasks)
 	mux.HandleFunc("POST /api/sync/scopesentry/sync", s.syncSSRun)
 	mux.HandleFunc("POST /api/sync/unified", s.syncUnified)
+	// Shared workspace context (/ai <-> /chat <-> /function/tasks)
+	mux.HandleFunc("GET /api/shared-context", s.getSharedContext)
+	mux.HandleFunc("PUT /api/shared-context", s.putSharedContext)
+	mux.HandleFunc("POST /api/shared-context/ensure-chat", s.ensureTaskChat)
+	// Enterprise AppScan-inspired governance (Quality Gate, Issue Hashing/Triage, FixGroups, Scan Modes, Bundles)
+	mux.HandleFunc("GET /api/enterprise/tasks/{id}/overview", s.enterpriseTaskOverview)
+	mux.HandleFunc("POST /api/enterprise/tasks/{id}/gate/evaluate", s.enterpriseEvaluateGate)
+	mux.HandleFunc("POST /api/enterprise/tasks/{id}/gate/override", s.enterpriseOverrideGate)
+	mux.HandleFunc("POST /api/enterprise/tasks/{id}/correlate", s.enterpriseCorrelateTask)
+	mux.HandleFunc("POST /api/enterprise/tasks/{id}/scan-profile", s.enterpriseUpdateScanProfile)
+	mux.HandleFunc("POST /api/enterprise/tasks/{id}/operation", s.enterpriseRunScanOperation)
+	mux.HandleFunc("GET /api/enterprise/fix-groups", s.enterpriseListFixGroups)
+	mux.HandleFunc("GET /api/enterprise/findings", s.enterpriseListFindings)
+	mux.HandleFunc("PATCH /api/enterprise/findings/{id}/triage", s.enterpriseTriageFinding)
+	mux.HandleFunc("GET /api/enterprise/baselines", s.enterpriseListBaselines)
+	mux.HandleFunc("GET /api/enterprise/bundles", s.enterpriseListBundles)
+	mux.HandleFunc("POST /api/enterprise/bundles", s.enterpriseSaveBundle)
+	mux.HandleFunc("DELETE /api/enterprise/bundles/{id}", s.enterpriseDeleteBundle)
+	mux.HandleFunc("POST /api/enterprise/bundles/upload-spec", s.enterpriseUploadBundleSpec)
+	mux.HandleFunc("POST /api/enterprise/bundles/attach", s.enterpriseAttachBundle)
+	mux.HandleFunc("GET /api/enterprise/playbooks", s.enterpriseListPlaybooks)
+	mux.HandleFunc("POST /api/enterprise/playbooks", s.enterpriseSavePlaybook)
+	mux.HandleFunc("POST /api/enterprise/playbooks/sync", s.enterpriseSyncPlaybooks)
+	mux.HandleFunc("DELETE /api/enterprise/playbooks/{id}", s.enterpriseDeletePlaybook)
 	// Skill CRUD (filesystem)
 	mux.HandleFunc("GET /api/skills", s.fsListSkills)
 	mux.HandleFunc("POST /api/skills", s.fsCreateSkill)
@@ -990,7 +1023,10 @@ func (s *Server) Handler() http.Handler {
 	// frontend (public — auth is enforced client-side and on the API). With the
 	// no-embed build the webui handler just 404s (run `next dev` separately).
 	api := cors(s.requireAuth(mux))
+	mcp := s.requireMCPAuth(s.mcpHandler())
 	root := http.NewServeMux()
+	root.Handle("/mcp", mcp)
+	root.Handle("/mcp/", mcp)
 	root.Handle("/api/", api)
 	root.Handle("/", s.webuiHandler())
 	return root
@@ -1601,12 +1637,12 @@ type createTaskReq struct {
 	CategoryID           *int64   `json:"category_id,omitempty"`
 	Description          string   `json:"description"`
 	Goal                 string   `json:"goal"`
-	LLMProfileID         *int64   `json:"llm_profile_id,omitempty"`    // the LLM profile to run this task on; omitted/null = use the active profile
-	LLMProfileIDs        []int64  `json:"llm_profile_ids,omitempty"`   // ordered task-level profile chain; the first entry takes effect initially
-	SourceTaskIDs        []string `json:"source_task_ids,omitempty"`   // direct, read-only inherited source tasks
-	CompanyIDs           []int64  `json:"company_ids,omitempty"`       // links the company scope and snapshots its current assets; does not copy assets or force intent generation
+	LLMProfileID         *int64   `json:"llm_profile_id,omitempty"`  // the LLM profile to run this task on; omitted/null = use the active profile
+	LLMProfileIDs        []int64  `json:"llm_profile_ids,omitempty"` // ordered task-level profile chain; the first entry takes effect initially
+	SourceTaskIDs        []string `json:"source_task_ids,omitempty"` // direct, read-only inherited source tasks
+	CompanyIDs           []int64  `json:"company_ids,omitempty"`     // links the company scope and snapshots its current assets; does not copy assets or force intent generation
 	TimeoutSeconds       int      `json:"timeout_seconds"`
-	LLMRotate            *bool    `json:"llm_rotate"`             // task-level timeout (seconds); 0/omitted = no limit
+	LLMRotate            *bool    `json:"llm_rotate"`                  // task-level timeout (seconds); 0/omitted = no limit
 	PlanHeartbeatSeconds int      `json:"plan_heartbeat_seconds"`      // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
 	PlanQuietMode        *bool    `json:"plan_quiet_mode,omitempty"`   // planner quiet-mode switch (#86); omitted = default on; false = edge rounds always plan
 	TargetGate           *bool    `json:"target_gate,omitempty"`       // approval gate for asset targets, opt-in; omitted/null = off
@@ -3967,6 +4003,10 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			// taskDir = the agent's working directory (CWD), consistent with chatUpload's target dir and ensureRunDir.
 			taskDir := filepath.Join(s.m.dir, "tasks", t.ID)
 			agentMsg := composeAgentMessage(agentMessage, req.Attachments, taskDir)
+			s.syncSharedContextFromTaskChat(maTaskID)
+			if handoff := s.buildDeepAgentHandoffForTask(maTaskID); handoff != "" {
+				agentMsg = handoff + "\n\n" + agentMsg
+			}
 			// Tag the turn for the target gate: the task, the "mainagent" lane and the approval scope.
 			gctx := intercept.WithTaskContext(ctx, t.ID, "mainagent", func(a db.Activity) {
 				a.Worker = "mainagent"

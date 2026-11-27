@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	actool "github.com/Autumn-27/norma/tool"
@@ -78,10 +79,14 @@ func TestAssembleVisibleSkill(t *testing.T) {
 	t.Cleanup(func() { _ = pg.ToggleSkillVisibility(ag.ID, skillName, false) })
 
 	// after: the Skill meta-tool is packed in
-	extra, _, cleanup = agent.ToolAugment(context.Background(), "planner")
+	var def agent.DeferredInfo
+	extra, def, cleanup = agent.ToolAugment(context.Background(), "planner")
 	defer cleanup()
 	if !hasSkillTool(extra) {
 		t.Fatalf("expected the Skill meta-tool after making the skill visible")
+	}
+	if !strings.Contains(def.SkillGuidance, skillName) {
+		t.Fatalf("expected SkillGuidance to advertise visible skill %q, got %q", skillName, def.SkillGuidance)
 	}
 
 	// AugmentTools appends extra to base without filtering base

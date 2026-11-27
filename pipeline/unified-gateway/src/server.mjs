@@ -14,6 +14,7 @@ import { request as httpsRequest } from 'node:https';
 import { isMainThread } from 'node:worker_threads';
 import {
   FORWARDED_HEADER_NAMES,
+  controlPlaneRequestAllowed,
   isForwardedHeader,
   isHopByHopHeader,
   isLoopbackAddress,
@@ -399,7 +400,19 @@ function handleHttpRequest(request, response, config) {
     }
   }
 
-  if (route.kind !== 'proxy' && route.kind !== 'observer') {
+  if (route.kind === 'control-plane') {
+    if (!controlPlaneRequestAllowed(config, remoteAddress(request))) {
+      jsonError(
+        response,
+        503,
+        'control_plane_unavailable',
+        'Model Studio control plane is disabled or unreachable from this topology',
+      );
+      return;
+    }
+  }
+
+  if (route.kind !== 'proxy' && route.kind !== 'observer' && route.kind !== 'control-plane') {
     jsonError(response, 404, 'route_not_found', 'No route is registered for this path');
     return;
   }

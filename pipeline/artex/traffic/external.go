@@ -25,18 +25,16 @@ type ExternalExchange struct {
 	ResponseBody    string            `json:"responseBody"`
 }
 
-// RecordExternal stores an externally captured exchange through the same
-// spill/blob/index path as proxy traffic, so ingested entries are
-// indistinguishable from proxy-captured ones on the Traffic page and in
-// full-text search.
-func (t *Traffic) RecordExternal(e ExternalExchange) error {
+// RecordExternalWithID stores an externally captured exchange through the same
+// spill/blob/index path as proxy traffic and returns the generated exchange ID.
+func (t *Traffic) RecordExternalWithID(e ExternalExchange) (string, error) {
 	u, err := url.Parse(e.URL)
 	if err != nil || u.Host == "" {
-		return fmt.Errorf("invalid url %q", e.URL)
+		return "", fmt.Errorf("invalid url %q", e.URL)
 	}
 	method := strings.ToUpper(strings.TrimSpace(e.Method))
 	if method == "" {
-		return fmt.Errorf("empty method for %q", e.URL)
+		return "", fmt.Errorf("empty method for %q", e.URL)
 	}
 	status := e.Status
 	if status == 0 {
@@ -61,9 +59,18 @@ func (t *Traffic) RecordExternal(e ExternalExchange) error {
 
 	if err := t.insertExchange(id, now.Unix(), host, method, db.TemplatePath(u.EscapedPath()), u.String(), status, respCT, len(e.RequestBody), len(e.ResponseBody), reqHead, reqB, respHead, respB); err != nil {
 		log.Printf("[traffic] failed to ingest %s: %v", u.String(), err)
-		return err
+		return "", err
 	}
-	return nil
+	return id, nil
+}
+
+// RecordExternal stores an externally captured exchange through the same
+// spill/blob/index path as proxy traffic, so ingested entries are
+// indistinguishable from proxy-captured ones on the Traffic page and in
+// full-text search.
+func (t *Traffic) RecordExternal(e ExternalExchange) error {
+	_, err := t.RecordExternalWithID(e)
+	return err
 }
 
 // insertExchange writes the index row, the body row, blob references and the

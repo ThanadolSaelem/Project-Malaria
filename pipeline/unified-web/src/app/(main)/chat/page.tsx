@@ -1,21 +1,33 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import {
   ArrowUpIcon,
   Bot,
   ChevronDownIcon,
   ChevronRightIcon,
+  FileTextIcon,
+  FolderOpenIcon,
+  FolderUpIcon,
+  GlobeIcon,
   ListChecksIcon,
   Loader2Icon,
   MoreHorizontalIcon,
+  NetworkIcon,
   PaperclipIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
   PlusIcon,
+  RadarIcon,
+  RefreshCwIcon,
+  ShieldAlertIcon,
+  SlidersHorizontalIcon,
   Square,
+  TerminalIcon,
   Trash2Icon,
   XIcon,
   ZapIcon,
@@ -58,7 +70,7 @@ import { api } from "@/lib/api";
 import { shouldSubmitOnKey, useChatSendMode } from "@/lib/chat-send-mode";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
 import { isBtwCommand } from "@/lib/side-questions";
-import type { Activity, Agent, ChatAttachment, Conversation, LLMProfile } from "@/lib/types";
+import type { Activity, Agent, ChatAttachment, Conversation, ConversationLink, LLMProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // fmtBytes renders a human file size for attachment chips (mirrors transcript.tsx).
@@ -156,6 +168,8 @@ function Composer({
   stopDisabled,
   attachments,
   onPickFiles,
+  onPickFolder,
+  onAttachWorkspace,
   onRemoveAttachment,
   uploading,
   allowBtw,
@@ -172,14 +186,54 @@ function Composer({
   // Upload method 1: the paperclip button + attachment chip preview only appear when onPickFiles is provided.
   attachments?: ChatAttachment[];
   onPickFiles?: (files: File[]) => void;
+  onPickFolder?: (folderName: string, files: File[]) => void;
+  onAttachWorkspace?: (workspacePath: string) => void;
   onRemoveAttachment?: (path: string) => void;
   uploading?: boolean;
   allowBtw?: boolean;
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const folderInputRef = React.useRef<HTMLInputElement>(null);
+  const [wsOpen, setWsOpen] = React.useState(false);
+  const [wsLoading, setWsLoading] = React.useState(false);
+  const [wsFolders, setWsFolders] = React.useState<
+    { name: string; path: string; group: string; file_count: number; total_bytes: number }[]
+  >([]);
+  const [policyOpen, setPolicyOpen] = React.useState(false);
+  const [scanMode, setScanMode] = React.useState("full");
+  const [bundleId, setBundleId] = React.useState<number>(0);
+  const [bundles, setBundles] = React.useState<{ id: number; name: string; test_policy: string; auth_type: string }[]>([]);
   const atts = attachments ?? [];
   // The send key binding comes from system settings (localStorage); Enter sends by default.
   const sendMode = useChatSendMode();
+
+  async function refreshPolicyState() {
+    try {
+      const [ctx, bRes] = await Promise.all([
+        api.sharedContext().catch(() => null),
+        api.enterpriseListBundles().catch(() => ({ ok: false, bundles: [] })),
+      ]);
+      const rawCtx = ctx as unknown as { scan_mode?: string; bundle_id?: number } | null;
+      if (rawCtx?.scan_mode) setScanMode(rawCtx.scan_mode);
+      if (rawCtx?.bundle_id != null) setBundleId(Number(rawCtx.bundle_id) || 0);
+      setBundles(bRes.bundles ?? []);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function refreshWorkspaces() {
+    setWsLoading(true);
+    try {
+      const res = await api.listChatWorkspaces();
+      setWsFolders(res.folders ?? []);
+    } catch {
+      setWsFolders([]);
+    } finally {
+      setWsLoading(false);
+    }
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (!shouldSubmitOnKey(e, sendMode)) return;
     e.preventDefault();
@@ -195,8 +249,12 @@ function Composer({
               className="flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
               title={a.path}
             >
-              <PaperclipIcon className="size-3 shrink-0 text-primary" />
-              <span className="max-w-[160px] truncate">{a.name}</span>
+              {a.path.startsWith("/workspace") ? (
+                <FolderOpenIcon className="size-3 shrink-0 text-foreground" />
+              ) : (
+                <PaperclipIcon className="size-3 shrink-0 text-primary" />
+              )}
+              <span className="max-w-[200px] truncate">{a.name}</span>
               <span className="text-muted-foreground">{fmtBytes(a.size)}</span>
               {onRemoveAttachment && (
                 <button
@@ -212,7 +270,7 @@ function Composer({
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         {leftSlot ? <div className="w-full sm:w-auto">{leftSlot}</div> : null}
         {onPickFiles && (
           <>
@@ -234,12 +292,178 @@ function Composer({
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || uploading}
-              title="Upload files"
+              title="แนบไฟล์ (Upload files)"
             >
               {uploading ? <Loader2Icon className="size-4 animate-spin" /> : <PaperclipIcon className="size-4" />}
             </Button>
           </>
         )}
+        {onPickFolder && (
+          <>
+            <input
+              ref={folderInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              {...({ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>)}
+              onChange={(e) => {
+                const picked = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                if (picked.length > 0) {
+                  const firstRel = (picked[0] as File & { webkitRelativePath?: string }).webkitRelativePath || "";
+                  const folderName = firstRel.includes("/") ? firstRel.split("/")[0] : "uploaded-folder";
+                  onPickFolder(folderName, picked);
+                }
+              }}
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => folderInputRef.current?.click()}
+              disabled={disabled || uploading}
+              title="อัปโหลดทั้งโฟลเดอร์เข้า Shared /workspace (แชร์กับ Deep Agent IDE อัตโนมัติ)"
+            >
+              <FolderUpIcon className="size-4" />
+            </Button>
+          </>
+        )}
+        {onAttachWorkspace && (
+          <Popover
+            open={wsOpen}
+            onOpenChange={(v) => {
+              setWsOpen(v);
+              if (v) void refreshWorkspaces();
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={disabled || uploading}
+                title="เลือกโฟลเดอร์จาก Shared /workspace (ใช้โฟลเดอร์เดียวกับ Deep Agent IDE)"
+              >
+                <FolderOpenIcon className="size-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 p-2">
+              <div className="mb-1.5 flex items-center justify-between px-1">
+                <span className="font-medium text-xs">Shared /workspace Folders</span>
+                <button
+                  type="button"
+                  onClick={() => void refreshWorkspaces()}
+                  className="text-muted-foreground hover:text-foreground text-[11px]"
+                >
+                  Refresh
+                </button>
+              </div>
+              {wsLoading ? (
+                <div className="flex items-center justify-center py-6 text-muted-foreground text-xs">
+                  <Loader2Icon className="mr-1.5 size-3.5 animate-spin" /> กำลังโหลดโฟลเดอร์...
+                </div>
+              ) : wsFolders.length === 0 ? (
+                <div className="py-4 text-center text-muted-foreground text-xs">
+                  ยังไม่มีโฟลเดอร์ใน /workspace — กดปุ่มอัปโหลดโฟลเดอร์ข้างๆ เพื่อเพิ่มได้เลย
+                </div>
+              ) : (
+                <div className="max-h-60 space-y-1 overflow-y-auto">
+                  {wsFolders.map((f) => (
+                    <button
+                      key={f.path}
+                      type="button"
+                      onClick={() => {
+                        setWsOpen(false);
+                        onAttachWorkspace(f.path);
+                      }}
+                      className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs hover:border-border hover:bg-muted/60"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-foreground">{f.name}</div>
+                        <div className="truncate font-mono text-[10px] text-muted-foreground">{f.path}</div>
+                      </div>
+                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                        {f.file_count} files · {fmtBytes(f.total_bytes)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        )}
+        <Popover
+          open={policyOpen}
+          onOpenChange={(v) => {
+            setPolicyOpen(v);
+            if (v) void refreshPolicyState();
+          }}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              size="icon"
+              variant={scanMode !== "full" || bundleId > 0 ? "secondary" : "ghost"}
+              disabled={disabled}
+              title={`Scan Mode: ${scanMode}${bundleId > 0 ? ` · Bundle #${bundleId}` : ""} (AppScan Scan Operations & Auth/OpenAPI Bundle)`}
+            >
+              <SlidersHorizontalIcon className="size-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 space-y-3 p-3 text-xs">
+            <div className="font-medium text-foreground">Enterprise Scan Mode & Context Bundle</div>
+            <div className="grid gap-1.5">
+              <span className="text-[11px] text-muted-foreground">Scan Operation Mode</span>
+              <Select
+                value={scanMode}
+                onValueChange={(v) => {
+                  setScanMode(v);
+                  void api
+                    .setSharedContext({ scan_mode: v, source: "chat_policy" } as unknown as Parameters<typeof api.setSharedContext>[0])
+                    .then(() => toast.success(`ตั้งค่า Scan Mode เป็น ${v}`))
+                    .catch(() => {});
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full">Full (Explore + Test)</SelectItem>
+                  <SelectItem value="explore_only">Explore Only (Save Baseline)</SelectItem>
+                  <SelectItem value="test_only">Test Only (Skip Recon)</SelectItem>
+                  <SelectItem value="retest">Re-Test (Verify Fixes)</SelectItem>
+                  <SelectItem value="report_only">Report Only (No Scan)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <span className="text-[11px] text-muted-foreground">Auth / OpenAPI / Postman Bundle</span>
+              <Select
+                value={String(bundleId)}
+                onValueChange={(v) => {
+                  const idNum = Number(v);
+                  setBundleId(idNum);
+                  void api
+                    .enterpriseAttachBundle({ bundle_id: idNum })
+                    .then(() => toast.success(idNum > 0 ? "ผูก Scan Bundle สำเร็จ" : "ยกเลิกการผูก Bundle แล้ว"))
+                    .catch(() => {});
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">— ไม่ผูก Bundle —</SelectItem>
+                  {bundles.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name} ({b.auth_type} · {b.test_policy})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-[10px] text-muted-foreground">
+                จัดการหรือสร้าง Bundle ใหม่ได้ที่แท็บ Governance ในหน้า Task Detail
+              </span>
+            </div>
+          </PopoverContent>
+        </Popover>
         <MentionTextarea
           className="max-h-40 min-h-10 min-w-0 flex-1 resize-none"
           rows={1}
@@ -418,6 +642,35 @@ function DraftChat({
     }
   }
 
+  async function pickFolder(folderName: string, files: File[]) {
+    if (files.length === 0 || !agentKey || uploading || sending) return;
+    setUploading(true);
+    try {
+      const c = await api.createConversation(agentKey, `Audit: ${folderName}`, llmProfileId);
+      const r = await api.chatUploadFolder("session", `conv-${c.id}`, folderName, files);
+      toast.success(`อัปโหลดโฟลเดอร์ "${folderName}" เข้า Shared /workspace สำเร็จ`);
+      onStarted(c, { input, attachments: r.attachments });
+    } catch (e) {
+      toast.error("Folder upload failed: " + (e as Error).message);
+      setUploading(false);
+    }
+  }
+
+  async function attachWorkspace(wsPath: string) {
+    if (!wsPath || !agentKey || uploading || sending) return;
+    setUploading(true);
+    try {
+      const folderLabel = wsPath.split("/").filter(Boolean).pop() || "workspace";
+      const c = await api.createConversation(agentKey, `Workspace: ${folderLabel}`, llmProfileId);
+      const r = await api.attachChatWorkspace(wsPath, c.id);
+      toast.success(`เชื่อมโฟลเดอร์ ${wsPath} ร่วมกับ Deep Agent IDE แล้ว`);
+      onStarted(c, { input, attachments: [r.attachment] });
+    } catch (e) {
+      toast.error("Attach workspace failed: " + (e as Error).message);
+      setUploading(false);
+    }
+  }
+
   const agentPicker = (
     <Select value={agentKey} onValueChange={setAgentKey}>
       <SelectTrigger className="w-full sm:w-40">
@@ -459,9 +712,11 @@ function DraftChat({
         onChange={setInput}
         onSend={send}
         disabled={sending || uploading || !agentKey}
-        placeholder="Type a message, @ to reference records, Enter to send"
+        placeholder="พิมพ์คำสั่ง URL/IP หรือแนบไฟล์/โฟลเดอร์เพื่อรันครบวงจร (Enter เพื่อส่ง)"
         leftSlot={agentPicker}
         onPickFiles={pickFiles}
+        onPickFolder={pickFolder}
+        onAttachWorkspace={attachWorkspace}
         uploading={uploading}
       />
       <LLMProfileRow
@@ -471,6 +726,187 @@ function DraftChat({
         disabled={sending || uploading}
       />
     </>
+  );
+}
+
+function PipelineMissionStrip({
+  convId,
+  running,
+  messageCount,
+}: {
+  convId: number;
+  running: boolean;
+  messageCount: number;
+}) {
+  const router = useRouter();
+  const [links, setLinks] = React.useState<ConversationLink[]>([]);
+  const [syncing, setSyncing] = React.useState(false);
+
+  const loadLinks = React.useCallback(
+    async (liveSS = false) => {
+      try {
+        const res = await api.conversationLinks(convId, liveSS);
+        setLinks(res);
+      } catch {
+        /* best-effort strip; avoid distracting errors */
+      }
+    },
+    [convId],
+  );
+
+  React.useEffect(() => {
+    void loadLinks(true);
+  }, [convId, loadLinks]);
+
+  React.useEffect(() => {
+    void loadLinks(false);
+  }, [messageCount, running, loadLinks]);
+
+  const hasActiveMission = React.useMemo(
+    () =>
+      running ||
+      links.some(
+        (l) =>
+          l.task_status === "running" ||
+          l.task_status === "created" ||
+          (l.scopesentry_progress !== undefined && l.scopesentry_progress < 100),
+      ),
+    [running, links],
+  );
+
+  React.useEffect(() => {
+    if (!hasActiveMission) return;
+    const t = setInterval(() => void loadLinks(true), 4500);
+    return () => clearInterval(t);
+  }, [hasActiveMission, loadLinks]);
+
+  async function handleSync() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const r = await api.syncConversationPipeline(convId);
+      if (r.links) setLinks(r.links);
+      const s = r.sync?.synced ?? {};
+      const total = (s.subdomain ?? 0) + (s.service ?? 0) + (s.app ?? 0) + (s.ip ?? 0);
+      const vulns = r.sync?.findings_synced ?? 0;
+      const linked = r.sync?.task_assets_linked ?? 0;
+      toast.success(`Pipeline synced: ${total} assets, ${vulns} findings${linked > 0 ? `, ${linked} attached to task` : ""}`);
+    } catch (e) {
+      toast.error("Pipeline sync failed: " + (e as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  if (links.length === 0) return null;
+
+  return (
+    <div className="bg-muted/25 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-1.5 text-xs">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <span className="text-muted-foreground mr-0.5 font-medium tracking-tight">Pipeline:</span>
+        {links.map((l) => (
+          <React.Fragment key={l.id}>
+            {l.company_id ? (
+              <Link
+                href="/function/assets"
+                className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5 transition-colors"
+                title={l.target ? `Target: ${l.target}` : "Open Target Assets & Scope"}
+              >
+                <GlobeIcon className="size-3 text-sky-500" />
+                <span className="max-w-36 truncate font-medium">{l.company_name || l.target || `Company #${l.company_id}`}</span>
+                <span className="text-muted-foreground tabular-nums">({l.company_asset_count})</span>
+              </Link>
+            ) : null}
+            {(l.scopesentry_project_id || l.scopesentry_task_id) ? (
+              <Link
+                href="/scopesentry/asset-information/index"
+                className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5 transition-colors"
+                title={l.scopesentry_task_name ? `ScopeSentry task: ${l.scopesentry_task_name}` : "Open Recon Asset Inventory"}
+              >
+                <RadarIcon className="size-3 text-emerald-500" />
+                <span>ScopeSentry ASM</span>
+                {l.scopesentry_progress !== undefined && (
+                  <span className="text-muted-foreground tabular-nums">{l.scopesentry_progress}%</span>
+                )}
+              </Link>
+            ) : null}
+            {l.task_id ? (
+              <>
+                <Link
+                  href={`/function/tasks/detail?id=${l.task_id}`}
+                  className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5 transition-colors"
+                  title={l.task_description || `Open ARTEX Task #${l.task_id} & Graph`}
+                >
+                  <NetworkIcon className="size-3 text-violet-500" />
+                  <span className="font-medium">Task #{l.task_id}</span>
+                  {l.task_status && (
+                    <Badge
+                      variant={l.task_status === "running" ? "default" : "secondary"}
+                      className="h-4 px-1 py-0 text-[10px] capitalize"
+                    >
+                      {l.task_status}
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground tabular-nums">
+                    {l.task_node_count} nodes · {l.task_asset_count} assets
+                  </span>
+                </Link>
+                <Link
+                  href="/function/findings"
+                  className={cn(
+                    "bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5 transition-colors",
+                    l.task_finding_count > 0 && "border-amber-500/40 bg-amber-500/5 text-amber-600 dark:text-amber-400",
+                  )}
+                  title="Open Findings"
+                >
+                  <ShieldAlertIcon className="size-3" />
+                  <span className="tabular-nums">{l.task_finding_count} findings</span>
+                </Link>
+                <Link
+                  href={`/function/tasks/detail?id=${l.task_id}&tab=report`}
+                  className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5 transition-colors"
+                  title={`Open Report Studio for Task #${l.task_id}`}
+                >
+                  <FileTextIcon className="size-3" />
+                  <span>Report</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void api
+                      .setSharedContext({
+                        task_id: l.task_id ?? 0,
+                        conversation_id: convId,
+                        target: l.target ?? "",
+                        source: "chat",
+                      })
+                      .catch(() => {})
+                      .finally(() => router.push("/ai"));
+                  }}
+                  className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5 transition-colors"
+                  title={`Switch to Deep Agent IDE (/ai) on Task #${l.task_id}`}
+                >
+                  <TerminalIcon className="size-3 text-emerald-500" />
+                  <span>Deep Agent</span>
+                </button>
+              </>
+            ) : null}
+          </React.Fragment>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-6 gap-1 px-2 text-[11px]"
+        onClick={() => void handleSync()}
+        disabled={syncing}
+        title="Sync ScopeSentry discoveries into ARTEX Assets, Tasks & Findings"
+      >
+        <RefreshCwIcon className={cn("size-3", syncing && "animate-spin")} />
+        {syncing ? "Syncing…" : "Sync Pipeline"}
+      </Button>
+    </div>
   );
 }
 
@@ -722,6 +1158,34 @@ function ChatView({
     }
   }
 
+  async function pickFolder(folderName: string, files: File[]) {
+    if (files.length === 0 || uploading) return;
+    setUploading(true);
+    try {
+      const r = await api.chatUploadFolder("session", `conv-${conv.id}`, folderName, files);
+      setAttachments((prev) => [...prev, ...r.attachments]);
+      toast.success(`อัปโหลดโฟลเดอร์ "${folderName}" เข้า Shared /workspace แล้ว`);
+    } catch (e) {
+      toast.error("Folder upload failed: " + (e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function attachWorkspace(wsPath: string) {
+    if (!wsPath || uploading) return;
+    setUploading(true);
+    try {
+      const r = await api.attachChatWorkspace(wsPath, conv.id);
+      setAttachments((prev) => (prev.some((x) => x.path === r.attachment.path) ? prev : [...prev, r.attachment]));
+      toast.success(`แนบโฟลเดอร์ ${wsPath} (แชร์กับ Deep Agent IDE) แล้ว`);
+    } catch (e) {
+      toast.error("Attach workspace failed: " + (e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function send() {
     const msg = input.trim();
     const atts = attachments;
@@ -790,6 +1254,8 @@ function ChatView({
         </div>
       </div>
 
+      <PipelineMissionStrip convId={conv.id} running={running} messageCount={messages.length} />
+
       <ApprovalExecutionFocus focus={approvalFocus} history={focusHistory} />
 
       {/* messages */}
@@ -816,12 +1282,14 @@ function ChatView({
         onSend={send}
         disabled={running || sending}
         allowBtw
-        placeholder={running ? "Agent is replying; type /btw to ask a side question…" : "Type a message, @ to reference records, Enter to send"}
+        placeholder={running ? "Agent is replying; type /btw to ask a side question…" : "พิมพ์คำสั่ง, @ อ้างอิงข้อมูล, หรือแนบโฟลเดอร์/Shared Workspace (Enter เพื่อส่ง)"}
         running={running}
         onStop={stop}
         stopDisabled={stopping}
         attachments={attachments}
         onPickFiles={pickFiles}
+        onPickFolder={pickFolder}
+        onAttachWorkspace={attachWorkspace}
         onRemoveAttachment={(path) => setAttachments((p) => p.filter((x) => x.path !== path))}
         uploading={uploading}
       />
