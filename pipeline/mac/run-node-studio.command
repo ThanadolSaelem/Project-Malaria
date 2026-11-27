@@ -12,6 +12,18 @@ PIPELINE="$(cd "$HERE/.." && pwd)"
 
 mkdir -p "$HERE/logs"
 
+CONTROL_PORT="${CONTROL_PORT:-8010}"
+if [ -f "$PIPELINE/control_plane.py" ] && command -v python3 >/dev/null 2>&1; then
+  if ! curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${CONTROL_PORT}/healthz" 2>/dev/null | grep -q '^200$'; then
+    nohup python3 "$PIPELINE/control_plane.py" >> "$HERE/logs/control-plane.log" 2>&1 < /dev/null &
+    disown 2>/dev/null || true
+    for _ in $(seq 1 10); do
+      curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${CONTROL_PORT}/healthz" 2>/dev/null | grep -q '^200$' && break
+      sleep 1
+    done
+  fi
+fi
+
 python3 -c "import sys; sys.path.insert(0, '$PIPELINE'); import control_plane; control_plane.sync_all_configs(control_plane.load_node_config())" 2>/dev/null || true
 
 export HOST_LAN_IP="$("$HERE/mobile-link.sh" --ip-only 2>/dev/null || true)"

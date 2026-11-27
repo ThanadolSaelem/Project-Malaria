@@ -1,8 +1,8 @@
 <script setup lang="tsx">
 import { useI18n } from '@/hooks/web/useI18n'
 import { h, nextTick, reactive, Ref, ref } from 'vue'
-import { onMounted, onUnmounted } from 'vue'
 import { useTable } from '@/hooks/web/useTable'
+import { useViewportMaxHeight } from '@/hooks/web/useViewportMaxHeight'
 import { ElCard, ElPagination, ElRow, ElCol, ElTag } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { CrudSchema, useCrudSchemas } from '@/hooks/web/useCrudSchemas'
@@ -55,20 +55,7 @@ const searchKeywordsData = [
     explain: t('searchHelp.project')
   }
 ]
-onMounted(() => {
-  setMaxHeight()
-  window.addEventListener('resize', setMaxHeight)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', setMaxHeight)
-})
-
-const maxHeight = ref(0)
-const setMaxHeight = () => {
-  const screenHeight = window.innerHeight || document.documentElement.clientHeight
-  maxHeight.value = screenHeight * 0.7
-}
+const { maxHeight } = useViewportMaxHeight()
 
 const searchParams = ref('')
 const handleSearch = (data: any) => {
@@ -173,11 +160,10 @@ const { tableRegister, tableState, tableMethods } = useTable({
       total: res.data.total
     }
   },
-  immediate: false
+  immediate: false,
+  defaultPageSize: 10
 })
 const { loading, dataList, total, currentPage, pageSize } = tableState
-// 单独设置 IP 组件的 pageSize 默认值
-pageSize.value = 10 // 可以根据需要修改为你想要的默认值
 const { getList, getElTableExpose } = tableMethods
 function tableHeaderColor() {
   return { background: 'var(--el-fill-color-light)' }

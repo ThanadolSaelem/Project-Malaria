@@ -91,7 +91,7 @@ docker compose -f docker-compose.yml -f docker-compose.mac.yml --profile artex u
 4. คลิกปุ่ม **Load unpacked** (โหลดส่วนขยายที่ยังไม่ได้แพ็กเกจ)
 5. เลือกโฟลเดอร์:
    ```text
-   /Users/thanadol/Desktop/Project-Malaria/pipeline/extension
+   <path-to-Project-Malaria>/pipeline/extension
    ```
 6. คลิกไอคอนส่วนขยาย ARTEX ที่แถบเครื่องมือ กรอก URL `http://localhost:8787` และ Token ของคุณ แล้วกด **Start capture** เพื่อบันทึกทราฟฟิกหน้าเว็บ
 

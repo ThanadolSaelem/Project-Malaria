@@ -125,15 +125,31 @@ def scan_alerts(logs):
 
 def loop():
     last_signature = None
+    last_mem = None
     while True:
         try:
             logs, mem = gather_context()
-            sig = (logs.strip(), mem.strip())
+            clean_logs = logs.strip()
+            clean_mem = mem.strip()
+            sig = (clean_logs, clean_mem)
             new_alerts = scan_alerts(logs)
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            if sig != last_signature:
+            # Thermal optimization: never wake GPU/LLM when there is no recent tool log and memory hasn't changed
+            if not clean_logs and (last_mem is None or clean_mem == last_mem):
+                last_mem = clean_mem
+                last_signature = sig
+                with _LOCK:
+                    STATE["online"] = True
+                    if STATE["updated"] is None:
+                        STATE["updated"] = now
+                        STATE["en"] = "Idle — waiting for active tool execution."
+                        STATE["th"] = "สถานะพักเครื่อง — รอการรันเครื่องมือทดสอบเจาะระบบ"
+                    if new_alerts:
+                        STATE["alerts"] = (new_alerts + STATE["alerts"])[:50]
+            elif sig != last_signature:
                 en, th = call_summarizer(logs, mem)
                 last_signature = sig
+                last_mem = clean_mem
                 with _LOCK:
                     STATE["updated"], STATE["en"], STATE["th"], STATE["online"] = now, en, th, True
                     STATE["timeline"] = ([{"time": now, "en": en}] + STATE["timeline"])[:30]
@@ -146,8 +162,10 @@ def loop():
                         STATE["alerts"] = (new_alerts + STATE["alerts"])[:50]
         except Exception as e:
             with _LOCK:
-                STATE["online"] = False
-                STATE["en"] = f"(summarizer unreachable: {e})"
+                STATE["online"] = True
+                if STATE["updated"] is None:
+                    STATE["en"] = f"(observer standby: {e})"
+                    STATE["th"] = "(โหมดประหยัดพลังงาน — พัก Summarizer ชั่วคราว)"
         time.sleep(INTERVAL)
 
 

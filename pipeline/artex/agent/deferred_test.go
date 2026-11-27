@@ -87,3 +87,10 @@ func TestUnlockGatingFlow(t *testing.T) {
 		t.Fatal("gated tool should be unlocked after skill load")
 	}
 }
+
+func TestDeferredSystem_WithSkillGuidance(t *testing.T) {
+	sys, _ := deferredSystem("SYS", DeferredInfo{SkillGuidance: "\n\n**Available Skills**:\n- `api-recon`: collect APIs"})
+	if len(sys) != 1 || !strings.Contains(sys[0], "api-recon") {
+		t.Fatalf("expected SkillGuidance in system segment, got %v", sys)
+	}
+}

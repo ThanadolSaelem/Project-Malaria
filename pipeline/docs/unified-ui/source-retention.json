@@ -1,0 +1,13 @@
+{
+  "qwen_missing": [],
+  "qwen_modified_from_zip": [
+    "packages/web-shell/client/App.tsx",
+    "packages/web-shell/client/config/daemon-target.tsx",
+    "packages/web-shell/client/config/pairing.ts",
+    "packages/web-shell/client/navigation.tsx",
+    "packages/web-shell/client/utils/navigationUrl.ts",
+    "packages/web-shell/package.json",
+    "packages/web-shell/vite.lib.config.ts"
+  ],
+  "scope": "Static file retention check only; not feature/runtime validation"
+}

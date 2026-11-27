@@ -24,7 +24,7 @@ const tagsView = computed(() => appStore.getTagsView)
 <template>
   <section
     :class="[
-      'p-[var(--app-content-padding)] w-[calc(100%-var(--app-content-padding)-var(--app-content-padding))] bg-[var(--app-content-bg-color)] dark:bg-[var(--el-bg-color)]',
+      'p-[var(--app-content-padding)] w-full flex-1 box-border bg-[var(--app-content-bg-color)] dark:bg-[var(--el-bg-color)]',
       {
         '!min-h-[calc(100%-var(--app-content-padding)-var(--app-content-padding)-var(--app-footer-height))]':
           (fixedHeader &&

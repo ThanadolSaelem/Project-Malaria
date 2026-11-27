@@ -17,6 +17,9 @@ import (
 // block to add.
 func deferredSystem(sysText string, def DeferredInfo) (system []string, boundary int) {
 	sysText += def.FindingGuidance
+	if def.SkillGuidance != "" {
+		sysText += def.SkillGuidance
+	}
 	block := actool.RenderDeferredToolsBlock(def.GlobalNames)
 	if block == "" {
 		return []string{sysText}, 0

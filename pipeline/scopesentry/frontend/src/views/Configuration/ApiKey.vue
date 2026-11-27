@@ -20,14 +20,16 @@ import { BaseButton } from '@/components/Button'
 import { createApiKeyApi, deleteApiKeyApi, getApiKeyListApi } from '@/api/apikey'
 import { useClipboard } from '@/hooks/web/useClipboard'
 import { formatTime } from '@/utils'
+import { isScopeSentryEmbedded, scopeSentryBackendPath } from '@/runtime'
 
 const { t } = useI18n()
 const { copy, copied } = useClipboard()
 
+const mcpEndpoint = isScopeSentryEmbedded() ? scopeSentryBackendPath('/mcp') : 'http://your-host:8082/mcp'
 const mcpConfigExample = `{
   "mcpServers": {
     "scopesentry": {
-      "url": "http://your-host:8082/mcp",
+      "url": "${mcpEndpoint}",
       "headers": {
         "X-API-Key": "ssk_你的密钥"
       }

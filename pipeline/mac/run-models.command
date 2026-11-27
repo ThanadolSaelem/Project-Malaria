@@ -13,9 +13,13 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LLAMA_PORT="${LLAMA_PORT:-8090}"
 LLAMA_PORT_SPECIALIST="${LLAMA_PORT_SPECIALIST:-8091}"
+LLAMA_PORT_SUMMARIZER="${LLAMA_PORT_SUMMARIZER:-8092}"
+LLAMA_PORT_VISION="${LLAMA_PORT_VISION:-8093}"
+CONTROL_PORT="${CONTROL_PORT:-8010}"
+PIPELINE="$(cd "$HERE/.." && pwd)"
 
 echo "════════════════════════════════════════════════════════════"
-echo "  Project-Malaria — รันโมเดล (Orchestrator :8090 + Cyber-Model :8091)"
+echo "  Project-Malaria — รันโมเดล + Model Studio API (:8010)"
 echo "════════════════════════════════════════════════════════════"
 
 if [ ! -f "$HERE/llama.env" ]; then
@@ -25,27 +29,49 @@ if [ ! -f "$HERE/llama.env" ]; then
 fi
 source "$HERE/llama.env"
 
+mkdir -p "$HERE/logs"
+
+# ให้ control_plane.py (:8010) ขึ้นด้วยเสมอเพื่อให้ Model Studio API ใช้งานได้
+if [ -f "$PIPELINE/control_plane.py" ] && command -v python3 >/dev/null 2>&1; then
+  if curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${CONTROL_PORT}/healthz" 2>/dev/null | grep -q '^200$'; then
+    echo "[OK] Model Studio API (:8010) ทำงานอยู่แล้ว"
+  else
+    nohup python3 "$PIPELINE/control_plane.py" >> "$HERE/logs/control-plane.log" 2>&1 < /dev/null &
+    disown 2>/dev/null || true
+    for _ in $(seq 1 10); do
+      curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${CONTROL_PORT}/healthz" 2>/dev/null | grep -q '^200$' && break
+      sleep 1
+    done
+    if curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${CONTROL_PORT}/healthz" 2>/dev/null | grep -q '^200$'; then
+      echo "[OK] Model Studio API (:8010) พร้อม"
+    else
+      echo "[WARN] Model Studio API (:8010) ยังไม่ตอบ — เช็ค logs/control-plane.log"
+    fi
+  fi
+fi
+
 # สตาร์ท llama-server หนึ่งตัว (ข้ามถ้าพอร์ตมีคนฟังอยู่แล้ว)
 start_llama() {
   local port="$1" cmd="$2" label="$3" logf="$4"
-  if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
+  if curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/health" 2>/dev/null | grep -q '^200$' || \
+     curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
     echo "[OK] ${label} ตอบอยู่แล้วบน :${port} — ข้าม"; return
   fi
   if [ -z "$cmd" ]; then
     echo "• ${label}: ไม่มีคำสั่งใน llama.env — ข้าม"; return
   fi
-  mkdir -p "$HERE/logs"
-  nohup bash -c "$cmd" > "$HERE/logs/${logf}" 2>&1 &
+  nohup bash -c "$cmd" >> "$HERE/logs/${logf}" 2>&1 < /dev/null &
+  disown 2>/dev/null || true
   echo "… กำลังรอ ${label} ขึ้นบน :${port} (log: pipeline/mac/logs/${logf})"
-  for _ in $(seq 1 60000000); do
-    curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$' && break
+  for _ in $(seq 1 120); do
+    if curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/health" 2>/dev/null | grep -q '^200$' || \
+       curl -sS -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
+      echo "[OK] ${label} พร้อม"
+      return
+    fi
     sleep 1
   done
-  if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}/v1/models" 2>/dev/null | grep -qE '^(200|401)$'; then
-    echo "[OK] ${label} พร้อม"
-  else
-    echo "[WARN] ${label} ยังไม่ตอบใน 120 วิ — เช็ค logs/${logf} (โมเดลใหญ่โหลด/prefill นานได้)"
-  fi
+  echo "[WARN] ${label} ยังไม่ตอบใน 120 วิ — เช็ค logs/${logf} (โมเดลใหญ่โหลด/prefill นานได้)"
 }
 
 verify_sha256() {
@@ -59,8 +85,14 @@ verify_sha256() {
 }
 
 # ── orchestrator (:8090) ─────────────────────────────────────────────────────
-echo "• Thermal Config: Profile=${ORCHESTRATOR_PROFILE:-orchestrator} | FlashAttn=on | KV=${LLAMA_KV_TYPE:-q8_0} | Threads=${LLAMA_THREADS:-6}/${LLAMA_THREADS_BATCH:-8} | Ctx=${LLAMA_CTX_MAIN:-65536} (1 slot)"
-start_llama "${LLAMA_PORT}" "${LLAMA_CMD:-}" "orchestrator (${ORCHESTRATOR_PROFILE:-orchestrator})" "llama.log"
+DEFAULT_INKLING_CMD="${HOME}/.unsloth/llama.cpp/build/bin/llama-server -m ${HOME}/Downloads/Inkling-2-Mini-Q4_K_M.gguf --host 0.0.0.0 --port 8090 --alias cybermodel -ngl 99 -fa on --spec-default --no-context-shift --ctx-checkpoints 20 --no-reasoning-preserve -c 65536 -np 1 -t 8 -tb 10 --jinja --chat-template-kwargs '{\"reasoning_effort\": \"medium\"}'"
+if [ "${ORCHESTRATOR_PROFILE:-inkling2}" = "inkling2" ]; then
+  SPEC_LABEL="ngram-mod"; [ "${INKLING2_USE_DSPARK:-0}" = "1" ] && SPEC_LABEL="DSpark Q8_0"
+  echo "• Orchestrator Config: Profile=inkling2 (Unsloth Engine, Spec=${SPEC_LABEL}) | FlashAttn=on | Effort=${INKLING2_REASONING_EFFORT:-medium} | Threads=8/10 | Ctx=${LLAMA_CTX_MAIN:-65536} (1 slot)"
+else
+  echo "• Thermal Config: Profile=${ORCHESTRATOR_PROFILE:-orchestrator} (Unsloth Engine + Spec) | FlashAttn=on | KV=${LLAMA_KV_TYPE:-q8_0} | Threads=${LLAMA_THREADS:-6}/${LLAMA_THREADS_BATCH:-8} | Ctx=${LLAMA_CTX_MAIN:-65536} (1 slot)"
+fi
+start_llama "${LLAMA_PORT}" "${LLAMA_CMD:-$DEFAULT_INKLING_CMD}" "orchestrator (${ORCHESTRATOR_PROFILE:-inkling2})" "llama.log"
 
 # ── specialist: SHA256 → sandbox → สตาร์ท ────────────────────────────────────
 SPEC_CMD="${LLAMA_CMD_SPECIALIST:-}"
@@ -71,12 +103,17 @@ if [ -n "$SPEC_CMD" ]; then
   fi
 fi
 if [ -n "$SPEC_CMD" ] && [ "${SPECIALIST_SANDBOX:-1}" = "1" ]; then
-  if command -v sandbox-exec >/dev/null 2>&1 && [ -f "${SPECIALIST_SANDBOX_PROFILE:-$HERE/specialist-sandbox.sb}" ]; then
-    SPEC_CMD="sandbox-exec -f \"${SPECIALIST_SANDBOX_PROFILE:-$HERE/specialist-sandbox.sb}\" $SPEC_CMD"
-    echo "• specialist: ขังใน sandbox ห้ามออกเน็ต (ปิดด้วย SPECIALIST_SANDBOX=0)"
-  else
-    echo "• specialist: ข้าม sandbox (ไม่พบ sandbox-exec หรือ profile)"
-  fi
+  case "$SPEC_CMD" in
+    *sandbox-exec*) ;;
+    *)
+      if command -v sandbox-exec >/dev/null 2>&1 && [ -f "${SPECIALIST_SANDBOX_PROFILE:-$HERE/specialist-sandbox.sb}" ]; then
+        SPEC_CMD="sandbox-exec -f \"${SPECIALIST_SANDBOX_PROFILE:-$HERE/specialist-sandbox.sb}\" $SPEC_CMD"
+        echo "• specialist: ขังใน sandbox ห้ามออกเน็ต (ปิดด้วย SPECIALIST_SANDBOX=0)"
+      else
+        echo "• specialist: ข้าม sandbox (ไม่พบ sandbox-exec หรือ profile)"
+      fi
+      ;;
+  esac
 fi
 start_llama "${LLAMA_PORT_SPECIALIST}" "$SPEC_CMD" "cyber-model (exploit model)" "llama-specialist.log"
 

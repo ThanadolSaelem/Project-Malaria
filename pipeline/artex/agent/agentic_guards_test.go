@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
@@ -175,5 +176,116 @@ func TestRenderTriggersHintOrigin(t *testing.T) {
 	got := renderTriggers([]TriggerEvent{{Kind: "hint", Hints: []string{"h1", "h2"}, HintOrigin: "orchestrator"}}, env, triggerLookup{})
 	if !strings.Contains(got, "- A cross-task orchestration added 2 strategic hints: \n"+env.wrap("hints", "h1; h2")) {
 		t.Errorf("batch: got %q", got)
+	}
+}
+
+// prove_goal must allow non-final goals to be marked met while untested assets
+// remain, refuse closing the FINAL goal while untested in-scope assets remain,
+// and succeed once record_fact (even inheriting asset_ids from its observed
+// intent) covers the remaining assets.
+func TestProveGoalRequiresZeroUntestedAssets(t *testing.T) {
+	d := testDB(t)
+	defer d.Close()
+
+	assets := d.Assets()
+	companies := d.Companies()
+	nonce := strconv.FormatInt(time.Now().UnixNano(), 10)
+	domainA := "alpha-" + nonce + ".example.test"
+	domainB := "beta-" + nonce + ".example.test"
+
+	a1, err := assets.UpsertSubdomain(db.UpsertSubdomainReq{Domain: domainA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a2, err := assets.UpsertSubdomain(db.UpsertSubdomainReq{Domain: domainB})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := d.CreateTaskWithOptions("coverage gate", "enforce untested assets check", db.TaskCreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.DeleteTask(task.ID) })
+	_ = assets.AddAutoScope(task.ID, "subdomain", domainA, "", "")
+	_ = assets.AddAutoScope(task.ID, "subdomain", domainB, "", "")
+
+	s := d.Exploration(task.ExplorationID)
+	goalA := addGuardNode(t, s, db.KindGoal, map[string]any{"text": "initial recon"}, "open")
+	goalB := addGuardNode(t, s, db.KindGoal, map[string]any{"text": "full assessment"}, "open")
+	fact1, err := s.AddNode(db.KindFact, map[string]any{
+		"summary":    "alpha tested",
+		"confidence": "observed",
+		"source":     "tool_output",
+	}, 5, "confirmed", "worker-1", []int64{a1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tsx := NewToolSet(s, "planner")
+	tsx.SetTaskID(task.ID)
+	tsx.SetAssetStore(assets, companies)
+	tsx.SetCoverageEnabled(true)
+
+	// Non-final goal A closes normally while asset B is still untested.
+	resA := callGuardTool(t, tsx.proveGoal(), `{"goal_id":`+strconv.FormatInt(goalA, 10)+`,"evidence_id":`+strconv.FormatInt(fact1, 10)+`,"reason":"alpha covered"}`)
+	if resA.IsError || nodeState(t, s, goalA) != "met" || tsx.GoalMet {
+		t.Fatalf("non-final goal: IsError=%v state=%q GoalMet=%v out=%q", resA.IsError, nodeState(t, s, goalA), tsx.GoalMet, resA.Flatten())
+	}
+
+	// Final goal B MUST be refused while domainB remains untested.
+	resB := callGuardTool(t, tsx.proveGoal(), `{"goal_id":`+strconv.FormatInt(goalB, 10)+`,"evidence_id":`+strconv.FormatInt(fact1, 10)+`,"reason":"attempt early finish"}`)
+	if !resB.IsError || !strings.Contains(resB.Flatten(), "in-scope untested asset") || !strings.Contains(resB.Flatten(), domainB) {
+		t.Fatalf("final goal with untested asset: want refusal naming %q, got IsError=%v %q", domainB, resB.IsError, resB.Flatten())
+	}
+	if st := nodeState(t, s, goalB); st != "open" || tsx.GoalMet {
+		t.Fatalf("refused final goal: state=%q GoalMet=%v, want open/false", st, tsx.GoalMet)
+	}
+
+	// Recording an observed fact on an asset-targeted intent inherits its asset_ids.
+	intent2, err := s.AddIntent(map[string]any{
+		"summary":   "test beta",
+		"asset_ids": []int64{a2},
+	}, 5, []int64{a2}, "planner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wk := NewToolSet(s, "worker-2")
+	rfRes := callGuardTool(t, wk.recordFact(), `{"intent_id":`+strconv.FormatInt(intent2, 10)+`,"summary":"beta tested","confidence":"observed","source":"tool_output","evidence":"curl 200"}`)
+	if rfRes.IsError || !strings.HasPrefix(rfRes.Flatten(), "fact recorded: ") {
+		t.Fatalf("record_fact failed: %q", rfRes.Flatten())
+	}
+	fact2, err := strconv.ParseInt(strings.TrimPrefix(rfRes.Flatten(), "fact recorded: "), 10, 64)
+	if err != nil {
+		t.Fatalf("parse fact2 id from %q: %v", rfRes.Flatten(), err)
+	}
+
+	// Verify graph_overview no longer discourages list_untested_assets.
+	ov := tsx.graphOverviewData()
+	if covMap, ok := ov["coverage"].(map[string]any); ok {
+		note, _ := covMap["note"].(string)
+		if strings.Contains(note, "usually no need to call list_untested_assets") {
+			t.Fatalf("coverage note still discourages list_untested_assets: %q", note)
+		}
+	}
+
+	// Final goal B now succeeds with 0 untested assets remaining.
+	resB2 := callGuardTool(t, tsx.proveGoal(), `{"goal_id":`+strconv.FormatInt(goalB, 10)+`,"evidence_id":`+strconv.FormatInt(fact2, 10)+`,"reason":"all in-scope assets tested"}`)
+	if resB2.IsError || nodeState(t, s, goalB) != "met" || !tsx.GoalMet {
+		t.Fatalf("final goal after full coverage: IsError=%v state=%q GoalMet=%v %q", resB2.IsError, nodeState(t, s, goalB), tsx.GoalMet, resB2.Flatten())
+	}
+}
+
+func TestRenderTriggersHardFloorAndPrompts(t *testing.T) {
+	env := newDataEnvelope()
+	got := renderTriggers([]TriggerEvent{{Kind: "hard_floor", Detail: "2 untested assets remain"}}, env, triggerLookup{})
+	if !strings.Contains(got, "**Hard floor triggered**: 2 untested assets remain") {
+		t.Fatalf("renderTriggers hard_floor = %q", got)
+	}
+	seeds := BuiltinPromptSeeds()
+	if !strings.Contains(seeds["planner"], "list_untested_assets") || !strings.Contains(seeds["planner"], "web_search") {
+		t.Fatalf("planner seed missing list_untested_assets or web_search guidance")
+	}
+	if !strings.Contains(seeds["worker"], "web_search") || !strings.Contains(seeds["pentest"], "web_search") {
+		t.Fatalf("worker or pentest seed missing web_search guidance")
 	}
 }

@@ -4,7 +4,52 @@
 Keeps everything from TEMPLATE (headers, footers, TLP badges, embedded Sarabun font, styles)
 and replaces only the body. TEMPLATE = the latest approved report .docx (preferred) or template.docx.
 """
-import os, re, shutil, zipfile
+import os, re, shutil, struct, zipfile
+
+
+def _read_image_dims(path):
+    """Read (width, height) using PIL if available, else pure-stdlib PNG/JPEG header parser."""
+    try:
+        from PIL import Image
+        return Image.open(path).size
+    except Exception:
+        pass
+    try:
+        with open(path, "rb") as f:
+            head = f.read(32)
+            if len(head) >= 24 and head[:8] == b"\x89PNG\r\n\x1a\n":
+                w, h = struct.unpack(">II", head[16:24])
+                if w > 0 and h > 0:
+                    return w, h
+            if head[:2] == b"\xff\xd8":
+                f.seek(2)
+                while True:
+                    marker = f.read(2)
+                    if len(marker) < 2 or marker[0] != 0xFF:
+                        break
+                    m = marker[1]
+                    while m == 0xFF:
+                        b = f.read(1)
+                        if not b:
+                            break
+                        m = b[0]
+                    if m in (0xC0, 0xC1, 0xC2, 0xC3):
+                        seg = f.read(7)
+                        if len(seg) == 7:
+                            _, _, h, w = struct.unpack(">BHH", seg[:5])
+                            if w > 0 and h > 0:
+                                return w, h
+                        break
+                    sz_raw = f.read(2)
+                    if len(sz_raw) < 2:
+                        break
+                    sz = struct.unpack(">H", sz_raw)[0]
+                    if sz < 2:
+                        break
+                    f.seek(sz - 2, 1)
+    except Exception:
+        pass
+    return 1600, 900
 
 CONTENT_W = 9071            # twips: A4 21.0 cm minus left 3.00 cm and right 2.00 cm = 16.0 cm
 IMG_W = 5760000             # EMU: 16.0 cm (full content width)
@@ -51,8 +96,15 @@ class Report:
                 if re.match(r"word/_rels/(header|footer)\d*\.xml\.rels$", n):
                     keep |= {"word/" + m for m in re.findall(r'Target="(media/[^"]+)"', z.read(n).decode())}
         self._head = doc[:doc.index("<w:body>") + len("<w:body>")]
-        sect = re.findall(r"<w:sectPr[ >].*?</w:sectPr>", doc, re.S)[-1]
-        self._sectpr = re.sub(r"<w:pgMar [^>]*/>", PGMAR, sect)
+        sects = re.findall(r"<w:sectPr[ >].*?</w:sectPr>", doc, re.S)
+        if sects:
+            sect = sects[-1]
+            if "<w:pgMar " in sect:
+                self._sectpr = re.sub(r"<w:pgMar [^>]*/>", PGMAR, sect)
+            else:
+                self._sectpr = sect
+        else:
+            self._sectpr = f"<w:sectPr>{PGMAR}</w:sectPr>"
         # drop the template's body images (relationships + media) so they do not bloat the output
         self._drop = set()
         for m in re.finditer(r'<Relationship [^>]*Type="' + re.escape(IMG_REL) + r'"[^>]*/>', self._rels):
@@ -142,14 +194,13 @@ class Report:
 
     def figure(self, image_path, caption, width_cm=None, border=True):
         """inline image 16 cm wide (or width_cm) in a framed cell, caption below. Returns figure number."""
-        from PIL import Image
         n = len(self._images) + 1
         rid, did = f"rId{self._rid}", self._did
         self._rid += 1; self._did += 1
         ext = os.path.splitext(image_path)[1].lower() or ".png"
         arc = f"rpt_fig{n}{ext}"
         self._images.append((arc, os.path.abspath(image_path), rid))
-        w, h = Image.open(image_path).size
+        w, h = _read_image_dims(image_path)
         cx = int(width_cm * 360000) if width_cm else IMG_W
         cy = int(cx * h / w)
         if cy > IMG_MAX_H:

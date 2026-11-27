@@ -47,27 +47,27 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'selection',
     type: 'selection',
-    width: '55'
+    width: '48'
   },
   {
     field: 'name',
     label: t('task.taskName'),
-    minWidth: 30
+    minWidth: 150
   },
   {
     field: 'cycle',
     label: t('task.taskCycle'),
-    minWidth: 20
+    minWidth: 110
   },
   {
     field: 'type',
     label: t('task.typeTask'),
-    minWidth: 20
+    minWidth: 150
   },
   {
     field: 'lastTime',
     label: t('task.lastTime'),
-    minWidth: 40,
+    minWidth: 155,
     formatter: (_: Recordable, __: TableColumn, cellValue: string) => {
       if (cellValue == '') {
         return '-'
@@ -78,7 +78,7 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'nextTime',
     label: t('task.nextTime'),
-    minWidth: 40,
+    minWidth: 155,
     formatter: (row: Recordable, __: TableColumn, cellValue: string) => {
       if (cellValue == '') {
         return '-'
@@ -92,7 +92,7 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'state',
     label: t('common.state'),
-    minWidth: 20,
+    minWidth: 105,
     formatter: (_: Recordable, __: TableColumn, stateValue: boolean) => {
       if (stateValue == null) {
         return <div></div>
@@ -103,38 +103,34 @@ const taskColums = reactive<TableColumn[]>([
         color = '#2eb98a'
         flag = t('common.on')
       } else {
-        color = 'red'
+        color = '#ef4444'
         flag = t('common.statusStop')
       }
       return (
-        <ElRow gutter={20}>
-          <ElCol span={1}>
-            <Icon icon="clarity:circle-solid" color={color} />
-          </ElCol>
-          <ElCol span={5}>
-            <ElText type="info">{flag}</ElText>
-          </ElCol>
-        </ElRow>
+        <div class="inline-flex items-center gap-2 whitespace-nowrap">
+          <Icon icon="clarity:circle-solid" color={color} size={10} />
+          <ElText type={stateValue ? 'success' : 'danger'}>{flag}</ElText>
+        </div>
       )
     }
   },
   {
     field: 'action',
     label: t('tableDemo.action'),
-    minWidth: 40,
+    minWidth: 160,
     formatter: (row, __: TableColumn, _: number) => {
       return (
-        <>
+        <div class="ss-table-actions">
           {row.TaskID === 'page_monitoring' ? (
-            <BaseButton type="success" onClick={() => getPageMonitContent(row)}>
+            <BaseButton size="small" type="success" onClick={() => getPageMonitContent(row)}>
               {t('common.edit')}
             </BaseButton>
           ) : (
             <>
-              <BaseButton type="success" onClick={() => getTaskContent(row)}>
+              <BaseButton size="small" type="success" onClick={() => getTaskContent(row)}>
                 {t('common.edit')}
               </BaseButton>
-              <BaseButton type="danger" onClick={() => confirmDelete(row)}>
+              <BaseButton size="small" type="danger" onClick={() => confirmDelete(row)}>
                 {t('common.delete')}
               </BaseButton>
             </>
@@ -142,7 +138,7 @@ const taskColums = reactive<TableColumn[]>([
           {/* <BaseButton type="warning" onClick={() => taskRunNow(row.id)}>
             {t('task.runNow')}
           </BaseButton> */}
-        </>
+        </div>
       )
     }
   }
@@ -308,64 +304,58 @@ const addTask = async () => {
 
 <template>
   <ContentWrap>
-    <ElRow>
-      <ElCol :span="1">
-        <ElText class="mx-1" style="position: relative; top: 8px">{{ t('task.taskName') }}:</ElText>
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 16px">
-        <ElButton type="primary" :icon="searchicon" style="height: 100%" @click="handleSearch"
-          >Search</ElButton
-        >
-      </ElCol>
-    </ElRow>
-    <ElRow>
-      <ElCol style="position: relative; top: 16px">
-        <div class="mb-10px">
-          <BaseButton type="primary" @click="addTask">{{ t('task.addScheduled') }}</BaseButton>
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
-            {{ t('task.delTask') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
-    <div style="position: relative; top: 12px">
-      <Table
-        :tooltip-options="{
-          offset: 1,
-          showArrow: false,
-          effect: 'dark',
-          enterable: false,
-          showAfter: 0,
-          popperOptions: {},
-          popperClass: 'test',
-          placement: 'bottom',
-          hideAfter: 0,
-          disabled: true
-        }"
-        v-model:pageSize="pageSize"
-        v-model:currentPage="currentPage"
-        :columns="taskColums"
-        :data="dataList"
-        stripe
-        :border="true"
-        :loading="loading"
-        :max-height="maxHeight"
-        :resizable="true"
-        :pagination="{
-          total: total,
-          pageSizes: [20, 30, 50, 100, 200, 500, 1000]
-        }"
-        @register="tableRegister"
-        :headerCellStyle="tableHeaderColor"
-        :style="{
-          fontFamily:
-            '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
-        }"
-      />
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('task.taskName') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
     </div>
+    <div class="ss-action-bar">
+      <BaseButton type="primary" @click="addTask">{{ t('task.addScheduled') }}</BaseButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
+        {{ t('task.delTask') }}
+      </BaseButton>
+    </div>
+    <Table
+      :tooltip-options="{
+        offset: 1,
+        showArrow: false,
+        effect: 'dark',
+        enterable: false,
+        showAfter: 0,
+        popperOptions: {},
+        popperClass: 'test',
+        placement: 'bottom',
+        hideAfter: 0,
+        disabled: true
+      }"
+      v-model:pageSize="pageSize"
+      v-model:currentPage="currentPage"
+      :columns="taskColums"
+      :data="dataList"
+      stripe
+      :border="true"
+      :loading="loading"
+      :max-height="maxHeight"
+      :resizable="true"
+      :pagination="{
+        total: total,
+        pageSizes: [20, 30, 50, 100, 200, 500, 1000]
+      }"
+      @register="tableRegister"
+      :headerCellStyle="tableHeaderColor"
+      :style="{
+        fontFamily:
+          '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
+      }"
+    />
     <Dialog
       v-model="dialogVisible"
       :title="DialogTitle"

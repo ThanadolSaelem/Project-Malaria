@@ -45,6 +45,7 @@ import {
 } from '@/api/plugins'
 import detail from './detail.vue'
 import { useUserStore } from '@/store/modules/user'
+import { scopeSentryApiPath } from '@/runtime'
 
 const searchicon = useIcon({ icon: 'iconoir:search' })
 const { t } = useI18n()
@@ -149,8 +150,7 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'action',
     label: t('tableDemo.action'),
-    minWidth: '300',
-    fixed: 'right',
+    minWidth: 320,
     formatter: (row, __: TableColumn, _: number) => {
       const handleCommand = (command) => {
         switch (command) {
@@ -178,6 +178,7 @@ const taskColums = reactive<TableColumn[]>([
             h(
               ElButton,
               {
+                size: 'small',
                 style: { outline: 'none', boxShadow: 'none' }
               },
               () => [
@@ -199,33 +200,30 @@ const taskColums = reactive<TableColumn[]>([
         }
       )
       return (
-        <>
+        <div class="ss-table-actions">
           {retestAndDeleteDropdown}
-          <BaseButton
-            type="warning"
-            style={{ marginLeft: '10px' }}
-            onClick={() => openLogDialogVisible(row)}
-          >
+          <BaseButton size="small" type="warning" onClick={() => openLogDialogVisible(row)}>
             {t('common.log')}
           </BaseButton>
           <BaseButton
+            size="small"
             type="info"
-            style={{ marginLeft: '10px' }}
             onClick={() => confirmCleanLog(row.hash, row.module)}
           >
             {t('common.cleanLog')}
           </BaseButton>
-          <BaseButton type="success" onClick={() => editPlugin(row.id, row.hash)}>
+          <BaseButton size="small" type="success" onClick={() => editPlugin(row.id, row.hash)}>
             {t('common.edit')}
           </BaseButton>
           <BaseButton
+            size="small"
             type="danger"
             onClick={() => confirmDelete(row.hash, row.module)}
             disabled={row.isSystem}
           >
             {t('common.delete')}
           </BaseButton>
-        </>
+        </div>
       )
     }
   }
@@ -644,30 +642,28 @@ const handleFileChange = (_file, fileList) => {
 
 <template>
   <ContentWrap>
-    <ElRow>
-      <ElCol :span="1">
-        <ElText class="mx-1" style="position: relative; top: 8px">{{ t('plugin.name') }}:</ElText>
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 16px">
-        <ElButton type="primary" :icon="searchicon" style="height: 100%" @click="handleSearch"
-          >Search</ElButton
-        >
-      </ElCol>
-      <ElCol :span="1" style="position: relative; left: 32px">
-        <ElText class="mx-1" style="position: relative; top: 8px">{{ t('plugin.key') }}:</ElText>
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 32px">
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('plugin.name') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('plugin.key') }}:</span>
         <ElInput
           v-model="pluginKey"
+          class="ss-filter-input"
           :placeholder="t('plugin.key')"
-          style="height: 38px"
           @blur="handlePluginKeyChange"
         />
-      </ElCol>
-    </ElRow>
+      </div>
+    </div>
     <ElRow :gutter="16" class="mt-4">
       <ElCol :xs="24" :sm="24" :md="24" :lg="24" :xl="24">
         <div class="flex flex-wrap gap-3 items-center">
@@ -691,7 +687,7 @@ const handleFileChange = (_file, fileList) => {
           <ElUpload
             ref="upload"
             class="flex items-center"
-            :action="'/api/plugin/import?key=' + (pluginKey || '')"
+            :action="scopeSentryApiPath('/api/plugin/import?key=' + (pluginKey || ''))"
             :headers="uploadHeaders"
             :on-success="handleUploadSuccess"
             :limit="1"

@@ -78,6 +78,44 @@ func (t *ToolSet) SetAssetStore(as *db.AssetStore, cs *db.CompanyStore) {
 	t.cs = cs
 }
 
+// upsertAssetFromTarget normalizes a URL, host, or IP string and ensures a
+// matching asset exists so standalone findings or pipeline calls automatically link
+// into Target Assets & Scope.
+func (t *ToolSet) upsertAssetFromTarget(target string, taskID int64) int64 {
+	if t.as == nil {
+		return 0
+	}
+	raw := strings.TrimSpace(target)
+	if raw == "" {
+		return 0
+	}
+	if strings.Contains(raw, "://") {
+		if u, err := url.Parse(raw); err == nil && u.Hostname() != "" {
+			scheme := strings.ToLower(u.Scheme)
+			if scheme == "http" || scheme == "https" {
+				if id, err := t.as.UpsertHTTPService(db.UpsertHTTPServiceReq{URL: raw, TaskID: taskID}); err == nil && id > 0 {
+					return id
+				}
+			}
+			raw = u.Hostname()
+		}
+	}
+	host := raw
+	if h, _, err := net.SplitHostPort(raw); err == nil && h != "" {
+		host = h
+	}
+	if net.ParseIP(host) != nil {
+		if id, err := t.as.UpsertIP(db.UpsertIPReq{IP: host, TaskID: taskID}); err == nil && id > 0 {
+			return id
+		}
+		return 0
+	}
+	if id, err := t.as.UpsertSubdomain(db.UpsertSubdomainReq{Domain: host, TaskID: taskID}); err == nil && id > 0 {
+		return id
+	}
+	return 0
+}
+
 // assetInputItem is one element of the insert_assets "assets" array.
 type assetInputItem struct {
 	Type string `json:"type"` // root_domain|ip|subdomain|app|service|endpoint

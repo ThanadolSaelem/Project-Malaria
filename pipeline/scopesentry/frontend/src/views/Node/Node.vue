@@ -17,17 +17,17 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'selection',
     type: 'selection',
-    width: '55'
+    width: '48'
   },
   {
     field: 'name',
     label: t('node.nodeName'),
-    minWidth: 20
+    minWidth: 130
   },
   {
     field: 'maxTaskNum',
     label: t('configuration.maxTaskNum'),
-    minWidth: 10,
+    minWidth: 120,
     formatter: (_: Recordable, __: TableColumn, cellValue: number) => {
       return h(
         ElTag,
@@ -41,7 +41,7 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'running',
     label: t('node.taskCount'),
-    minWidth: 10,
+    minWidth: 95,
     formatter: (_: Recordable, __: TableColumn, cellValue: number) => {
       return h(
         ElTag,
@@ -57,7 +57,7 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'finished',
     label: t('node.finished'),
-    minWidth: 10,
+    minWidth: 95,
     formatter: (_: Recordable, __: TableColumn, cellValue: string) => {
       return h(
         ElTag,
@@ -73,7 +73,7 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'cpuNum',
     label: t('node.nodeUsageCpu'),
-    minWidth: 20,
+    minWidth: 100,
     formatter: (_: Recordable, __: TableColumn, cellValue: string) => {
       let numericValue = parseFloat(cellValue)
       numericValue = parseFloat(numericValue.toFixed(2))
@@ -92,7 +92,7 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'memNum',
     label: t('node.nodeUsageMemory'),
-    minWidth: 20,
+    minWidth: 110,
     formatter: (_: Recordable, __: TableColumn, cellValue: string) => {
       let numericValue = parseFloat(cellValue)
       numericValue = parseFloat(numericValue.toFixed(2))
@@ -111,7 +111,7 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'state',
     label: t('node.nodeStatus'),
-    minWidth: 20,
+    minWidth: 100,
     formatter: (_: Recordable, __: TableColumn, cellValue: string) => {
       return h(
         ElTag,
@@ -132,16 +132,15 @@ const nodeColums = reactive<TableColumn[]>([
   {
     field: 'updateTime',
     label: t('node.updateTime'),
-    minWidth: 20
+    minWidth: 155
   },
   {
     field: 'action',
     label: t('tableDemo.action'),
-    minWidth: 30,
+    minWidth: 265,
     formatter: (row, __: TableColumn, _: number) => {
-      console.log(row)
       return (
-        <>
+        <div class="ss-table-actions">
           <BaseButton type="warning" size="small" onClick={() => openPlugin(row.name)}>
             {t('node.plugin')}
           </BaseButton>
@@ -156,7 +155,7 @@ const nodeColums = reactive<TableColumn[]>([
               {t('node.restart')}
             </BaseButton>
           </ElTooltip>
-        </>
+        </div>
       )
     }
   }
@@ -267,33 +266,27 @@ const closepluginDialogVisible = () => {
         >
       </ElCol>
     </ElRow> -->
-    <ElRow>
-      <ElCol style="position: relative; top: 16px">
-        <div class="mb-10px">
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
-            {{ t('common.delete') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
-    <div style="position: relative; top: 12px">
-      <Table
-        v-model:pageSize="pageSize"
-        v-model:currentPage="currentPage"
-        :columns="nodeColums"
-        :data="dataList"
-        stripe
-        :border="true"
-        :loading="loading"
-        :resizable="true"
-        @register="tableRegister"
-        :headerCellStyle="tableHeaderColor"
-        :style="{
-          fontFamily:
-            '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
-        }"
-      />
+    <div class="ss-action-bar">
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
+        {{ t('common.delete') }}
+      </BaseButton>
     </div>
+    <Table
+      v-model:pageSize="pageSize"
+      v-model:currentPage="currentPage"
+      :columns="nodeColums"
+      :data="dataList"
+      stripe
+      :border="true"
+      :loading="loading"
+      :resizable="true"
+      @register="tableRegister"
+      :headerCellStyle="tableHeaderColor"
+      :style="{
+        fontFamily:
+          '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
+      }"
+    />
   </ContentWrap>
   <Dialog
     v-model="dialogVisible"

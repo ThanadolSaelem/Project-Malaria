@@ -366,19 +366,23 @@ func RecordFindingTx(ctx context.Context, tx *sql.Tx, in RecordFindingInput, pre
 	}
 	payload, _ := json.Marshal(map[string]any{"vulnclass": in.VulnClass, "name": in.Name, "severity": in.Severity, "summary": in.Summary, "evidence": map[string]any{"by": in.Worker, "poc": in.Evidence}})
 	out := &RecordedFinding{}
-	if err := tx.QueryRow(`INSERT INTO exploration_nodes(exploration_id,kind,payload,priority,state,origin)
+	if in.ExplorationID > 0 {
+		if err := tx.QueryRow(`INSERT INTO exploration_nodes(exploration_id,kind,payload,priority,state,origin)
 VALUES($1,'finding',$2,9,'confirmed',$3) RETURNING id`, in.ExplorationID, string(payload), in.Worker).Scan(&out.NodeID); err != nil {
-		return nil, err
-	}
-	for _, asset := range in.AssetIDs {
-		if _, err := tx.Exec(`INSERT INTO exploration_anchors(node_id,asset_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, out.NodeID, asset); err != nil {
 			return nil, err
 		}
-	}
-	if in.IntentID > 0 {
-		if _, err := tx.Exec(`INSERT INTO exploration_edges(exploration_id,src_id,rel,dst_id) VALUES($1,$2,$3,$4)`, in.ExplorationID, in.IntentID, RelYields, out.NodeID); err != nil {
-			return nil, err
+		for _, asset := range in.AssetIDs {
+			if _, err := tx.Exec(`INSERT INTO exploration_anchors(node_id,asset_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, out.NodeID, asset); err != nil {
+				return nil, err
+			}
 		}
+		if in.IntentID > 0 {
+			if _, err := tx.Exec(`INSERT INTO exploration_edges(exploration_id,src_id,rel,dst_id) VALUES($1,$2,$3,$4)`, in.ExplorationID, in.IntentID, RelYields, out.NodeID); err != nil {
+				return nil, err
+			}
+		}
+	} else if in.TaskID > 0 {
+		return nil, errors.New("task finding requires a valid exploration_id")
 	}
 	assets := in.AssetIDs
 	if assets == nil {
@@ -386,7 +390,7 @@ VALUES($1,'finding',$2,9,'confirmed',$3) RETURNING id`, in.ExplorationID, string
 	}
 	raw, _ := json.Marshal(assets)
 	if err := tx.QueryRow(`INSERT INTO findings(task_id,node_id,vulnclass,name,severity,summary,evidence,worker,asset_ids,counterevidence,confidence_rationale)
-VALUES(NULLIF($1,0),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, in.TaskID, out.NodeID, in.VulnClass, in.Name, in.Severity, in.Summary, in.Evidence, in.Worker, string(raw), in.Counterevidence, in.ConfidenceRationale).Scan(&out.FindingID); err != nil {
+VALUES(NULLIF($1,0),NULLIF($2,0),$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, in.TaskID, out.NodeID, in.VulnClass, in.Name, in.Severity, in.Summary, in.Evidence, in.Worker, string(raw), in.Counterevidence, in.ConfidenceRationale).Scan(&out.FindingID); err != nil {
 		return nil, err
 	}
 	// Register a push event in the **same transaction**: committing guarantees
@@ -472,6 +476,27 @@ func (d *DB) SetFindingReportVersionByNodeID(ctx context.Context, nodeID int64, 
 			return err
 		}
 		res, err := tx.Exec(`UPDATE findings SET report=$2,report_evidence_version=COALESCE($3::bigint,CASE WHEN evidence_version=0 THEN 0 ELSE -1 END) WHERE id=$1`, id, report, version)
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		return err
+	})
+	return
+}
+
+// SetFindingReportVersionByFindingID sets the Markdown report on a finding addressed
+// directly by its standalone findings.id (used when node_id is NULL, e.g. findings
+// reported directly from /chat or /api/mcp).
+func (d *DB) SetFindingReportVersionByFindingID(ctx context.Context, findingID int64, report string, version *int64) (n int64, err error) {
+	err = d.WithEvidenceTx(ctx, func(tx *sql.Tx) error {
+		if err := LockFindingEvidenceTx(tx, findingID, version); err != nil {
+			if errors.Is(err, ErrFindingNotFound) {
+				return nil
+			}
+			return err
+		}
+		res, err := tx.Exec(`UPDATE findings SET report=$2,report_evidence_version=COALESCE($3::bigint,CASE WHEN evidence_version=0 THEN 0 ELSE -1 END) WHERE id=$1`, findingID, report, version)
 		if err != nil {
 			return err
 		}

@@ -31,6 +31,7 @@ import { delDataApi } from '@/api/asset'
 import { useRoute } from 'vue-router'
 import { defineProps, defineEmits } from 'vue'
 import { CrudSchema } from '@/hooks/web/useCrudSchemas'
+import { scopeSentryStaticPath } from '@/runtime'
 import AddTask from '../../Task/components/AddTask.vue'
 const { t } = useI18n()
 const { query } = useRoute()
@@ -137,11 +138,10 @@ const loadColumnConfig = () => {
 // 初始化加载配置
 loadColumnConfig()
 watch(
-  () => props.crudSchemas,
+  () => props.crudSchemas.map((column) => column.hidden),
   () => {
     saveColumnConfig()
-  },
-  { deep: true }
+  }
 )
 const getHelp = () => {
   dialogVisible.value = true
@@ -576,7 +576,7 @@ const openCreateTask = async () => {
           >
             <template v-if="tag.startsWith('icon=')">
               <img
-                :src="'/images/icon/' + tag.split('=')[1] + '.png'"
+                :src="scopeSentryStaticPath('/images/icon/' + tag.split('=')[1] + '.png')"
                 :alt="tag"
                 style="width: 20px; height: 20px; vertical-align: middle"
               />

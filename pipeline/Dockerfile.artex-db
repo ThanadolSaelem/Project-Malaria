@@ -1,0 +1,8 @@
+FROM postgres:16-alpine
+RUN set -eux; \
+    apk add --no-cache --virtual .pgvector-build git build-base; \
+    git clone --depth 1 --branch v0.8.1 https://github.com/pgvector/pgvector.git /tmp/pgvector; \
+    make -C /tmp/pgvector PG_CONFIG=/usr/local/bin/pg_config OPTFLAGS="" with_llvm=no; \
+    make -C /tmp/pgvector PG_CONFIG=/usr/local/bin/pg_config with_llvm=no install; \
+    rm -rf /tmp/pgvector; \
+    apk del .pgvector-build

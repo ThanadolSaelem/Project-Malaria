@@ -42,16 +42,12 @@ const saveLoading = ref(false)
 <template>
   <ElCard shadow="never" class="mb-20px">
     <template #header>
-      <ElRow>
-        <ElCol :span="3" style="height: 100%">
-          <span>{{ t('configuration.subfinder') }}</span>
-        </ElCol>
-        <ElCol :span="2" :offset="19">
-          <ElButton type="primary" @click="confirmAdd" @loading="saveLoading">{{
-            t('common.save')
-          }}</ElButton>
-        </ElCol>
-      </ElRow>
+      <div class="flex items-center justify-between gap-4">
+        <span class="font-medium whitespace-nowrap">{{ t('configuration.subfinder') }}</span>
+        <ElButton type="primary" @click="confirmAdd" @loading="saveLoading">{{
+          t('common.save')
+        }}</ElButton>
+      </div>
     </template>
     <codemirror
       v-model="content"

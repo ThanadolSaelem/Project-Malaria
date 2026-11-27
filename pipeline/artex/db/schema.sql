@@ -1025,6 +1025,22 @@ CREATE INDEX IF NOT EXISTS idx_conv_act ON conversation_activities(conversation_
 CREATE INDEX IF NOT EXISTS idx_conv_act_tool_call ON conversation_activities(conversation_id, tool_use_id, id)
   WHERE kind IN ('tool_use', 'tool_result');
 
+-- Cross-module pipeline links from interactive conversations (/chat) to tasks,
+-- companies, and ScopeSentry projects/scans.
+CREATE TABLE IF NOT EXISTS conversation_links (
+    id                     BIGSERIAL PRIMARY KEY,
+    conversation_id        BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    task_id                BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+    company_id             BIGINT REFERENCES companies(id) ON DELETE SET NULL,
+    scopesentry_project_id TEXT NOT NULL DEFAULT '',
+    scopesentry_task_id    TEXT NOT NULL DEFAULT '',
+    target                 TEXT NOT NULL DEFAULT '',
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_conv_links_conv ON conversation_links(conversation_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conv_links_conv_task ON conversation_links(conversation_id, task_id)
+    WHERE task_id IS NOT NULL;
+
 -- =====================================================================
 -- J. Agent triggers
 -- =====================================================================

@@ -456,7 +456,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	// conv-<id>/), matching chatUpload's landing dir and agent/chat.go's sessionWorkDir
 	// — busyKey == convBusyKey(c.ID) == "conv-<id>" == that session id.
 	baseDir := filepath.Join(s.m.dir, "sessions", busyKey)
-	s.runConversation(c, composeAgentMessage(agentMessage, req.Attachments, baseDir), busyKey, msg)
+	s.runConversationWithAttachments(c, composeAgentMessage(agentMessage, req.Attachments, baseDir), busyKey, msg, req.Attachments)
 	writeJSON(w, 202, map[string]any{"status": "accepted"})
 }
 
@@ -465,13 +465,19 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 // conversation_activities. Shared by the chat HTTP handler and the P3 scheduler.
 // busyKey clears when the run ends (best-effort in-flight marker).
 func (s *Server) runConversation(c *db.Conversation, msg, busyKey string, userMessage ...string) {
-	ctx, cancel := s.conversationRunContext(c.ID, busyKey)
-	// Only the human-message handler supplies this field, before adding the
-	// attachment manifest. Scheduler/retest prompts must not be labelled as users.
+	rawUserMsg := ""
 	if len(userMessage) == 1 {
-		ctx = intercept.WithReviewContext(ctx, "", intercept.ReviewBackground{Source: intercept.BackgroundUserMessage, Text: userMessage[0]})
+		rawUserMsg = userMessage[0]
 	}
-	go s.runConversationTurn(ctx, cancel, c, msg, busyKey)
+	s.runConversationWithAttachments(c, msg, busyKey, rawUserMsg, nil)
+}
+
+func (s *Server) runConversationWithAttachments(c *db.Conversation, msg, busyKey, rawUserMsg string, atts []chatAttachment) {
+	ctx, cancel := s.conversationRunContext(c.ID, busyKey)
+	if rawUserMsg != "" {
+		ctx = intercept.WithReviewContext(ctx, "", intercept.ReviewBackground{Source: intercept.BackgroundUserMessage, Text: rawUserMsg})
+	}
+	go s.runConversationTurnWithUser(ctx, cancel, c, msg, busyKey, rawUserMsg, atts)
 }
 
 // runConversationSync runs ONE agent turn on a conversation and BLOCKS until the
@@ -496,6 +502,10 @@ func (s *Server) conversationRunContext(id int64, busyKey string) (context.Conte
 }
 
 func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelCauseFunc, c *db.Conversation, msg, busyKey string) {
+	s.runConversationTurnWithUser(ctx, cancel, c, msg, busyKey, "", nil)
+}
+
+func (s *Server) runConversationTurnWithUser(ctx context.Context, cancel context.CancelCauseFunc, c *db.Conversation, msg, busyKey, rawUserMsg string, atts []chatAttachment) {
 	defer func() {
 		cancel(agent.AbortChatTurnFinished)
 		s.chatMu.Lock()
@@ -566,6 +576,18 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 	gate := c.TargetGate
 	gctx := intercept.WithTargetScope(ctx, intercept.TargetScope{ConversationID: c.ID, Enabled: func() bool { return gate },
 		WaitBound: intercept.DefaultTargetWaitBound, Interceptor: s.m.interceptor})
+	if rawUserMsg != "" || len(atts) > 0 {
+		s.syncSharedContextFromChat(c.ID)
+		if handoff := s.buildDeepAgentHandoffForChat(c.ID); handoff != "" {
+			msg = handoff + "\n\n" + msg
+		}
+		if autoNote := s.maybeAutoOnboardChatTurn(gctx, c, rawUserMsg, atts); autoNote != "" {
+			msg = autoNote + msg
+		}
+		if ctxNote := s.buildEnterprisePolicyDirectiveForChat(c.ID); ctxNote != "" {
+			msg = ctxNote + "\n\n" + msg
+		}
+	}
 	// On a manual stop ctx is cancelled; Chat already emits a clean "stopped by the user"
 	// step, so skip the raw-error entry — only surface genuine failures.
 	if _, err := ca.Chat(gctx, c.AgentKey, sessionID, msg, maxTurns, maxDuration, webSearch, emit); err != nil {

@@ -59,11 +59,11 @@ const DeduplicationConfigLoading = ref(false)
 <template>
   <ElCard shadow="never" class="mb-20px">
     <template #header>
-      <ElRow>
-        <ElCol :span="3" style="height: 100%">
-          <span>{{ t('configuration.duplicationconfiguration') }}</span>
-        </ElCol>
-      </ElRow>
+      <div class="flex items-center justify-between gap-4">
+        <span class="font-medium whitespace-nowrap">{{
+          t('configuration.duplicationconfiguration')
+        }}</span>
+      </div>
     </template>
     <div style="max-width: 600px; margin: 20px 0 0">
       <ElAlert type="info" :closable="false">

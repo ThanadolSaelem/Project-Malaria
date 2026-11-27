@@ -1,8 +1,8 @@
 <script setup lang="tsx">
 import { useI18n } from '@/hooks/web/useI18n'
 import { h, nextTick, reactive, Ref, ref } from 'vue'
-import { onMounted } from 'vue'
 import { useTable } from '@/hooks/web/useTable'
+import { useViewportMaxHeight } from '@/hooks/web/useViewportMaxHeight'
 import {
   ElCard,
   ElPagination,
@@ -137,14 +137,10 @@ const crudSchemas = reactive<CrudSchema[]>([
         flag = t('poc.unknown')
       }
       return (
-        <ElRow gutter={20} style="width: 80%">
-          <ElCol span={1}>
-            <Icon icon="clarity:circle-solid" color={color} />
-          </ElCol>
-          <ElCol span={5}>
-            <ElText type="info">{flag}</ElText>
-          </ElCol>
-        </ElRow>
+        <div class="inline-flex items-center gap-2 whitespace-nowrap">
+          <Icon icon="clarity:circle-solid" color={color} size={10} />
+          <ElText type="info">{flag}</ElText>
+        </div>
       )
     },
     filters: [
@@ -401,17 +397,7 @@ pageSize.value = 20
 function tableHeaderColor() {
   return { background: 'var(--el-fill-color-light)' }
 }
-onMounted(() => {
-  setMaxHeight()
-  window.addEventListener('resize', setMaxHeight)
-})
-
-const maxHeight = ref(0)
-
-const setMaxHeight = () => {
-  const screenHeight = window.innerHeight || document.documentElement.clientHeight
-  maxHeight.value = screenHeight * 0.7
-}
+const { maxHeight } = useViewportMaxHeight()
 interface RowData {
   URL: string
   Vulnerability: string

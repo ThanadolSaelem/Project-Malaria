@@ -99,59 +99,45 @@ const selectedRowIds = ref([])
 
 <template>
   <ContentWrap>
-    <ElRow style="margin-bottom: 20px" :gutter="20">
-      <ElCol :span="0.5">
-        <ElText class="mx-1" style="position: relative; top: 8px">{{ t('form.input') }}:</ElText>
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 16px">
-        <ElButton
-          :loading="loading"
-          type="primary"
-          :icon="searchicon"
-          size="large"
-          style="height: 100%"
-          @click="handleSearch"
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('form.input') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
         />
-      </ElCol>
-    </ElRow>
-    <ElRow style="margin-bottom: 0%">
-      <ElCol :span="2">
-        <div class="mb-10px">
-          <ElButton type="primary" @click="addProject">{{ t('project.addProject') }}</ElButton>
-        </div>
-      </ElCol>
-      <ElCol :span="2">
-        <ElForm>
-          <ElFormItem :label="t('common.multipleSelection')">
-            <ElSwitch
-              v-model="multipleSelection"
-              class="mb-2"
-              inline-prompt
-              active-text="Yes"
-              inactive-text="No"
-            />
-          </ElFormItem>
-        </ElForm>
-      </ElCol>
-      <ElCol v-if="multipleSelection" :span="1">
-        <ElDropdown trigger="click">
-          <ElButton plain class="custom-button align-bottom">
-            {{ t('common.operation') }}
-            <ElIcon class="el-icon--right"><elDropdownicon /></ElIcon>
-          </ElButton>
-          <template #dropdown>
-            <ElDropdownMenu>
-              <ElDropdownItem :icon="deleteicon" @click="delSelect">{{
-                t('common.delete')
-              }}</ElDropdownItem>
-            </ElDropdownMenu>
-          </template>
-        </ElDropdown>
-      </ElCol>
-    </ElRow>
+      </div>
+      <ElButton :loading="loading" type="primary" :icon="searchicon" @click="handleSearch" />
+    </div>
+    <div class="ss-action-bar">
+      <ElButton type="primary" @click="addProject">{{ t('project.addProject') }}</ElButton>
+      <ElForm class="inline-flex items-center">
+        <ElFormItem :label="t('common.multipleSelection')" style="margin-bottom: 0">
+          <ElSwitch
+            v-model="multipleSelection"
+            inline-prompt
+            active-text="Yes"
+            inactive-text="No"
+          />
+        </ElFormItem>
+      </ElForm>
+      <ElDropdown v-if="multipleSelection" trigger="click">
+        <ElButton plain class="custom-button">
+          {{ t('common.operation') }}
+          <ElIcon class="el-icon--right"><elDropdownicon /></ElIcon>
+        </ElButton>
+        <template #dropdown>
+          <ElDropdownMenu>
+            <ElDropdownItem :icon="deleteicon" @click="delSelect">{{
+              t('common.delete')
+            }}</ElDropdownItem>
+          </ElDropdownMenu>
+        </template>
+      </ElDropdown>
+    </div>
     <ElTabs class="demo-tabs" v-loading="projectListLoading">
       <ElTabPane :label="`All (${tagNum['All']})`"
         ><ProjectList

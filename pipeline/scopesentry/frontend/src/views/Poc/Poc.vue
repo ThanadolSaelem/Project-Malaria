@@ -28,6 +28,7 @@ import { Dialog } from '@/components/Dialog'
 import { useUserStore } from '@/store/modules/user'
 import { RowState } from '@/api/asset/types'
 import { addTagApi, deleteTagApi } from '@/api/asset'
+import { scopeSentryApiPath } from '@/runtime'
 const searchicon = useIcon({ icon: 'iconoir:search' })
 const { t } = useI18n()
 const dialogVisible = ref(false)
@@ -78,14 +79,10 @@ const nodeColums = reactive<TableColumn[]>([
         flag = t('poc.unknown')
       }
       return (
-        <ElRow gutter={20} style="width: 80%">
-          <ElCol span={1}>
-            <Icon icon="clarity:circle-solid" color={color} size={10} />
-          </ElCol>
-          <ElCol span={5}>
-            <ElText type="info">{flag}</ElText>
-          </ElCol>
-        </ElRow>
+        <div class="inline-flex items-center gap-2 whitespace-nowrap">
+          <Icon icon="clarity:circle-solid" color={color} size={10} />
+          <ElText type="info">{flag}</ElText>
+        </div>
       )
     },
     filters: [
@@ -310,60 +307,47 @@ const filterChange = async (newFilters: any) => {
 
 <template>
   <ContentWrap>
-    <ElRow :gutter="20" style="margin-bottom: 15px">
-      <ElCol :span="1.5">
-        <ElText class="mx-1" style="position: relative; top: 8px">{{ t('poc.pocName') }}:</ElText>
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 16px">
-        <ElButton type="primary" :icon="searchicon" style="height: 100%" @click="handleSearch"
-          >Search</ElButton
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('poc.pocName') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
+    </div>
+    <div class="ss-action-bar">
+      <ElButton type="primary" @click="addPoc">{{ t('common.new') }}</ElButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
+        {{ t('common.delete') }}
+      </BaseButton>
+      <ElTooltip :content="t('common.uploadMsg')" placement="top">
+        <ElUpload
+          ref="upload"
+          class="flex items-center"
+          :action="scopeSentryApiPath('/api/poc/data/import')"
+          :headers="uploadHeaders"
+          :on-success="handleUploadSuccess"
+          :limit="1"
+          :on-exceed="handleExceed"
+          :auto-upload="false"
+          @change="handleFileChange"
         >
-      </ElCol>
-    </ElRow>
-    <ElRow :gutter="60">
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <ElButton type="primary" @click="addPoc">{{ t('common.new') }}</ElButton>
-        </div>
-      </ElCol>
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
-            {{ t('common.delete') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-      <ElCol :span="3">
-        <ElTooltip :content="t('common.uploadMsg')" placement="top">
-          <!-- <ElUpload class="upload-demo" action="/api/poc/data/import" :headers="uploadHeaders">
-            <ElButton :icon="uploadicon">{{ t('common.import') }}</ElButton>
-          </ElUpload> -->
-          <ElUpload
-            ref="upload"
-            class="flex items-center"
-            action="/api/poc/data/import"
-            :headers="uploadHeaders"
-            :on-success="handleUploadSuccess"
-            :limit="1"
-            :on-exceed="handleExceed"
-            :auto-upload="false"
-            @change="handleFileChange"
-          >
-            <template #trigger>
-              <BaseButton>
-                <template #icon>
-                  <Icon icon="iconoir:upload" />
-                </template>
-                {{ t('plugin.import') }}
-              </BaseButton>
-            </template>
-          </ElUpload>
-        </ElTooltip>
-      </ElCol>
-    </ElRow>
+          <template #trigger>
+            <BaseButton>
+              <template #icon>
+                <Icon icon="iconoir:upload" />
+              </template>
+              {{ t('plugin.import') }}
+            </BaseButton>
+          </template>
+        </ElUpload>
+      </ElTooltip>
+    </div>
     <Table
       v-model:pageSize="pageSize"
       v-model:currentPage="currentPage"

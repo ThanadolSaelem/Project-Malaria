@@ -6,6 +6,7 @@ import { useI18n } from '@/hooks/web/useI18n'
 import { loginOutApi } from '@/api/login'
 import { useTagsViewStore } from './tagsView'
 import router from '@/router'
+import { isScopeSentryEmbedded } from '@/runtime'
 
 interface UserState {
   userInfo?: UserType
@@ -18,10 +19,11 @@ interface UserState {
 
 export const useUserStore = defineStore('user', {
   state: (): UserState => {
+    const embedded = isScopeSentryEmbedded()
     return {
-      userInfo: undefined,
+      userInfo: embedded ? { username: 'Malaria', password: '', role: 'admin', roleId: '1' } : undefined,
       tokenKey: 'Authorization',
-      token: '',
+      token: embedded ? 'Bearer malaria-sso-token' : '',
       roleRouters: undefined,
       // 记住我
       rememberMe: true,
@@ -53,7 +55,11 @@ export const useUserStore = defineStore('user', {
       this.tokenKey = tokenKey
     },
     setToken(token: string) {
-      this.token = 'Bearer ' + token
+      if (!token) {
+        this.token = ''
+        return
+      }
+      this.token = token.startsWith('Bearer ') ? token : 'Bearer ' + token
     },
     setUserInfo(userInfo?: UserType) {
       this.userInfo = userInfo
@@ -78,6 +84,11 @@ export const useUserStore = defineStore('user', {
         .catch(() => {})
     },
     reset() {
+      if (isScopeSentryEmbedded()) {
+        this.setToken('malaria-sso-token')
+        this.setUserInfo({ username: 'Malaria', password: '', role: 'admin', roleId: '1' })
+        return
+      }
       const tagsViewStore = useTagsViewStore()
       tagsViewStore.delAllViews()
       this.setToken('')
@@ -95,7 +106,7 @@ export const useUserStore = defineStore('user', {
       this.loginInfo = loginInfo
     }
   },
-  persist: true
+  persist: false
 })
 
 export const useUserStoreWithOut = () => {

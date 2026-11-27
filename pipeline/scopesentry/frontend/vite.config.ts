@@ -11,6 +11,7 @@ import VueI18nPlugin from "@intlify/unplugin-vue-i18n/vite"
 import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
 import { createStyleImportPlugin, ElementPlusResolve } from 'vite-plugin-style-import'
 import UnoCSS from 'unocss/vite'
+import { scopeSentryModuleBuild } from './module.build'
 
 // https://vitejs.dev/config/
 const root = process.cwd()
@@ -27,8 +28,9 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
   } else {
     env = loadEnv(mode, root)
   }
+  const isModuleBuild = mode === 'module'
   return {
-    base: env.VITE_BASE_PATH,
+    base: isModuleBuild ? scopeSentryModuleBuild.base : env.VITE_BASE_PATH,
     plugins: [
       Vue({
         script: {
@@ -86,7 +88,8 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
           additionalData: '@import "./src/styles/variables.module.less";',
           javascriptEnabled: true
         }
-      }
+      },
+      ...(isModuleBuild ? scopeSentryModuleBuild.css : {})
     },
     resolve: {
       extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.less', '.css'],
@@ -101,7 +104,7 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
         }
       ]
     },
-    build: {
+    build: isModuleBuild ? scopeSentryModuleBuild.build : {
       minify: 'terser',
       outDir: env.VITE_OUT_DIR || 'dist',
       sourcemap: env.VITE_SOURCEMAP === 'true' ? 'inline' : false,
@@ -116,6 +119,11 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
     server: {
       port: 4000,
       proxy: {
+        '/scopesentry-api': {
+          target: 'http://127.0.0.1:8082',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/scopesentry-api/, '')
+        },
         // 选项写法
         '/api': {
           target: 'http://127.0.0.1:8082',

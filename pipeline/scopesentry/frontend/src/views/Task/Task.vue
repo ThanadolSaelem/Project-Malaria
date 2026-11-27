@@ -51,17 +51,17 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'selection',
     type: 'selection',
-    minWidth: 55
+    width: 48
   },
   {
     field: 'name',
     label: t('task.taskName'),
-    minWidth: 100
+    minWidth: 140
   },
   {
     field: 'taskNum',
     label: t('task.taskCount'),
-    minWidth: 70,
+    minWidth: 105,
     formatter: (_: Recordable, __: TableColumn, cellValue: number) => {
       return h(
         ElTag,
@@ -75,7 +75,7 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'progress',
     label: t('task.taskProgress'),
-    minWidth: 200,
+    minWidth: 145,
     formatter: (_: Recordable, __: TableColumn, cellValue: number) => {
       return h(ElProgress, {
         percentage: cellValue,
@@ -89,7 +89,7 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'status',
     label: t('common.state'),
-    minWidth: 200,
+    minWidth: 110,
     formatter: (_: Recordable, __: TableColumn, cellValue: number) => {
       // 1为运行中，2为暂停，3为运行完成
       let tagType, tagText
@@ -115,13 +115,13 @@ const taskColums = reactive<TableColumn[]>([
   },
   {
     field: 'creatTime',
-    minWidth: 200,
+    minWidth: 155,
     label: t('task.createTime')
   },
   {
     field: 'endTime',
     label: t('task.endTime'),
-    minWidth: 200,
+    minWidth: 155,
     formatter: (_: Recordable, __: TableColumn, cellValue: string) => {
       if (cellValue == '') {
         return '-'
@@ -132,8 +132,7 @@ const taskColums = reactive<TableColumn[]>([
   {
     field: 'action',
     label: t('tableDemo.action'),
-    minWidth: '420',
-    fixed: 'right',
+    minWidth: 285,
     formatter: (row, __: TableColumn, _: number) => {
       const handleCommand = (command) => {
         ids.value = []
@@ -164,6 +163,7 @@ const taskColums = reactive<TableColumn[]>([
             h(
               ElButton,
               {
+                size: 'small',
                 style: { outline: 'none', boxShadow: 'none' }
               },
               () => [
@@ -195,26 +195,18 @@ const taskColums = reactive<TableColumn[]>([
         }
       )
       return (
-        <>
+        <div class="ss-table-actions">
           {retestAndDeleteDropdown}
-          <BaseButton
-            type="primary"
-            onClick={() => getTaskResult(row.name)}
-            style={{ marginLeft: '10px' }}
-          >
+          <BaseButton size="small" type="primary" onClick={() => getTaskResult(row.name)}>
             {t('task.result')}
           </BaseButton>
-          <BaseButton
-            type="success"
-            onClick={() => getTaskContent(row)}
-            style={{ marginLeft: '10px' }}
-          >
+          <BaseButton size="small" type="success" onClick={() => getTaskContent(row)}>
             {t('common.view')}
           </BaseButton>
-          <ElButton type="warning" onClick={() => getProgressInfo(row.id)}>
+          <ElButton size="small" type="warning" onClick={() => getProgressInfo(row.id)}>
             {t('task.taskProgress')}
           </ElButton>
-        </>
+        </div>
       )
     }
   }
@@ -527,73 +519,67 @@ const setMaxHeight = () => {
 
 <template>
   <ContentWrap>
-    <ElRow>
-      <ElCol :span="1">
-        <ElText class="mx-1" style="position: relative; top: 8px">{{ t('task.taskName') }}:</ElText>
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5" style="position: relative; left: 16px">
-        <ElButton type="primary" :icon="searchicon" style="height: 100%" @click="handleSearch"
-          >Search</ElButton
-        >
-      </ElCol>
-    </ElRow>
-    <ElRow>
-      <ElCol style="position: relative; top: 16px">
-        <div class="mb-10px">
-          <BaseButton type="primary" @click="addTask">{{ t('task.addTask') }}</BaseButton>
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
-            {{ t('task.delTask') }}
-          </BaseButton>
-          <BaseButton type="warning" :loading="delLoading" @click="confirmStopSelect">
-            {{ t('task.stop') }}
-          </BaseButton>
-          <BaseButton type="success" :loading="delLoading" @click="confirmStartSelect">
-            {{ t('task.start') }}
-          </BaseButton>
-          <BaseButton type="info" :loading="delLoading" @click="confirmSyncToProjectSelect">
-            {{ t('task.syncToProject') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-    </ElRow>
-    <div style="position: relative; top: 12px">
-      <Table
-        :tooltip-options="{
-          offset: 1,
-          showArrow: false,
-          effect: 'dark',
-          enterable: false,
-          showAfter: 0,
-          popperOptions: {},
-          popperClass: 'test',
-          placement: 'bottom',
-          hideAfter: 0,
-          disabled: true
-        }"
-        v-model:pageSize="pageSize"
-        v-model:currentPage="currentPage"
-        :columns="taskColums"
-        :data="dataList"
-        stripe
-        :border="true"
-        :loading="loading"
-        :max-height="maxHeight"
-        :resizable="true"
-        :pagination="{
-          total: total,
-          pageSizes: [20, 30, 50, 100, 200, 500, 1000]
-        }"
-        @register="tableRegister"
-        :headerCellStyle="tableHeaderColor"
-        :style="{
-          fontFamily:
-            '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
-        }"
-      />
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('task.taskName') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
     </div>
+    <div class="ss-action-bar">
+      <BaseButton type="primary" @click="addTask">{{ t('task.addTask') }}</BaseButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDeleteSelect">
+        {{ t('task.delTask') }}
+      </BaseButton>
+      <BaseButton type="warning" :loading="delLoading" @click="confirmStopSelect">
+        {{ t('task.stop') }}
+      </BaseButton>
+      <BaseButton type="success" :loading="delLoading" @click="confirmStartSelect">
+        {{ t('task.start') }}
+      </BaseButton>
+      <BaseButton type="info" :loading="delLoading" @click="confirmSyncToProjectSelect">
+        {{ t('task.syncToProject') }}
+      </BaseButton>
+    </div>
+    <Table
+      :tooltip-options="{
+        offset: 1,
+        showArrow: false,
+        effect: 'dark',
+        enterable: false,
+        showAfter: 0,
+        popperOptions: {},
+        popperClass: 'test',
+        placement: 'bottom',
+        hideAfter: 0,
+        disabled: true
+      }"
+      v-model:pageSize="pageSize"
+      v-model:currentPage="currentPage"
+      :columns="taskColums"
+      :data="dataList"
+      stripe
+      :border="true"
+      :loading="loading"
+      :max-height="maxHeight"
+      :resizable="true"
+      :pagination="{
+        total: total,
+        pageSizes: [20, 30, 50, 100, 200, 500, 1000]
+      }"
+      @register="tableRegister"
+      :headerCellStyle="tableHeaderColor"
+      :style="{
+        fontFamily:
+          '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji'
+      }"
+    />
   </ContentWrap>
   <Dialog
     v-model="dialogVisible"

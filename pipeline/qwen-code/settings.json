@@ -3,8 +3,8 @@
   "modelProviders": {
     "openai": [
       {
-        "id": "flint",
-        "name": "Orchestrator (Coding & Synthesis)",
+        "id": "orchestrator",
+        "name": "Inkling-2-Mini-abliterated-Mix-12G (:8090)",
         "baseUrl": "http://litellm:4000/v1",
         "envKey": "OPENAI_API_KEY"
       },
@@ -16,7 +16,7 @@
       },
       {
         "id": "summarizer",
-        "name": "Qwen2.5-3B (Observer Summarizer)",
+        "name": "Summarizer (Intent & Observer)",
         "baseUrl": "http://litellm:4000/v1",
         "envKey": "OPENAI_API_KEY"
       },
@@ -28,20 +28,20 @@
       },
       {
         "id": "nim",
-        "name": "NIM (Nemotron VL Cloud)",
+        "name": "NVIDIA NIM (Nemotron VL 120B Cloud)",
         "baseUrl": "http://litellm:4000/v1",
         "envKey": "OPENAI_API_KEY"
       },
       {
-        "id": "or-glm",
-        "name": "OpenRouter GLM-5.3 (Cloud)",
+        "id": "or-nemo",
+        "name": "OpenRouter (GLM-5.3 Cloud)",
         "baseUrl": "http://litellm:4000/v1",
         "envKey": "OPENAI_API_KEY"
       }
     ]
   },
   "model": {
-    "name": "flint"
+    "name": "orchestrator"
   },
   "context": {
     "fileName": "AGENTS.md"
@@ -76,8 +76,44 @@
     },
     "scopesentry": {
       "httpUrl": "http://scope-sentry:8082/mcp",
-      "trust": true
+      "trust": true,
+      "headers": {
+        "X-API-Key": "ssk_project_malaria_scopesentry_mcp_key_2026"
+      }
+    },
+    "artex": {
+      "httpUrl": "http://artex:8787/mcp",
+      "trust": true,
+      "headers": {
+        "X-API-Key": "ak_project_malaria_artex_mcp_key_2026"
+      }
     }
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "artex-shared-context",
+            "command": "node /app/hooks/artex-context-hook.mjs prompt",
+            "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "artex-sync-reply",
+            "command": "node /app/hooks/artex-context-hook.mjs stop",
+            "timeout": 8000
+          }
+        ]
+      }
+    ]
   },
   "security": {
     "auth": {

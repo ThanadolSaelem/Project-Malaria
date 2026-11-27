@@ -208,44 +208,30 @@ const handleUpdate = async () => {
 
 <template>
   <ContentWrap>
-    <ElRow :gutter="20" style="margin-bottom: 15px">
-      <ElCol :span="1">
-        <ElText class="mx-1" style="position: relative; top: 8px; left: 30%"
-          >{{ t('fingerprint.name') }} :</ElText
-        >
-      </ElCol>
-      <ElCol :span="5">
-        <ElInput v-model="search" :placeholder="t('common.inputText')" style="height: 38px" />
-      </ElCol>
-      <ElCol :span="5">
-        <ElButton type="primary" :icon="searchicon" style="height: 38px" @click="handleSearch"
-          >Search</ElButton
-        >
-      </ElCol>
-    </ElRow>
-    <ElRow :gutter="60">
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <ElButton type="primary" @click="addSensitive">{{ t('common.new') }}</ElButton>
-        </div>
-      </ElCol>
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
-            {{ t('common.delete') }}
-          </BaseButton>
-        </div>
-      </ElCol>
-      <ElCol :span="1">
-        <div class="mb-10px">
-          <ElBadge :value="updateCount" :hidden="updateCount === 0" :max="999999">
-            <BaseButton type="success" :loading="updateLoading" @click="handleUpdate">
-              {{ t('common.update') || '更新' }}
-            </BaseButton>
-          </ElBadge>
-        </div>
-      </ElCol>
-    </ElRow>
+    <div class="ss-filter-bar">
+      <div class="ss-filter-field">
+        <span class="ss-filter-label">{{ t('fingerprint.name') }}:</span>
+        <ElInput
+          v-model="search"
+          class="ss-filter-input"
+          :placeholder="t('common.inputText')"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <ElButton type="primary" :icon="searchicon" @click="handleSearch">Search</ElButton>
+    </div>
+    <div class="ss-action-bar">
+      <ElButton type="primary" @click="addSensitive">{{ t('common.new') }}</ElButton>
+      <BaseButton type="danger" :loading="delLoading" @click="confirmDelete">
+        {{ t('common.delete') }}
+      </BaseButton>
+      <ElBadge :value="updateCount" :hidden="updateCount === 0" :max="999999">
+        <BaseButton type="success" :loading="updateLoading" @click="handleUpdate">
+          {{ t('common.update') || '更新' }}
+        </BaseButton>
+      </ElBadge>
+    </div>
     <Table
       v-model:pageSize="pageSize"
       v-model:currentPage="currentPage"
